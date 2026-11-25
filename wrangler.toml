@@ -1,30 +1,44 @@
 #:schema node_modules/wrangler/config-schema.json
 name = "fraith-system"
+main = "workers/index.ts"
 compatibility_date = "2024-12-01"
-pages_build_output_dir = "./dist"
+
+# Automatically builds the React + Vite frontend into ./dist whenever `npx wrangler deploy` runs
+[build]
+command = "npm run build"
+
+# Serves the Vite SPA static assets and routes /api/* (including /api/ws) to the Hono Worker
+[assets]
+directory = "./dist"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+run_worker_first = ["/api/*"]
 
 [vars]
 CAMPAIGN_ID = "fraith-main-campaign"
-JWT_SECRET = "change-me-in-production-via-wrangler-pages-secret-put"
+JWT_SECRET = "change-me-in-production-via-wrangler-secret-put"
 CF_ACCESS_ENABLED = "false"
 
 # Cloudflare D1 SQLite Database
-# Create in production: `npx wrangler d1 create fraith-dnd-db` and replace database_id below
+# With wrangler v4, omitting database_id automatically provisions `fraith-dnd-db` on first `npx wrangler deploy`,
+# and the Worker auto-initializes tables + seed data on startup.
 [[d1_databases]]
 binding = "DB"
 database_name = "fraith-dnd-db"
-database_id = "00000000-0000-0000-0000-000000000001"
 migrations_dir = "migrations"
 
-# Cloudflare R2 Object Storage (images for quests, bestiary, talents, avatars)
-# Create in production: `npx wrangler r2 bucket create fraith-dnd-assets`
-[[r2_buckets]]
-binding = "BUCKET"
-bucket_name = "fraith-dnd-assets"
-
-# Cloudflare Durable Object Binding (Pages binds to the standalone DO Worker script)
-# Deploy DO first: `npx wrangler deploy -c wrangler.do.toml`
+# Cloudflare Durable Object (WebSocket Hibernation API — exported directly from workers/index.ts)
 [[durable_objects.bindings]]
 name = "CAMPAIGN_DO"
 class_name = "CampaignRoom"
-script_name = "fraith-campaign-do"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["CampaignRoom"]
+
+# Optional Cloudflare R2 Object Storage:
+# Uncomment after enabling R2 in your Cloudflare Dashboard (or bind `BUCKET` in Worker Settings -> Bindings).
+# Until enabled, uploaded quest/bestiary/talent images automatically fall back to D1 storage.
+# [[r2_buckets]]
+# binding = "BUCKET"
+# bucket_name = "fraith-dnd-assets"

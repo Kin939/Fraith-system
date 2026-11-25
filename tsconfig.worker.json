@@ -10,5 +10,12 @@
     "isolatedModules": true,
     "noEmit": true
   },
-  "include": ["functions/**/*.ts", "workers/**/*.ts", "src/lib/db.ts", "src/lib/r2.ts", "src/lib/auth.ts"]
+  "include": [
+    "functions/**/*.ts",
+    "workers/**/*.ts",
+    "src/lib/db.ts",
+    "src/lib/r2.ts",
+    "src/lib/auth.ts",
+    "src/lib/bootstrap.ts"
+  ]
 }
