@@ -142,25 +142,33 @@ function stripFormatting(raw: string): string {
  */
 export const SelectionFormatToolbar: React.FC = () => {
   const [box, setBox] = useState<SelectionBoxState | null>(null);
+  const hasOpenBoxRef = useRef(false);
+  const rafIdRef = useRef<number | null>(null);
   const lastPointerRef = useRef<{ x: number; y: number } | null>(null);
+
+  const closeBoxIfOpen = useCallback(() => {
+    if (!hasOpenBoxRef.current) return;
+    hasOpenBoxRef.current = false;
+    setBox(null);
+  }, []);
 
   const syncSelection = useCallback(() => {
     const active = document.activeElement;
     if (!isFormattableTextarea(active)) {
-      setBox(null);
+      closeBoxIfOpen();
       return;
     }
 
     const start = active.selectionStart ?? 0;
     const end = active.selectionEnd ?? 0;
     if (end <= start) {
-      setBox(null);
+      closeBoxIfOpen();
       return;
     }
 
     const rect = active.getBoundingClientRect();
     if (rect.width === 0 && rect.height === 0) {
-      setBox(null);
+      closeBoxIfOpen();
       return;
     }
 
@@ -175,20 +183,49 @@ export const SelectionFormatToolbar: React.FC = () => {
         : rect.top - 46;
 
     const toolbarHalfWidth = 175;
-    const clampedLeft = Math.max(
-      toolbarHalfWidth + 8,
-      Math.min(window.innerWidth - toolbarHalfWidth - 8, rawLeft)
+    const clampedLeft = Math.round(
+      Math.max(
+        toolbarHalfWidth + 8,
+        Math.min(window.innerWidth - toolbarHalfWidth - 8, rawLeft)
+      )
     );
-    const clampedTop = Math.max(8, Math.min(window.innerHeight - 56, rawTop));
+    const clampedTop = Math.round(Math.max(8, Math.min(window.innerHeight - 56, rawTop)));
 
-    setBox({
-      textarea: active,
-      top: clampedTop,
-      left: clampedLeft,
-      start,
-      end,
+    hasOpenBoxRef.current = true;
+    setBox((prev) => {
+      if (
+        prev &&
+        prev.textarea === active &&
+        prev.top === clampedTop &&
+        prev.left === clampedLeft &&
+        prev.start === start &&
+        prev.end === end
+      ) {
+        return prev;
+      }
+      return {
+        textarea: active,
+        top: clampedTop,
+        left: clampedLeft,
+        start,
+        end,
+      };
     });
-  }, []);
+  }, [closeBoxIfOpen]);
+
+  const scheduleSync = useCallback(() => {
+    // Fast-path during ordinary typing: if cursor is collapsed and toolbar is already closed, do ZERO work!
+    const active = document.activeElement;
+    if (!hasOpenBoxRef.current) {
+      if (!isFormattableTextarea(active)) return;
+      if ((active.selectionEnd ?? 0) <= (active.selectionStart ?? 0)) return;
+    }
+    if (rafIdRef.current !== null) return;
+    rafIdRef.current = window.requestAnimationFrame(() => {
+      rafIdRef.current = null;
+      syncSelection();
+    });
+  }, [syncSelection]);
 
   useEffect(() => {
     const onMouseDown = (e: MouseEvent) => {
@@ -196,23 +233,22 @@ export const SelectionFormatToolbar: React.FC = () => {
     };
     const onMouseUp = (e: MouseEvent) => {
       lastPointerRef.current = { x: e.clientX, y: e.clientY };
-      window.setTimeout(syncSelection, 10);
+      scheduleSync();
     };
     const onTouchEnd = (e: TouchEvent) => {
       const t = e.changedTouches?.[0];
       if (t) {
         lastPointerRef.current = { x: t.clientX, y: t.clientY };
       }
-      window.setTimeout(syncSelection, 30);
-    };
-    const onKeyUp = () => {
-      window.setTimeout(syncSelection, 10);
+      window.setTimeout(scheduleSync, 25);
     };
     const onSelectionChange = () => {
-      syncSelection();
+      scheduleSync();
     };
     const onScrollOrResize = () => {
-      syncSelection();
+      if (hasOpenBoxRef.current) {
+        scheduleSync();
+      }
     };
     const onKeyDown = (e: KeyboardEvent) => {
       const active = document.activeElement;
@@ -223,42 +259,43 @@ export const SelectionFormatToolbar: React.FC = () => {
       if (k === 'b') {
         e.preventDefault();
         wrapOrUnwrapSelection(active, '**', '**');
-        window.setTimeout(syncSelection, 15);
+        scheduleSync();
       } else if (k === 'i') {
         e.preventDefault();
         wrapOrUnwrapSelection(active, '*', '*');
-        window.setTimeout(syncSelection, 15);
+        scheduleSync();
       } else if (k === 'u') {
         e.preventDefault();
         wrapOrUnwrapSelection(active, '__', '__');
-        window.setTimeout(syncSelection, 15);
+        scheduleSync();
       } else if (e.shiftKey && k === 'x') {
         e.preventDefault();
         wrapOrUnwrapSelection(active, '~~', '~~');
-        window.setTimeout(syncSelection, 15);
+        scheduleSync();
       }
     };
 
     document.addEventListener('mousedown', onMouseDown, true);
     document.addEventListener('mouseup', onMouseUp, true);
     document.addEventListener('touchend', onTouchEnd, true);
-    document.addEventListener('keyup', onKeyUp, true);
     document.addEventListener('selectionchange', onSelectionChange);
     document.addEventListener('keydown', onKeyDown);
     window.addEventListener('scroll', onScrollOrResize, true);
     window.addEventListener('resize', onScrollOrResize);
 
     return () => {
+      if (rafIdRef.current !== null) {
+        window.cancelAnimationFrame(rafIdRef.current);
+      }
       document.removeEventListener('mousedown', onMouseDown, true);
       document.removeEventListener('mouseup', onMouseUp, true);
       document.removeEventListener('touchend', onTouchEnd, true);
-      document.removeEventListener('keyup', onKeyUp, true);
       document.removeEventListener('selectionchange', onSelectionChange);
       document.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('scroll', onScrollOrResize, true);
       window.removeEventListener('resize', onScrollOrResize);
     };
-  }, [syncSelection]);
+  }, [scheduleSync]);
 
   if (!box) return null;
 

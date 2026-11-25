@@ -157,11 +157,20 @@ const CharacterRosterCard: React.FC<{
   onInspectSheet: () => void;
 }> = ({ profile, onSave, onInspectSheet }) => {
   const [draft, setDraft] = useState<CharacterProfile>({ ...profile });
+  const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
 
+  const updateDraft = (patch: Partial<CharacterProfile>) => {
+    setDirty(true);
+    setDraft((prev) => ({ ...prev, ...patch }));
+  };
+
   useEffect(() => {
-    setDraft({ ...profile });
-  }, [profile]);
+    // Only overwrite draft from incoming WebSocket profile updates if DM has no unsaved edits here
+    if (!dirty && !saving) {
+      setDraft({ ...profile });
+    }
+  }, [profile, dirty, saving]);
 
   return (
     <div className="glass-panel rounded-3xl p-5 space-y-3">
@@ -183,7 +192,7 @@ const CharacterRosterCard: React.FC<{
         <label className="block text-xs text-muted mb-1">Имя персонажа</label>
         <input
           value={draft.characterName}
-          onChange={(e) => setDraft({ ...draft, characterName: e.target.value })}
+          onChange={(e) => updateDraft({ characterName: e.target.value })}
           className="anime-input w-full text-sm"
         />
       </div>
@@ -194,7 +203,7 @@ const CharacterRosterCard: React.FC<{
           <input
             list={`dm-class-list-${profile.playerId}`}
             value={draft.charClass}
-            onChange={(e) => setDraft({ ...draft, charClass: e.target.value })}
+            onChange={(e) => updateDraft({ charClass: e.target.value })}
             placeholder="Волшебник / Магус / Шаман..."
             className="anime-input w-full text-sm"
           />
@@ -218,7 +227,7 @@ const CharacterRosterCard: React.FC<{
             min={0}
             max={20}
             value={draft.level}
-            onChange={(e) => setDraft({ ...draft, level: Number(e.target.value) })}
+            onChange={(e) => updateDraft({ level: Number(e.target.value) })}
             className="anime-input w-full text-sm"
           />
         </div>
@@ -229,7 +238,7 @@ const CharacterRosterCard: React.FC<{
           <label className="block text-xs text-muted mb-1">Раса</label>
           <input
             value={draft.race}
-            onChange={(e) => setDraft({ ...draft, race: e.target.value })}
+            onChange={(e) => updateDraft({ race: e.target.value })}
             className="anime-input w-full text-sm"
           />
         </div>
@@ -239,7 +248,7 @@ const CharacterRosterCard: React.FC<{
             type="number"
             min={0}
             value={draft.maxSpells}
-            onChange={(e) => setDraft({ ...draft, maxSpells: Number(e.target.value) })}
+            onChange={(e) => updateDraft({ maxSpells: Number(e.target.value) })}
             className="anime-input w-full text-sm"
           />
         </div>
@@ -250,7 +259,7 @@ const CharacterRosterCard: React.FC<{
         <input
           list={`dm-subclass-list-${profile.playerId}`}
           value={draft.subclass}
-          onChange={(e) => setDraft({ ...draft, subclass: e.target.value })}
+          onChange={(e) => updateDraft({ subclass: e.target.value })}
           placeholder="Орден Демиургов / Школа Прорицания..."
           className="anime-input w-full text-xs"
         />
@@ -272,7 +281,7 @@ const CharacterRosterCard: React.FC<{
         <input
           type="checkbox"
           checked={Boolean(draft.allowOffClassSpells)}
-          onChange={(e) => setDraft({ ...draft, allowOffClassSpells: e.target.checked })}
+          onChange={(e) => updateDraft({ allowOffClassSpells: e.target.checked })}
           className="mt-0.5 accent-primary"
         />
         <span className="text-xs leading-snug">
@@ -290,13 +299,17 @@ const CharacterRosterCard: React.FC<{
         disabled={saving}
         onClick={async () => {
           setSaving(true);
-          await onSave(draft);
-          setSaving(false);
+          try {
+            await onSave({ ...profile, ...draft });
+            setDirty(false);
+          } finally {
+            setSaving(false);
+          }
         }}
         className="anime-btn-primary w-full py-2 text-xs inline-flex items-center justify-center gap-1.5"
       >
         <Save className="w-3.5 h-3.5" />
-        <span>{saving ? 'Сохранение...' : 'Сохранить профиль'}</span>
+        <span>{saving ? 'Сохранение...' : dirty ? 'Сохранить профиль *' : 'Сохранить профиль'}</span>
       </button>
     </div>
   );

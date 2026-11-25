@@ -85,6 +85,7 @@ interface CampaignState {
     }
   ) => void;
   updateCharacterProfileInStore: (playerId: PlayerId, profile: CharacterProfile) => void;
+  mergeCharacterMetadataInStore: (playerId: PlayerId, profile: CharacterProfile) => void;
   updateJournalInStore: (playerId: PlayerId, journal: JournalEntry) => void;
   updateLearnedSpellsInStore: (playerId: PlayerId, learned: LearnedSpellRecord[]) => void;
 
@@ -171,6 +172,28 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
     set((s) => ({
       charactersById: { ...s.charactersById, [playerId]: profile },
     })),
+
+  mergeCharacterMetadataInStore: (playerId, incoming) =>
+    set((s) => {
+      const existing = s.charactersById[playerId];
+      if (!existing) {
+        return { charactersById: { ...s.charactersById, [playerId]: incoming } };
+      }
+      return {
+        charactersById: {
+          ...s.charactersById,
+          [playerId]: {
+            ...existing,
+            experienceCurrent: incoming.experienceCurrent,
+            experienceMax: incoming.experienceMax,
+            level: incoming.level,
+            maxSpells: incoming.maxSpells,
+            allowOffClassSpells: incoming.allowOffClassSpells,
+            lastSyncedAt: incoming.lastSyncedAt,
+          },
+        },
+      };
+    }),
 
   updateJournalInStore: (playerId, journal) =>
     set((s) => ({
