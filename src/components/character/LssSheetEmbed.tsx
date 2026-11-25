@@ -19,7 +19,6 @@ import {
 } from 'lucide-react';
 import { apiFetch } from '../../lib/api';
 import {
-  buildSampleLssExport,
   LSS_ALLOWED_ORIGINS,
   LSS_CHARACTER_LIST_EMBED_URL,
   LSS_SCHEMA_V1_URL,
@@ -30,11 +29,12 @@ import type { CharacterProfile, PlayerId } from '../../lib/types';
 interface LssSheetEmbedProps {
   playerId: PlayerId;
   profile: CharacterProfile;
-  isReadOnlyViewer: boolean; // true when DM views player's tab
-  onSyncJson: (lssJson: unknown) => Promise<void>;
+  isReadOnlyViewer: boolean;
+  onSyncJson: (lssJson: unknown, lssEmbedUrl?: string) => Promise<void>;
   onSyncHealth: (hp: { hpCurrent: number; hpMax: number; hpTemp: number }) => Promise<void>;
   onRefreshCache: () => Promise<void>;
   syncing: boolean;
+  externalOpenImport?: number;
 }
 
 export const LssSheetEmbed: React.FC<LssSheetEmbedProps> = ({
@@ -44,6 +44,7 @@ export const LssSheetEmbed: React.FC<LssSheetEmbedProps> = ({
   onSyncHealth,
   onRefreshCache,
   syncing,
+  externalOpenImport,
 }) => {
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const pushToast = useCampaignStore((s) => s.pushToast);
@@ -51,19 +52,25 @@ export const LssSheetEmbed: React.FC<LssSheetEmbedProps> = ({
   const [iframeKey, setIframeKey] = useState(0);
   const [manifestSystem, setManifestSystem] = useState<string | null>(null);
   const [lastEventBadge, setLastEventBadge] = useState<string>('Ожидание событий postMessage');
-  // By default DM has strict non-interactive read-only shield; player can scroll/view & roll in LSS
   const [strictPointerLock, setStrictPointerLock] = useState<boolean>(isReadOnlyViewer);
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [jsonText, setJsonText] = useState('');
+  const [embedUrlDraft, setEmbedUrlDraft] = useState(profile.lssEmbedUrl || LSS_CHARACTER_LIST_EMBED_URL);
   const [importing, setImporting] = useState(false);
 
   useEffect(() => {
     setStrictPointerLock(isReadOnlyViewer);
-  }, [isReadOnlyViewer, profile.playerId]);
+    setEmbedUrlDraft(profile.lssEmbedUrl || LSS_CHARACTER_LIST_EMBED_URL);
+  }, [isReadOnlyViewer, profile.playerId, profile.lssEmbedUrl]);
+
+  useEffect(() => {
+    if (externalOpenImport && externalOpenImport > 0) {
+      setImportModalOpen(true);
+    }
+  }, [externalOpenImport]);
 
   const embedUrl = profile.lssEmbedUrl || LSS_CHARACTER_LIST_EMBED_URL;
 
-  // Wire @longstoryshort/vtt-sdk postMessage bridge (never accesses cross-origin iframe DOM)
   useEffect(() => {
     const iframeEl = iframeRef.current;
     if (!iframeEl) return;
@@ -84,11 +91,10 @@ export const LssSheetEmbed: React.FC<LssSheetEmbedProps> = ({
         variant,
       });
 
-      // Persist & broadcast to campaign Durable Object so DM and other players see the roll
       void apiFetch('/api/rolls', {
         method: 'POST',
         body: JSON.stringify({
-          characterName: roll.characterName || profile.characterName,
+          characterName: roll.characterName || profile.characterName || `Игрок ${profile.playerId}`,
           title: roll.title,
           formula: roll.formula,
           breakdown: roll.breakdown,
@@ -138,14 +144,16 @@ export const LssSheetEmbed: React.FC<LssSheetEmbedProps> = ({
   };
 
   const handleApplyJsonImport = async () => {
-    if (!jsonText.trim()) return;
+    if (!jsonText.trim() && (!embedUrlDraft.trim() || embedUrlDraft === profile.lssEmbedUrl)) {
+      return;
+    }
     setImporting(true);
     try {
-      const parsed = JSON.parse(jsonText) as unknown;
-      await onSyncJson(parsed);
+      const parsed = jsonText.trim() ? (JSON.parse(jsonText) as unknown) : null;
+      await onSyncJson(parsed, embedUrlDraft.trim() || undefined);
       pushToast({
-        title: 'Кэш LSS синхронизирован',
-        message: 'Данные персонажа, монеты и заметки сохранены в Cloudflare D1.',
+        title: 'Чарник персонажа загружен',
+        message: 'Данные персонажа из Long Story Short сохранены в Cloudflare D1.',
         variant: 'success',
       });
       setImportModalOpen(false);
@@ -153,7 +161,7 @@ export const LssSheetEmbed: React.FC<LssSheetEmbedProps> = ({
     } catch (err) {
       pushToast({
         title: 'Ошибка импорта JSON',
-        message: err instanceof Error ? err.message : 'Проверьте синтаксис JSON файла LSS',
+        message: err instanceof Error ? err.message : 'Проверьте корректность .json файла Long Story Short',
         variant: 'error',
       });
     } finally {
@@ -163,18 +171,18 @@ export const LssSheetEmbed: React.FC<LssSheetEmbedProps> = ({
 
   const handleTestRollBroadcast = async () => {
     const d20 = Math.floor(Math.random() * 20) + 1;
-    const bonus = 6;
-    const total = d20 + bonus;
+    const total = d20;
     const isCrit = d20 === 20 || d20 === 1;
     const critKind = d20 === 20 ? 'success' : d20 === 1 ? 'failure' : undefined;
+    const rollerName = profile.characterName || `Игрок ${profile.playerId}`;
 
     await apiFetch('/api/rolls', {
       method: 'POST',
       body: JSON.stringify({
-        characterName: profile.characterName,
-        title: 'Проверка Арканы (тест моста LSS)',
-        formula: '(1к20) + 6',
-        breakdown: `(${d20}) + ${bonus}`,
+        characterName: rollerName,
+        title: 'Бросок к20',
+        formula: '1к20',
+        breakdown: `(${d20})`,
         total: String(total),
         isCrit,
         critKind,
@@ -182,20 +190,19 @@ export const LssSheetEmbed: React.FC<LssSheetEmbedProps> = ({
     });
 
     pushToast({
-      title: `🎲 ${profile.characterName}: Проверка Арканы — ${total}`,
-      message: `(${d20}) + ${bonus} отправлено в Durable Object кампании`,
+      title: `🎲 ${rollerName}: Бросок к20 — ${total}`,
+      message: `Результат (${d20}) отправлен в общий лог стола`,
       variant: isCrit ? (d20 === 20 ? 'success' : 'error') : 'info',
     });
   };
 
   return (
     <div className="glass-panel rounded-3xl overflow-hidden flex flex-col">
-      {/* Embed Control Header */}
       <div className="px-4 py-3 border-b border-border bg-bg/50 flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2.5 flex-wrap">
           <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-semibold bg-primary/20 text-primary border border-primary/40">
             <ShieldCheck className="w-3.5 h-3.5" />
-            Long Story Short Embed (Read-Only)
+            Long Story Short Embed
           </span>
           <span className="text-xs text-muted">
             {manifestSystem ? `SDK: ${manifestSystem}` : lastEventBadge}
@@ -235,7 +242,7 @@ export const LssSheetEmbed: React.FC<LssSheetEmbedProps> = ({
                 title="Проверить отправку броска в общий канал кампании"
               >
                 <Dices className="w-3.5 h-3.5" />
-                Тест броска
+                к20
               </button>
 
               <button
@@ -244,7 +251,7 @@ export const LssSheetEmbed: React.FC<LssSheetEmbedProps> = ({
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-accent/15 text-accent border border-accent/40 hover:bg-accent/25 transition-colors"
               >
                 <FileJson className="w-3.5 h-3.5" />
-                Импорт JSON LSS
+                Загрузить чарник (.json)
               </button>
             </>
           )}
@@ -275,7 +282,6 @@ export const LssSheetEmbed: React.FC<LssSheetEmbedProps> = ({
         </div>
       </div>
 
-      {/* Sandboxed LSS Sheet Iframe */}
       <div className="relative w-full h-[560px] bg-[#0b0b14]">
         <iframe
           key={`${profile.playerId}-${iframeKey}`}
@@ -283,7 +289,7 @@ export const LssSheetEmbed: React.FC<LssSheetEmbedProps> = ({
           src={embedUrl}
           sandbox={SHEET_IFRAME_SANDBOX}
           allow="clipboard-write"
-          title={`Лист персонажа Long Story Short — ${profile.characterName}`}
+          title={`Лист персонажа Long Story Short — Игрок ${profile.playerId}`}
           className="w-full h-full border-0 block"
         />
 
@@ -307,47 +313,57 @@ export const LssSheetEmbed: React.FC<LssSheetEmbedProps> = ({
         )}
       </div>
 
-      {/* Footer Protocol Note */}
       <div className="px-4 py-2 bg-bg/60 border-t border-border text-[11px] text-muted flex flex-wrap items-center justify-between gap-2">
         <span>
           Связь только через <code className="text-primary">window.postMessage</code> (
           <code className="text-accent">@longstoryshort/vtt-sdk</code>) — без доступа к DOM iframe.
         </span>
         <span>
-          Последняя синхронизация D1:{' '}
+          Последняя синхронизация:{' '}
           {profile.lastSyncedAt ? new Date(profile.lastSyncedAt).toLocaleString('ru-RU') : 'не выполнялась'}
         </span>
       </div>
 
-      {/* Manual JSON Import Modal (Fallback for fields outside postMessage: coins, notes, class) */}
       {importModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="glass-panel neon-border rounded-3xl max-w-xl w-full p-6 space-y-4">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h3 className="font-anime font-bold text-lg">
-                  Импорт JSON персонажа из Long Story Short
-                </h3>
-                <p className="text-xs text-muted mt-1">
-                  LSS не предоставляет публичный серверный REST API без сессии браузера. Загрузите
-                  экспортированный <code>.json</code> файл персонажа (или схему{' '}
-                  <a
-                    href={LSS_SCHEMA_V1_URL}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-accent underline"
-                  >
-                    character.json v1
-                  </a>
-                  ) для кэширования монет, заметок, ХП и класса в Cloudflare D1.
-                </p>
-              </div>
+            <div>
+              <h3 className="font-anime font-bold text-lg">
+                Загрузка чарника из Long Story Short
+              </h3>
+              <p className="text-xs text-muted mt-1">
+                Экспортируйте своего персонажа в файл <code>.json</code> в Long Story Short (или в
+                формате{' '}
+                <a
+                  href={LSS_SCHEMA_V1_URL}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-accent underline"
+                >
+                  character.json v1
+                </a>
+                ) и загрузите ниже — имя, класс, раса, уровень, ХП, монеты и заметки автоматически
+                сохранятся за вашим слотом.
+              </p>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="block text-xs text-muted">
+                Ссылка на embed-лист Long Story Short (необязательно):
+              </label>
+              <input
+                type="url"
+                value={embedUrlDraft}
+                onChange={(e) => setEmbedUrlDraft(e.target.value)}
+                placeholder="https://longstoryshort.app/iframe/characters/..."
+                className="anime-input w-full text-xs"
+              />
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
-              <label className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl border border-border bg-bg/70 hover:border-primary text-xs font-medium cursor-pointer">
-                <Upload className="w-4 h-4 text-primary" />
-                <span>Выбрать .json файл LSS</span>
+              <label className="anime-btn-primary inline-flex items-center gap-2 px-4 py-2 text-xs cursor-pointer">
+                <Upload className="w-4 h-4" />
+                <span>Выбрать .json файл персонажа</span>
                 <input
                   type="file"
                   accept=".json,application/json"
@@ -355,30 +371,13 @@ export const LssSheetEmbed: React.FC<LssSheetEmbedProps> = ({
                   className="hidden"
                 />
               </label>
-
-              <button
-                type="button"
-                onClick={() =>
-                  setJsonText(
-                    buildSampleLssExport({
-                      characterName: profile.characterName,
-                      charClass: profile.charClass,
-                      race: profile.race,
-                      level: profile.level,
-                    })
-                  )
-                }
-                className="px-3 py-2 rounded-xl border border-border bg-surface text-xs text-muted hover:text-text"
-              >
-                Подставить пример схемы v1
-              </button>
             </div>
 
             <textarea
               value={jsonText}
               onChange={(e) => setJsonText(e.target.value)}
-              rows={9}
-              placeholder='{"name":{"value":"Аэлин"},"coins":{"gp":{"value":180}}, ...}'
+              rows={8}
+              placeholder="Или вставьте содержимое экспортированного .json файла из Long Story Short..."
               className="anime-input w-full font-mono text-xs"
             />
 
@@ -392,11 +391,15 @@ export const LssSheetEmbed: React.FC<LssSheetEmbedProps> = ({
               </button>
               <button
                 type="button"
-                disabled={importing || !jsonText.trim()}
+                disabled={
+                  importing ||
+                  (!jsonText.trim() &&
+                    (!embedUrlDraft.trim() || embedUrlDraft.trim() === profile.lssEmbedUrl))
+                }
                 onClick={handleApplyJsonImport}
                 className="anime-btn-primary px-4 py-2 text-xs"
               >
-                {importing ? 'Синхронизация...' : 'Синхронизировать с D1'}
+                {importing ? 'Сохранение...' : 'Сохранить чарник'}
               </button>
             </div>
           </div>

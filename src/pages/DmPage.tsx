@@ -158,11 +158,11 @@ const CharacterRosterCard: React.FC<{
 
       <div className="grid grid-cols-2 gap-2">
         <div>
-          <label className="block text-xs text-muted mb-1">Класс (SRD)</label>
+          <label className="block text-xs text-muted mb-1">Класс</label>
           <input
             value={draft.charClass}
             onChange={(e) => setDraft({ ...draft, charClass: e.target.value })}
-            placeholder="Wizard"
+            placeholder="Волшебник / Wizard"
             className="anime-input w-full text-sm"
           />
         </div>
@@ -170,7 +170,7 @@ const CharacterRosterCard: React.FC<{
           <label className="block text-xs text-muted mb-1">Уровень</label>
           <input
             type="number"
-            min={1}
+            min={0}
             max={20}
             value={draft.level}
             onChange={(e) => setDraft({ ...draft, level: Number(e.target.value) })}

@@ -213,7 +213,7 @@ export const QuestEditor: React.FC<QuestEditorProps> = ({ initialQuest, onDone }
               required
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="Поймай 10 кобольдов"
+              placeholder="Название задания"
               className="anime-input w-full text-sm"
             />
           </div>
@@ -224,7 +224,7 @@ export const QuestEditor: React.FC<QuestEditorProps> = ({ initialQuest, onDone }
               required
               value={shortDesc}
               onChange={(e) => setShortDesc(e.target.value)}
-              placeholder="Обезвредить шайку налётчиков в Хрустальных штольнях"
+              placeholder="Краткая цель задания"
               className="anime-input w-full text-sm"
             />
           </div>

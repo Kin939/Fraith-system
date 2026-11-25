@@ -1,4 +1,4 @@
-import { normalizeDndClass } from './lss';
+import { isSpellAllowedForCharacter } from './lss';
 import { DEFAULT_ANIME_THEME, parseThemeJson } from './theme';
 import type {
   AuthUser,
@@ -341,48 +341,138 @@ export async function listBestiary(
   });
 }
 
-interface SpellRow {
+export interface SpellRow {
   id: number;
   name: string;
+  name_en?: string;
+  url?: string;
   level: number;
   school: string;
+  type_line?: string;
   classes: string;
+  subclasses?: string;
   casting_time: string;
   spell_range: string;
   components: string;
+  components_badge?: string;
+  ritual?: number;
+  concentration?: number;
   duration: string;
   description: string;
+  description_html?: string;
   source: string;
+  source_title?: string;
   is_homebrew: number;
   created_by: number | null;
 }
 
 export function mapSpellRow(row: SpellRow): Spell {
+  const sourceCode = row.source || (row.is_homebrew ? 'HB' : 'PH14');
+  const sourceTitle = row.source_title || sourceCode;
   return {
     id: row.id,
     name: row.name,
+    nameEn: row.name_en || '',
+    url: row.url || '',
     level: row.level,
     school: row.school,
+    typeLine: row.type_line || '',
     classes: row.classes
       .split(',')
       .map((c) => c.trim())
       .filter(Boolean),
+    subclasses: row.subclasses || '',
     castingTime: row.casting_time,
     spellRange: row.spell_range,
     components: row.components,
+    componentsBadge: row.components_badge || '',
+    ritual: Boolean(row.ritual),
+    concentration: Boolean(row.concentration),
     duration: row.duration,
     description: row.description,
-    source: row.source,
+    descriptionHtml: row.description_html || '',
+    source: sourceCode,
+    sourceTitle,
+    sourceBadges: [{ code: sourceCode, title: sourceTitle }],
     isHomebrew: Boolean(row.is_homebrew),
     createdBy: row.created_by,
   };
 }
 
+/**
+ * Lists custom DM-added spells stored in D1 (dnd.su official & homebrew catalog is served as static assets).
+ */
 export async function listSpells(db: D1Database): Promise<Spell[]> {
   const { results } = await db
-    .prepare(`SELECT * FROM spells ORDER BY level ASC, name ASC`)
+    .prepare(`SELECT * FROM spells WHERE created_by IS NOT NULL OR id >= 100000 ORDER BY level ASC, name ASC`)
     .all<SpellRow>();
   return results.map(mapSpellRow);
+}
+
+/**
+ * Caches a dnd.su catalog spell in D1 `spells` so `learned_spells JOIN spells` works seamlessly on Tab 1.
+ */
+export async function upsertCatalogSpellInDb(db: D1Database, spell: Spell): Promise<void> {
+  await db
+    .prepare(
+      `INSERT INTO spells (
+         id, name, name_en, url, level, school, type_line, classes, subclasses,
+         casting_time, spell_range, components, components_badge, ritual, concentration,
+         duration, description, description_html, source, source_title, is_homebrew, created_by
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+       ON CONFLICT(id) DO UPDATE SET
+         name = excluded.name,
+         name_en = excluded.name_en,
+         url = excluded.url,
+         level = excluded.level,
+         school = excluded.school,
+         type_line = excluded.type_line,
+         classes = excluded.classes,
+         subclasses = excluded.subclasses,
+         casting_time = excluded.casting_time,
+         spell_range = excluded.spell_range,
+         components = excluded.components,
+         components_badge = excluded.components_badge,
+         ritual = excluded.ritual,
+         concentration = excluded.concentration,
+         duration = excluded.duration,
+         description = excluded.description,
+         description_html = excluded.description_html,
+         source = excluded.source,
+         source_title = excluded.source_title,
+         is_homebrew = excluded.is_homebrew`
+    )
+    .bind(
+      spell.id,
+      spell.name,
+      spell.nameEn || '',
+      spell.url || '',
+      spell.level,
+      spell.school,
+      spell.typeLine || '',
+      (spell.classes || []).join(','),
+      spell.subclasses || '',
+      spell.castingTime || '1 действие',
+      spell.spellRange || 'На себя',
+      spell.components || '',
+      spell.componentsBadge || '',
+      spell.ritual ? 1 : 0,
+      spell.concentration ? 1 : 0,
+      spell.duration || 'Мгновенная',
+      spell.description || '',
+      spell.descriptionHtml || '',
+      spell.source || (spell.isHomebrew ? 'HB' : 'PH14'),
+      spell.sourceTitle || spell.source || '',
+      spell.isHomebrew ? 1 : 0
+    )
+    .run();
+}
+
+export async function nextCustomSpellId(db: D1Database): Promise<number> {
+  const row = await db
+    .prepare(`SELECT COALESCE(MAX(CASE WHEN id >= 100000 THEN id ELSE 99999 END), 99999) + 1 AS next_id FROM spells`)
+    .first<{ next_id: number }>();
+  return row?.next_id ?? 100000;
 }
 
 export async function listLearnedSpellsForPlayer(
@@ -411,36 +501,45 @@ export async function listLearnedSpellsForPlayer(
 export async function learnSpellForPlayer(
   db: D1Database,
   playerId: PlayerId,
-  spellId: number
+  spellId: number,
+  catalogSpell?: Spell | null
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const profile = await getCharacterProfile(db, playerId);
-  if (!profile) {
-    return { ok: false, error: 'Профиль персонажа не найден' };
+  if (!profile || !profile.characterName.trim() || !profile.charClass.trim()) {
+    return {
+      ok: false,
+      error:
+        'Сначала загрузите чарник персонажа (.json из Long Story Short) во вкладке «Персонаж», чтобы определить класс и лимит заклинаний.',
+    };
   }
 
-  const spellRow = await db
+  let spellRow = await db
     .prepare(`SELECT * FROM spells WHERE id = ?`)
     .bind(spellId)
     .first<SpellRow>();
+
+  if (!spellRow && catalogSpell) {
+    await upsertCatalogSpellInDb(db, catalogSpell);
+    spellRow = await db
+      .prepare(`SELECT * FROM spells WHERE id = ?`)
+      .bind(spellId)
+      .first<SpellRow>();
+  }
+
   if (!spellRow) {
-    return { ok: false, error: 'Заклинание не найдено' };
+    return { ok: false, error: 'Заклинание не найдено в каталоге' };
   }
   const spell = mapSpellRow(spellRow);
 
-  const playerClasses = profile.charClass
-    .split(',')
-    .map((c) => normalizeDndClass(c) ?? c.trim())
-    .filter(Boolean);
-
-  const spellAllowedClasses = spell.classes.map((c) => normalizeDndClass(c) ?? c.trim());
-  const classMatches = playerClasses.some((pc) =>
-    spellAllowedClasses.some((sc) => sc.toLowerCase() === pc.toLowerCase())
-  );
-
+  const classMatches = isSpellAllowedForCharacter(spell, profile.charClass, profile.subclass);
   if (!classMatches) {
+    const reqList = [
+      ...(spell.classes || []),
+      ...(spell.subclasses ? [spell.subclasses] : []),
+    ].join(', ');
     return {
       ok: false,
-      error: `Заклинание недоступно для вашего класса (${profile.charClass}). Требуется: ${spell.classes.join(', ')}`,
+      error: `Заклинание недоступно для вашего класса (${profile.charClass}). Доступно для: ${reqList || 'особых источников'}`,
     };
   }
 
@@ -534,9 +633,6 @@ export async function getTalentsState(
   };
 }
 
-/**
- * Atomically deducts shared party inspiration points and unlocks the talent for the specific player (`player_id`).
- */
 export async function purchaseTalentForPlayer(
   db: D1Database,
   campaignId: string,
@@ -570,7 +666,6 @@ export async function purchaseTalentForPlayer(
     }
   }
 
-  // Ensure pool row exists
   await db
     .prepare(`INSERT OR IGNORE INTO inspiration_pool (campaign_id, points) VALUES (?, 0)`)
     .bind(campaignId)
