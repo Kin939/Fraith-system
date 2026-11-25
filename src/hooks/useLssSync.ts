@@ -9,10 +9,14 @@ import type {
   PlayerId,
 } from '../lib/types';
 
+const EMPTY_LEARNED_SPELLS: LearnedSpellRecord[] = [];
+
 export function useLssSync(playerId: PlayerId, pollIntervalMs = 30000) {
   const profile = useCampaignStore((s) => s.charactersById[playerId] ?? null);
   const journal = useCampaignStore((s) => s.journalsById[playerId] ?? null);
-  const learnedSpells = useCampaignStore((s) => s.learnedSpellsById[playerId] ?? []);
+  const learnedSpells = useCampaignStore(
+    (s) => s.learnedSpellsById[playerId] ?? EMPTY_LEARNED_SPELLS
+  );
   const setCharacterBundle = useCampaignStore((s) => s.setCharacterBundle);
   const updateCharacterProfileInStore = useCampaignStore((s) => s.updateCharacterProfileInStore);
   const updateLearnedSpellsInStore = useCampaignStore((s) => s.updateLearnedSpellsInStore);

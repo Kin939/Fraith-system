@@ -228,6 +228,16 @@ export type CampaignWsEventType =
   | 'lss:health'
   | 'theme:updated';
 
+export interface DmManagedAccountInfo {
+  id: number;
+  username: string;
+  displayName: string;
+  role: UserRole;
+  playerId: PlayerId | null;
+  plainPassword: string | null;
+  updatedAt: string | null;
+}
+
 export interface CampaignWsMessage<T = unknown> {
   type: CampaignWsEventType;
   payload: T;

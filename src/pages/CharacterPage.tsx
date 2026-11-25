@@ -106,8 +106,11 @@ export const CharacterPage: React.FC = () => {
 
   if (!profile) {
     return (
-      <div className="glass-panel rounded-3xl p-8 text-center text-sm text-muted">
-        Загрузка слота персонажа...
+      <div className="space-y-5">
+        {isDm && <PlayerSwitcher />}
+        <div className="glass-panel rounded-3xl p-8 text-center text-sm text-muted">
+          Загрузка слота Игрока #{activePlayerId}...
+        </div>
       </div>
     );
   }
@@ -231,6 +234,7 @@ export const CharacterPage: React.FC = () => {
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-5">
         <div className="xl:col-span-7">
           <LssSheetEmbed
+            key={`lss-embed-${activePlayerId}`}
             playerId={activePlayerId}
             profile={profile}
             isReadOnlyViewer={Boolean(isDm)}
@@ -326,6 +330,7 @@ export const CharacterPage: React.FC = () => {
           <LearnedSpells learnedSpells={learnedSpells} maxSpells={profile.maxSpells} />
 
           <JournalEditor
+            key={`journal-${activePlayerId}`}
             playerId={activePlayerId}
             journal={journal}
             readOnly={Boolean(isDm)}

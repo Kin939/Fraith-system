@@ -1,7 +1,9 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   BookOpen,
   Crown,
+  Eye,
+  KeyRound,
   Palette,
   Save,
   ScrollText,
@@ -10,6 +12,7 @@ import {
   Users,
 } from 'lucide-react';
 import { BestiaryEditor } from '../components/bestiary/BestiaryEditor';
+import { AccountsManager } from '../components/dm/AccountsManager';
 import { ThemeEditor } from '../components/dm/ThemeEditor';
 import { QuestEditor } from '../components/quests/QuestEditor';
 import { SpellEditor } from '../components/spells/SpellEditor';
@@ -18,15 +21,17 @@ import { apiFetch } from '../lib/api';
 import { useCampaignStore } from '../lib/store';
 import type { CharacterProfile, PlayerId } from '../lib/types';
 
-type DmSection = 'quests' | 'bestiary' | 'spells' | 'talents' | 'roster' | 'themes';
+type DmSection = 'accounts' | 'quests' | 'bestiary' | 'spells' | 'talents' | 'roster' | 'themes';
 
 export const DmPage: React.FC = () => {
   const user = useCampaignStore((s) => s.user);
   const charactersById = useCampaignStore((s) => s.charactersById);
   const updateCharacterProfileInStore = useCampaignStore((s) => s.updateCharacterProfileInStore);
+  const setDmSelectedPlayerId = useCampaignStore((s) => s.setDmSelectedPlayerId);
+  const setActiveTab = useCampaignStore((s) => s.setActiveTab);
   const pushToast = useCampaignStore((s) => s.pushToast);
 
-  const [section, setSection] = useState<DmSection>('quests');
+  const [section, setSection] = useState<DmSection>('accounts');
 
   if (user?.role !== 'dm') {
     return (
@@ -37,6 +42,7 @@ export const DmPage: React.FC = () => {
   }
 
   const sections: Array<{ id: DmSection; label: string; icon: React.ReactNode }> = [
+    { id: 'accounts', label: 'Пароли и доступы', icon: <KeyRound className="w-4 h-4" /> },
     { id: 'quests', label: 'Квесты + R2', icon: <ScrollText className="w-4 h-4" /> },
     { id: 'bestiary', label: 'Бестиарий + CR', icon: <Skull className="w-4 h-4" /> },
     { id: 'spells', label: 'Заклинания / Homebrew', icon: <BookOpen className="w-4 h-4" /> },
@@ -80,7 +86,7 @@ export const DmPage: React.FC = () => {
           <div>
             <h1 className="font-anime font-extrabold text-xl">Пульт Архитектора Кампании (DM)</h1>
             <p className="text-xs text-muted">
-              Единый центр редактирования квестов, бестиария, заклинаний, дерева талантов, R2-ресурсов и тем аккаунтов
+              Управление паролями игроков, квестами, бестиарием, заклинаниями, деревом талантов и темами аккаунтов
             </p>
           </div>
         </div>
@@ -109,6 +115,7 @@ export const DmPage: React.FC = () => {
       </div>
 
       {/* Active Section */}
+      {section === 'accounts' && <AccountsManager />}
       {section === 'quests' && <QuestEditor />}
       {section === 'bestiary' && <BestiaryEditor />}
       {section === 'spells' && <SpellEditor />}
@@ -125,6 +132,10 @@ export const DmPage: React.FC = () => {
                 key={pid}
                 profile={prof}
                 onSave={handleSaveCharacterSettings}
+                onInspectSheet={() => {
+                  setDmSelectedPlayerId(pid);
+                  setActiveTab('character');
+                }}
               />
             );
           })}
@@ -137,14 +148,29 @@ export const DmPage: React.FC = () => {
 const CharacterRosterCard: React.FC<{
   profile: CharacterProfile;
   onSave: (next: CharacterProfile) => Promise<void>;
-}> = ({ profile, onSave }) => {
+  onInspectSheet: () => void;
+}> = ({ profile, onSave, onInspectSheet }) => {
   const [draft, setDraft] = useState<CharacterProfile>({ ...profile });
   const [saving, setSaving] = useState(false);
 
+  useEffect(() => {
+    setDraft({ ...profile });
+  }, [profile]);
+
   return (
     <div className="glass-panel rounded-3xl p-5 space-y-3">
-      <div className="font-anime font-bold text-base text-primary">
-        Игрок #{profile.playerId}
+      <div className="flex items-center justify-between gap-2">
+        <div className="font-anime font-bold text-base text-primary">
+          Игрок #{profile.playerId}
+        </div>
+        <button
+          type="button"
+          onClick={onInspectSheet}
+          className="px-2.5 py-1 rounded-xl bg-bg/70 border border-border hover:border-primary/50 text-xs text-muted hover:text-text inline-flex items-center gap-1 transition-colors"
+        >
+          <Eye className="w-3.5 h-3.5 text-primary" />
+          <span>Открыть лист</span>
+        </button>
       </div>
 
       <div>
