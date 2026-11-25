@@ -142,6 +142,10 @@ export function useWebSocket() {
             }
             break;
           }
+          case 'rolls:cleared': {
+            store.setRolls([]);
+            break;
+          }
           case 'theme:updated': {
             const p = msg.payload as { userId?: number; theme?: ThemeVariables };
             if (p?.theme && (!p.userId || p.userId === store.user?.id)) {

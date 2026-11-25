@@ -30,9 +30,9 @@ import {
   mapUserRowToAuthUser,
   nextCustomSpellId,
   parseCrToNumeric,
-  purchaseTalentForPlayer,
   saveJournalEntry,
   unlearnSpellForPlayer,
+  unlockTalentForParty,
   updateAccountPassword,
   upsertUserTheme,
 } from '../../src/lib/db';
@@ -1170,13 +1170,10 @@ app.get('/talents', async (c) => {
 app.post('/talents/:id/purchase', async (c) => {
   const user = c.get('user');
   if (!user) return c.json({ error: 'Необходима авторизация' }, 401);
-  if (user.role !== 'player' || !user.playerId) {
-    return c.json({ error: 'Покупка талантов доступна игрокам для своего персонажа' }, 403);
-  }
 
   const talentId = Number.parseInt(c.req.param('id'), 10);
   const campaignId = getCampaignId(c.env);
-  const res = await purchaseTalentForPlayer(c.env.DB, campaignId, user.playerId, talentId);
+  const res = await unlockTalentForParty(c.env.DB, campaignId, talentId);
   if (!res.ok) {
     return c.json({ error: res.error }, 400);
   }
@@ -1237,16 +1234,16 @@ app.post('/dm/talents', async (c) => {
   }
 
   await c.env.DB.prepare(
-    `INSERT INTO talent_tree (title, description, image_key, cost, position_x, position_y, parent_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO talent_tree (title, description, image_key, cost, position_x, position_y, parent_id, is_unlocked)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 0)`
   )
     .bind(
       body.title.trim(),
       (body.description || '').trim(),
       body.imageKey || null,
       Math.max(0, Math.trunc(body.cost ?? 1)),
-      Math.max(0, Math.trunc(body.positionX ?? 0)),
-      Math.max(0, Math.trunc(body.positionY ?? 0)),
+      Math.max(16, Math.trunc(body.positionX ?? 80)),
+      Math.max(16, Math.trunc(body.positionY ?? 80)),
       body.parentId || null
     )
     .run();
@@ -1278,8 +1275,8 @@ app.put('/dm/talents/:id', async (c) => {
          description = ?,
          image_key = ?,
          cost = ?,
-         position_x = ?,
-         position_y = ?,
+         position_x = COALESCE(?, position_x),
+         position_y = COALESCE(?, position_y),
          parent_id = ?
      WHERE id = ?`
   )
@@ -1288,8 +1285,8 @@ app.put('/dm/talents/:id', async (c) => {
       (body.description || '').trim(),
       body.imageKey || null,
       Math.max(0, Math.trunc(body.cost ?? 1)),
-      Math.max(0, Math.trunc(body.positionX ?? 0)),
-      Math.max(0, Math.trunc(body.positionY ?? 0)),
+      typeof body.positionX === 'number' ? Math.max(16, Math.trunc(body.positionX)) : null,
+      typeof body.positionY === 'number' ? Math.max(16, Math.trunc(body.positionY)) : null,
       safeParentId,
       id
     )
@@ -1298,6 +1295,52 @@ app.put('/dm/talents/:id', async (c) => {
   const state = await getTalentsState(c.env.DB, campaignId);
   await broadcastCampaignEvent(c.env, 'talents:updated', state, user.id);
   return c.json(state);
+});
+
+app.patch('/dm/talents/:id/position', async (c) => {
+  const user = c.get('user')!;
+  const id = Number.parseInt(c.req.param('id'), 10);
+  const campaignId = getCampaignId(c.env);
+  const body = await c.req.json<{ positionX: number; positionY: number }>();
+
+  const px = Math.max(16, Math.min(4000, Math.round(body.positionX)));
+  const py = Math.max(16, Math.min(3000, Math.round(body.positionY)));
+
+  await c.env.DB.prepare(
+    `UPDATE talent_tree SET position_x = ?, position_y = ? WHERE id = ?`
+  )
+    .bind(px, py, id)
+    .run();
+
+  const state = await getTalentsState(c.env.DB, campaignId);
+  await broadcastCampaignEvent(c.env, 'talents:updated', state, user.id);
+  return c.json(state);
+});
+
+app.post('/dm/talents/:id/toggle-unlock', async (c) => {
+  const user = c.get('user')!;
+  const id = Number.parseInt(c.req.param('id'), 10);
+  const campaignId = getCampaignId(c.env);
+
+  await c.env.DB.prepare(
+    `UPDATE talent_tree
+     SET is_unlocked = CASE WHEN COALESCE(is_unlocked, 0) = 1 THEN 0 ELSE 1 END,
+         unlocked_at = CASE WHEN COALESCE(is_unlocked, 0) = 1 THEN NULL ELSE datetime('now') END
+     WHERE id = ?`
+  )
+    .bind(id)
+    .run();
+
+  const state = await getTalentsState(c.env.DB, campaignId);
+  await broadcastCampaignEvent(c.env, 'talents:updated', state, user.id);
+  return c.json(state);
+});
+
+app.delete('/dm/rolls', async (c) => {
+  const user = c.get('user')!;
+  await c.env.DB.prepare(`DELETE FROM roll_log`).run();
+  await broadcastCampaignEvent(c.env, 'rolls:cleared', {}, user.id);
+  return c.json({ ok: true, rolls: [] });
 });
 
 app.delete('/dm/talents/:id', async (c) => {

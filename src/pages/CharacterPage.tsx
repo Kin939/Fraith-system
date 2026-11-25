@@ -1,11 +1,28 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Coins, FileJson, FileText, Heart, RotateCcw, Save, Shield, Upload } from 'lucide-react';
+import {
+  Coins,
+  FileJson,
+  FileText,
+  Heart,
+  RotateCcw,
+  Save,
+  Shield,
+  Upload,
+  UserPlus,
+} from 'lucide-react';
 import { JournalEditor } from '../components/character/JournalEditor';
 import { LearnedSpells } from '../components/character/LearnedSpells';
 import { LssSheetEmbed } from '../components/character/LssSheetEmbed';
 import { PlayerSwitcher } from '../components/dm/PlayerSwitcher';
 import { useLssSync } from '../hooks/useLssSync';
 import { DND_CLASS_LABELS_RU } from '../lib/lss';
+import {
+  createBlankLssStructures,
+  ensureObj,
+  mutateLssRawJson,
+  packLssStructures,
+  setLssField,
+} from '../lib/lssSheetParser';
 import { useCampaignStore } from '../lib/store';
 import type { CharacterCoins, PlayerId } from '../lib/types';
 
@@ -40,14 +57,22 @@ export const CharacterPage: React.FC = () => {
   }, [profile]);
 
   const handleSyncJson = useCallback(
-    async (lssJson: unknown, lssEmbedUrl?: string) => {
-      const payload: Record<string, unknown> = {};
-      if (lssJson !== null && lssJson !== undefined) payload.lssJson = lssJson;
-      if (lssEmbedUrl) payload.lssEmbedUrl = lssEmbedUrl;
-      await syncLssData(payload);
+    async (lssJson: unknown) => {
+      if (lssJson === null || lssJson === undefined) return;
+      await syncLssData({ lssJson });
     },
     [syncLssData]
   );
+
+  const handleCreateBlankFromBanner = async () => {
+    const blank = packLssStructures(createBlankLssStructures('Новый герой'));
+    await syncLssData({ lssJson: blank });
+    pushToast({
+      title: 'Создан чистый лист персонажа',
+      message: 'Нажмите «Герой» или «Править числа» на листе, чтобы заполнить данные персонажа.',
+      variant: 'success',
+    });
+  };
 
   const handleQuickFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -79,27 +104,32 @@ export const CharacterPage: React.FC = () => {
     await syncLssData({ reset: true });
     pushToast({
       title: 'Слот персонажа очищен',
-      message: 'Теперь можно загрузить новый чарник из Long Story Short.',
+      message: 'Теперь можно создать нового героя или загрузить .json из Long Story Short.',
       variant: 'info',
     });
   };
 
-  const handleSyncHealth = useCallback(
-    async (hp: { hpCurrent: number; hpMax: number; hpTemp: number }) => {
-      await syncLssData(hp);
-    },
-    [syncLssData]
-  );
-
   const handleSaveFallbackCoinsNotes = async () => {
+    let nextLssJson: unknown = undefined;
+    if (profile?.rawLssJson) {
+      nextLssJson = mutateLssRawJson(profile.rawLssJson, (s) => {
+        const cObj = ensureObj(s, 'coins');
+        setLssField(cObj, 'pp', coinsDraft.pp);
+        setLssField(cObj, 'gp', coinsDraft.gp);
+        setLssField(cObj, 'ep', coinsDraft.ep);
+        setLssField(cObj, 'sp', coinsDraft.sp);
+        setLssField(cObj, 'cp', coinsDraft.cp);
+      });
+    }
     await syncLssData({
+      ...(nextLssJson ? { lssJson: nextLssJson } : {}),
       coins: coinsDraft,
       lssNotes: notesDraft,
     });
     setEditingCoinsAndNotes(false);
     pushToast({
       title: 'Монеты и заметки сохранены',
-      message: 'Данные персонажа в D1 обновлены.',
+      message: 'Данные персонажа обновлены.',
       variant: 'success',
     });
   };
@@ -115,35 +145,43 @@ export const CharacterPage: React.FC = () => {
     );
   }
 
-  const hasCharacter = Boolean(profile.characterName.trim());
+  const hasCharacter = Boolean(profile.characterName.trim() || profile.rawLssJson);
 
   return (
     <div className="space-y-5">
       {isDm && <PlayerSwitcher />}
 
-      {/* Character Hero Banner OR Empty Slot Upload Prompt */}
+      {/* Character Hero Banner OR Empty Slot Prompt */}
       {!hasCharacter ? (
         <div className="glass-panel neon-border rounded-3xl p-6 flex flex-wrap items-center justify-between gap-4">
           <div className="space-y-1.5 max-w-2xl">
             <div className="flex items-center gap-2">
               <span className="text-[11px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-primary/20 text-primary border border-primary/40">
-                Игрок #{profile.playerId} • Слот пуст
+                Игрок #{profile.playerId} • Слот свободен
               </span>
             </div>
             <h1 className="font-anime font-extrabold text-xl sm:text-2xl">
-              Персонаж ещё не загружен
+              Персонаж ещё не создан
             </h1>
             <p className="text-xs sm:text-sm text-muted leading-relaxed">
-              {isDm
-                ? 'Игрок ещё не загрузил свой чарник из Long Story Short. Вы можете загрузить .json за него или заполнить профиль во вкладке Мастера.'
-                : 'Загрузите экспортированный .json файл своего персонажа из Long Story Short, чтобы автоматически подтянуть имя, класс, уровень, хиты, монеты и открыть изучение заклинаний.'}
+              Создайте и заполните лист персонажа прямо на сайте или загрузите экспортированный{' '}
+              <code>.json</code> файл из Long Story Short.
             </p>
           </div>
 
           <div className="flex items-center gap-2.5 flex-wrap">
-            <label className="anime-btn-primary px-4 py-2.5 text-xs sm:text-sm inline-flex items-center gap-2 cursor-pointer">
+            <button
+              type="button"
+              onClick={() => void handleCreateBlankFromBanner()}
+              className="anime-btn-primary px-4 py-2.5 text-xs sm:text-sm inline-flex items-center gap-2"
+            >
+              <UserPlus className="w-4 h-4" />
+              <span>Создать с нуля</span>
+            </button>
+
+            <label className="px-4 py-2.5 rounded-xl bg-accent/15 border border-accent/45 hover:bg-accent/25 text-accent text-xs sm:text-sm font-bold inline-flex items-center gap-2 cursor-pointer transition-colors">
               <Upload className="w-4 h-4" />
-              <span>Загрузить чарник (.json)</span>
+              <span>Загрузить .json из LSS</span>
               <input
                 type="file"
                 accept=".json,application/json"
@@ -152,16 +190,14 @@ export const CharacterPage: React.FC = () => {
               />
             </label>
 
-            {!isDm && (
-              <button
-                type="button"
-                onClick={() => setOpenImportCounter((c) => c + 1)}
-                className="px-3.5 py-2.5 rounded-xl border border-border bg-bg/70 hover:border-accent text-xs font-medium inline-flex items-center gap-1.5 text-muted hover:text-text transition-colors"
-              >
-                <FileJson className="w-4 h-4 text-accent" />
-                <span>Вставить JSON / ссылку LSS</span>
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={() => setOpenImportCounter((c) => c + 1)}
+              className="px-3.5 py-2.5 rounded-xl border border-border bg-bg/70 hover:border-accent text-xs font-medium inline-flex items-center gap-1.5 text-muted hover:text-text transition-colors"
+            >
+              <FileJson className="w-4 h-4 text-accent" />
+              <span>Вставить JSON</span>
+            </button>
           </div>
         </div>
       ) : (
@@ -181,7 +217,9 @@ export const CharacterPage: React.FC = () => {
                 {profile.subclass ? `(${profile.subclass})` : ''}
               </span>
             </div>
-            <h1 className="font-anime font-extrabold text-2xl">{profile.characterName}</h1>
+            <h1 className="font-anime font-extrabold text-2xl">
+              {profile.characterName || 'Новый герой'}
+            </h1>
           </div>
 
           <div className="flex items-center gap-3 flex-wrap">
@@ -196,7 +234,7 @@ export const CharacterPage: React.FC = () => {
             <div className="px-4 py-2 rounded-2xl bg-bg/70 border border-border flex items-center gap-2">
               <Heart className="w-4 h-4 text-rose-400" />
               <div className="text-xs">
-                <div className="text-muted">Хиты (LSS)</div>
+                <div className="text-muted">Хиты</div>
                 <div className="font-anime font-extrabold text-sm">
                   {profile.hpCurrent} / {profile.hpMax}
                   {profile.hpTemp > 0 ? ` (+${profile.hpTemp})` : ''}
@@ -206,10 +244,10 @@ export const CharacterPage: React.FC = () => {
 
             <label
               className="px-3 py-2 rounded-2xl bg-accent/15 border border-accent/40 text-accent hover:bg-accent/25 text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer transition-colors"
-              title="Обновить данные персонажа из свежего .json файла Long Story Short"
+              title="Импортировать свежий .json файл из Long Story Short"
             >
               <Upload className="w-3.5 h-3.5" />
-              <span>Обновить .json</span>
+              <span>Импорт .json</span>
               <input
                 type="file"
                 accept=".json,application/json"
@@ -220,7 +258,7 @@ export const CharacterPage: React.FC = () => {
 
             <button
               type="button"
-              onClick={handleResetSlot}
+              onClick={() => void handleResetSlot()}
               className="p-2 rounded-xl border border-border text-muted hover:text-rose-300 hover:border-rose-500/40 transition-colors"
               title="Очистить слот персонажа"
             >
@@ -239,7 +277,6 @@ export const CharacterPage: React.FC = () => {
             profile={profile}
             isReadOnlyViewer={Boolean(isDm)}
             onSyncJson={handleSyncJson}
-            onSyncHealth={handleSyncHealth}
             onRefreshCache={refreshNow}
             syncing={syncing}
             externalOpenImport={openImportCounter}
@@ -251,7 +288,7 @@ export const CharacterPage: React.FC = () => {
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 <Coins className="w-5 h-5 text-amber-400" />
-                <h3 className="font-anime font-bold text-base">Деньги и заметки (LSS)</h3>
+                <h3 className="font-anime font-bold text-base">Деньги и краткие заметки</h3>
               </div>
 
               {!isDm && (
@@ -299,7 +336,7 @@ export const CharacterPage: React.FC = () => {
             <div className="space-y-1.5">
               <div className="text-xs text-muted flex items-center gap-1.5">
                 <FileText className="w-3.5 h-3.5 text-primary" />
-                <span>Заметки из чарника Long Story Short:</span>
+                <span>Краткая сводка заметок:</span>
               </div>
 
               {editingCoinsAndNotes && !isDm ? (
@@ -312,7 +349,7 @@ export const CharacterPage: React.FC = () => {
                   />
                   <button
                     type="button"
-                    onClick={handleSaveFallbackCoinsNotes}
+                    onClick={() => void handleSaveFallbackCoinsNotes()}
                     className="anime-btn-primary px-3.5 py-1.5 text-xs inline-flex items-center gap-1.5"
                   >
                     <Save className="w-3.5 h-3.5" />
@@ -320,8 +357,8 @@ export const CharacterPage: React.FC = () => {
                   </button>
                 </div>
               ) : (
-                <div className="p-3 rounded-2xl bg-bg/50 border border-border/70 text-xs text-text/90 leading-relaxed whitespace-pre-line">
-                  {profile.lssNotes || 'Нет импортированных заметок.'}
+                <div className="p-3 rounded-2xl bg-bg/50 border border-border/70 text-xs text-text/90 leading-relaxed whitespace-pre-line max-h-40 overflow-y-auto">
+                  {profile.lssNotes || 'Заметок пока нет.'}
                 </div>
               )}
             </div>

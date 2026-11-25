@@ -1,44 +1,59 @@
 import React from 'react';
-import { Check, Lock, Sparkles } from 'lucide-react';
+import { Check, GripHorizontal, Lock, Pencil, Sparkles } from 'lucide-react';
 import { resolveImageUrl } from '../../lib/artwork';
-import type { PlayerId, TalentNode as TalentNodeModel } from '../../lib/types';
+import type { TalentNode as TalentNodeModel } from '../../lib/types';
 
 interface TalentNodeProps {
   node: TalentNodeModel;
-  ownedByCurrentPlayer: boolean;
   unlockedPrerequisite: boolean;
   canAfford: boolean;
-  owners: PlayerId[];
+  isDm: boolean;
+  isDragging?: boolean;
+  isSelectedInEditor?: boolean;
+  onPointerDown?: (e: React.PointerEvent<HTMLDivElement>, node: TalentNodeModel) => void;
   onSelect: (node: TalentNodeModel) => void;
+  onEditNode?: (node: TalentNodeModel) => void;
 }
 
 export const TalentNode: React.FC<TalentNodeProps> = ({
   node,
-  ownedByCurrentPlayer,
   unlockedPrerequisite,
   canAfford,
-  owners,
+  isDm,
+  isDragging,
+  isSelectedInEditor,
+  onPointerDown,
   onSelect,
+  onEditNode,
 }) => {
   const iconUrl = resolveImageUrl(node.imageKey, '✦');
+  const isUnlocked = Boolean(node.isUnlocked);
 
   return (
-    <button
-      type="button"
-      onClick={() => onSelect(node)}
-      className={`w-44 h-44 rounded-3xl p-3.5 flex flex-col items-center justify-between text-center transition-all relative group ${
-        ownedByCurrentPlayer
-          ? 'glass-panel neon-border ring-2 ring-emerald-400/70'
+    <div
+      onPointerDown={(e) => onPointerDown?.(e, node)}
+      onClick={() => {
+        if (!isDragging) onSelect(node);
+      }}
+      className={`w-44 h-44 rounded-3xl p-3.5 flex flex-col items-center justify-between text-center select-none relative group transition-shadow ${
+        isDm ? 'cursor-grab active:cursor-grabbing touch-none' : 'cursor-pointer'
+      } ${
+        isDragging ? 'z-30 scale-105 shadow-neon ring-2 ring-accent' : ''
+      } ${
+        isSelectedInEditor ? 'ring-2 ring-primary shadow-neon' : ''
+      } ${
+        isUnlocked
+          ? 'glass-panel neon-border ring-2 ring-emerald-400/75'
           : unlockedPrerequisite
-            ? 'glass-panel hover:border-primary hover:-translate-y-1'
-            : 'glass-panel opacity-65 border-dashed hover:opacity-90'
+            ? 'glass-panel hover:border-primary'
+            : 'glass-panel opacity-70 border-dashed hover:opacity-95'
       }`}
     >
-      {/* Top Row: Cost & Ownership Status */}
-      <div className="w-full flex items-center justify-between">
+      {/* Top Row: Cost & Shared Party Status */}
+      <div className="w-full flex items-center justify-between gap-1">
         <span
           className={`inline-flex items-center gap-1 text-[11px] font-anime font-extrabold px-2 py-0.5 rounded-lg border ${
-            ownedByCurrentPlayer
+            isUnlocked
               ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300'
               : canAfford && unlockedPrerequisite
                 ? 'bg-accent/20 border-accent/40 text-accent'
@@ -49,37 +64,72 @@ export const TalentNode: React.FC<TalentNodeProps> = ({
           {node.cost}
         </span>
 
-        {ownedByCurrentPlayer ? (
-          <span className="w-5 h-5 rounded-full bg-emerald-500/25 text-emerald-300 flex items-center justify-center">
-            <Check className="w-3.5 h-3.5" />
-          </span>
-        ) : !unlockedPrerequisite ? (
-          <span className="w-5 h-5 rounded-full bg-bg/80 text-muted flex items-center justify-center">
-            <Lock className="w-3 h-3" />
-          </span>
-        ) : null}
+        <div className="flex items-center gap-1">
+          {isDm && onEditNode && (
+            <button
+              type="button"
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                onEditNode(node);
+              }}
+              className="w-5 h-5 rounded-full bg-surface/90 border border-border hover:border-primary text-muted hover:text-primary flex items-center justify-center transition-colors"
+              title="Редактировать узел"
+            >
+              <Pencil className="w-2.5 h-2.5" />
+            </button>
+          )}
+
+          {isDm && (
+            <span
+              className="text-muted/60 group-hover:text-accent transition-colors"
+              title="Перетащите плитку мышью в нужное место"
+            >
+              <GripHorizontal className="w-3.5 h-3.5" />
+            </span>
+          )}
+
+          {isUnlocked ? (
+            <span
+              className="w-5 h-5 rounded-full bg-emerald-500/25 text-emerald-300 flex items-center justify-center"
+              title="Талант открыт для всей группы"
+            >
+              <Check className="w-3.5 h-3.5" />
+            </span>
+          ) : !unlockedPrerequisite ? (
+            <span
+              className="w-5 h-5 rounded-full bg-bg/80 text-muted flex items-center justify-center"
+              title="Требуется предыдущий талант"
+            >
+              <Lock className="w-3 h-3" />
+            </span>
+          ) : null}
+        </div>
       </div>
 
       {/* Square Icon */}
-      <div className="w-16 h-16 rounded-2xl overflow-hidden border border-border shadow-md group-hover:scale-105 transition-transform">
-        <img src={iconUrl} alt={node.title} className="w-full h-full object-cover" />
+      <div className="w-16 h-16 rounded-2xl overflow-hidden border border-border shadow-md pointer-events-none">
+        <img
+          src={iconUrl}
+          alt={node.title}
+          draggable={false}
+          className="w-full h-full object-cover"
+        />
       </div>
 
-      {/* Title & Party Badges */}
-      <div className="w-full space-y-1">
+      {/* Title & Shared Status Pill */}
+      <div className="w-full space-y-1 pointer-events-none">
         <div className="font-anime font-bold text-xs leading-tight line-clamp-2">{node.title}</div>
-        <div className="flex items-center justify-center gap-1 min-h-[16px]">
-          {owners.map((pid) => (
-            <span
-              key={pid}
-              className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-primary/25 text-primary border border-primary/40"
-              title={`Приобретено Игроком ${pid}`}
-            >
-              P{pid}
-            </span>
-          ))}
+        <div className="text-[10px] font-semibold">
+          {isUnlocked ? (
+            <span className="text-emerald-300">✦ Открыт для группы</span>
+          ) : unlockedPrerequisite ? (
+            <span className="text-muted">Доступен к открытию</span>
+          ) : (
+            <span className="text-muted/70">Закрыт</span>
+          )}
         </div>
       </div>
-    </button>
+    </div>
   );
 };

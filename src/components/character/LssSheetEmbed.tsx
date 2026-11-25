@@ -1,30 +1,16 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
-  createBridgeSheetSource,
-  DiceRollPayload,
-  formatRollMessage,
-  rollVariant,
-  SHEET_IFRAME_SANDBOX,
-  SheetEvent,
-} from '@longstoryshort/vtt-sdk';
-import {
-  Dices,
-  ExternalLink,
+  Download,
   FileJson,
-  Globe,
-  Info,
   Lock,
-  MousePointerClick,
   RefreshCw,
   ScrollText,
+  Unlock,
   Upload,
+  X,
 } from 'lucide-react';
-import { apiFetch } from '../../lib/api';
-import {
-  LSS_ALLOWED_ORIGINS,
-  LSS_CHARACTER_LIST_EMBED_URL,
-  LSS_SCHEMA_V1_URL,
-} from '../../lib/lss';
+import { LSS_SCHEMA_V1_URL } from '../../lib/lss';
+import { packLssStructures, unwrapLssJsonMutable } from '../../lib/lssSheetParser';
 import { useCampaignStore } from '../../lib/store';
 import type { CharacterProfile, PlayerId } from '../../lib/types';
 import { LssNativeSheet } from './LssNativeSheet';
@@ -33,8 +19,7 @@ interface LssSheetEmbedProps {
   playerId: PlayerId;
   profile: CharacterProfile;
   isReadOnlyViewer: boolean;
-  onSyncJson: (lssJson: unknown, lssEmbedUrl?: string) => Promise<void>;
-  onSyncHealth: (hp: { hpCurrent: number; hpMax: number; hpTemp: number }) => Promise<void>;
+  onSyncJson: (lssJson: unknown) => Promise<void>;
   onRefreshCache: () => Promise<void>;
   syncing: boolean;
   externalOpenImport?: number;
@@ -44,30 +29,20 @@ export const LssSheetEmbed: React.FC<LssSheetEmbedProps> = ({
   profile,
   isReadOnlyViewer,
   onSyncJson,
-  onSyncHealth,
   onRefreshCache,
   syncing,
   externalOpenImport,
 }) => {
-  const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const pushToast = useCampaignStore((s) => s.pushToast);
 
-  const [sheetMode, setSheetMode] = useState<'native' | 'iframe'>('native');
-  const [iframeKey, setIframeKey] = useState(0);
-  const [manifestSystem, setManifestSystem] = useState<string | null>(null);
-  const [lastEventBadge, setLastEventBadge] = useState<string>('Ожидание событий postMessage');
-  const [strictPointerLock, setStrictPointerLock] = useState<boolean>(isReadOnlyViewer);
+  const [dmAllowEdit, setDmAllowEdit] = useState(false);
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [jsonText, setJsonText] = useState('');
-  const [embedUrlDraft, setEmbedUrlDraft] = useState(
-    profile.lssEmbedUrl || LSS_CHARACTER_LIST_EMBED_URL
-  );
   const [importing, setImporting] = useState(false);
 
   useEffect(() => {
-    setStrictPointerLock(isReadOnlyViewer);
-    setEmbedUrlDraft(profile.lssEmbedUrl || LSS_CHARACTER_LIST_EMBED_URL);
-  }, [isReadOnlyViewer, profile.playerId, profile.lssEmbedUrl]);
+    setDmAllowEdit(false);
+  }, [profile.playerId]);
 
   useEffect(() => {
     if (externalOpenImport && externalOpenImport > 0) {
@@ -75,82 +50,7 @@ export const LssSheetEmbed: React.FC<LssSheetEmbedProps> = ({
     }
   }, [externalOpenImport]);
 
-  const embedUrl = profile.lssEmbedUrl || LSS_CHARACTER_LIST_EMBED_URL;
-
-  useEffect(() => {
-    if (sheetMode !== 'iframe') return;
-    const iframeEl = iframeRef.current;
-    if (!iframeEl) return;
-
-    const source = createBridgeSheetSource({
-      iframe: iframeEl,
-      allowedOrigins: LSS_ALLOWED_ORIGINS,
-    });
-
-    const unsubRoll = source.onRoll((roll: DiceRollPayload) => {
-      const formatted = formatRollMessage(roll);
-      const variant = rollVariant(roll);
-      setLastEventBadge(`lss:roll • ${roll.title} = ${roll.total}`);
-
-      pushToast({
-        title: formatted,
-        message: `${roll.formula} → ${roll.breakdown}`,
-        variant,
-      });
-
-      void apiFetch('/api/rolls', {
-        method: 'POST',
-        body: JSON.stringify({
-          characterName:
-            roll.characterName || profile.characterName || `Игрок ${profile.playerId}`,
-          title: roll.title,
-          formula: roll.formula,
-          breakdown: roll.breakdown,
-          total: roll.total,
-          isCrit: roll.isCrit,
-          critKind: roll.critKind,
-        }),
-      }).catch(() => {
-        // Ignore transient network errors
-      });
-    });
-
-    const unsubEvent = source.onEvent((event: SheetEvent) => {
-      if (event.type === 'lss:manifest') {
-        setManifestSystem(event.payload.sheetSystem);
-        setLastEventBadge(`lss:manifest (${event.payload.sheetSystem})`);
-      } else if (event.type === 'dnd:health') {
-        setLastEventBadge(
-          `dnd:health • ${event.payload.current}/${event.payload.max} (+${event.payload.temp})`
-        );
-        if (!isReadOnlyViewer) {
-          void onSyncHealth({
-            hpCurrent: event.payload.current,
-            hpMax: event.payload.max,
-            hpTemp: event.payload.temp,
-          });
-        }
-      } else if (event.type === 'lss:group-status') {
-        setLastEventBadge(
-          `lss:group-status • ${event.payload.connected ? 'в группе' : 'автономно'}`
-        );
-      }
-    });
-
-    return () => {
-      unsubRoll();
-      unsubEvent();
-      source.dispose();
-    };
-  }, [
-    sheetMode,
-    iframeKey,
-    profile.playerId,
-    profile.characterName,
-    isReadOnlyViewer,
-    onSyncHealth,
-    pushToast,
-  ]);
+  const canEdit = !isReadOnlyViewer || dmAllowEdit;
 
   const handleQuickUploadFile = async (file: File) => {
     try {
@@ -159,7 +59,7 @@ export const LssSheetEmbed: React.FC<LssSheetEmbedProps> = ({
       await onSyncJson(parsed);
       pushToast({
         title: 'Чарник импортирован',
-        message: `Файл «${file.name}» успешно разобран и открыт в интерактивном листе.`,
+        message: `Файл «${file.name}» успешно загружен в интерактивный лист.`,
         variant: 'success',
       });
     } catch (err) {
@@ -179,21 +79,18 @@ export const LssSheetEmbed: React.FC<LssSheetEmbedProps> = ({
   };
 
   const handleApplyJsonImport = async () => {
-    if (!jsonText.trim() && (!embedUrlDraft.trim() || embedUrlDraft === profile.lssEmbedUrl)) {
-      return;
-    }
+    if (!jsonText.trim()) return;
     setImporting(true);
     try {
-      const parsed = jsonText.trim() ? (JSON.parse(jsonText) as unknown) : null;
-      await onSyncJson(parsed, embedUrlDraft.trim() || undefined);
+      const parsed = JSON.parse(jsonText) as unknown;
+      await onSyncJson(parsed);
       pushToast({
         title: 'Чарник персонажа загружен',
-        message: 'Данные персонажа из Long Story Short сохранены в Cloudflare D1.',
+        message: 'Данные персонажа сохранены в базе кампании.',
         variant: 'success',
       });
       setImportModalOpen(false);
       setJsonText('');
-      if (parsed) setSheetMode('native');
     } catch (err) {
       pushToast({
         title: 'Ошибка импорта JSON',
@@ -208,291 +105,155 @@ export const LssSheetEmbed: React.FC<LssSheetEmbedProps> = ({
     }
   };
 
-  const handleTestRollBroadcast = async () => {
-    const d20 = Math.floor(Math.random() * 20) + 1;
-    const isCrit = d20 === 20 || d20 === 1;
-    const critKind = d20 === 20 ? 'success' : d20 === 1 ? 'failure' : undefined;
-    const rollerName = profile.characterName || `Игрок ${profile.playerId}`;
-
-    await apiFetch('/api/rolls', {
-      method: 'POST',
-      body: JSON.stringify({
-        characterName: rollerName,
-        title: 'Бросок к20',
-        formula: '1к20',
-        breakdown: `[${d20}] = ${d20}`,
-        total: String(d20),
-        isCrit,
-        critKind,
-      }),
+  const handleExportJson = () => {
+    if (!profile.rawLssJson) return;
+    const packed = packLssStructures(unwrapLssJsonMutable(profile.rawLssJson));
+    const blob = new Blob([JSON.stringify(packed, null, 2)], {
+      type: 'application/json;charset=utf-8',
     });
-
-    pushToast({
-      title: `🎲 ${rollerName}: Бросок к20 — ${d20}`,
-      message: `Результат [${d20}] отправлен в общий лог стола`,
-      variant: isCrit ? (d20 === 20 ? 'success' : 'error') : 'info',
-    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const safeName = (profile.characterName || `player-${profile.playerId}`)
+      .replace(/[^\p{L}\p{N}_-]+/gu, '_')
+      .slice(0, 40);
+    a.href = url;
+    a.download = `${safeName}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   return (
     <div className="glass-panel rounded-3xl overflow-hidden flex flex-col">
-      {/* Top Toolbar */}
+      {/* Clean Native Header Bar (No LSS Iframe!) */}
       <div className="px-4 py-3 border-b border-border bg-bg/50 flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-1.5 flex-wrap">
-          <button
-            type="button"
-            onClick={() => setSheetMode('native')}
-            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition-all ${
-              sheetMode === 'native'
-                ? 'anime-btn-primary border-transparent'
-                : 'bg-surface border-border text-muted hover:text-text'
-            }`}
-          >
+        <div className="flex items-center gap-2">
+          <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-primary/15 border border-primary/35 text-primary">
             <ScrollText className="w-3.5 h-3.5" />
-            <span>Лист персонажа (.json)</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setSheetMode('iframe')}
-            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition-all ${
-              sheetMode === 'iframe'
-                ? 'anime-btn-primary border-transparent'
-                : 'bg-surface border-border text-muted hover:text-text'
-            }`}
-            title="Встроенный iframe longstoryshort.app (требует добавления домена в белый список LSS)"
-          >
-            <Globe className="w-3.5 h-3.5" />
-            <span>LSS Iframe</span>
-          </button>
-
-          {sheetMode === 'iframe' && (
-            <span className="text-[11px] text-muted ml-1">
-              {manifestSystem ? `SDK: ${manifestSystem}` : lastEventBadge}
-            </span>
-          )}
+            <span>Лист персонажа</span>
+          </div>
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
-          {sheetMode === 'iframe' && (
+          {isReadOnlyViewer && (
             <button
               type="button"
-              onClick={() => setStrictPointerLock((v) => !v)}
+              onClick={() => setDmAllowEdit((v) => !v)}
               className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs border transition-colors ${
-                strictPointerLock
-                  ? 'border-amber-500/50 bg-amber-500/15 text-amber-200'
+                dmAllowEdit
+                  ? 'border-amber-400/50 bg-amber-500/15 text-amber-200 font-semibold'
                   : 'border-border bg-surface text-muted hover:text-text'
               }`}
-              title="Переключить защитный экран только-чтения поверх iframe"
+              title="Разрешить Мастеру редактировать лист этого игрока"
             >
-              {strictPointerLock ? (
+              {dmAllowEdit ? (
                 <>
-                  <Lock className="w-3.5 h-3.5" />
-                  Экран чтения (вкл)
+                  <Unlock className="w-3.5 h-3.5" />
+                  <span>Правка Мастером (ВКЛ)</span>
                 </>
               ) : (
                 <>
-                  <MousePointerClick className="w-3.5 h-3.5" />
-                  Навигация в листе
+                  <Lock className="w-3.5 h-3.5" />
+                  <span>Просмотр (разблок.)</span>
                 </>
               )}
             </button>
           )}
 
-          {!isReadOnlyViewer && (
-            <>
-              <button
-                type="button"
-                onClick={handleTestRollBroadcast}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs border border-border bg-surface text-muted hover:text-accent hover:border-accent/50 transition-colors"
-                title="Быстрый чистый бросок 1к20 в общий лог стола"
-              >
-                <Dices className="w-3.5 h-3.5" />
-                к20
-              </button>
+          {profile.rawLssJson && (
+            <button
+              type="button"
+              onClick={handleExportJson}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs border border-border bg-surface text-muted hover:text-text transition-colors"
+              title="Экспортировать чарник в файл .json (совместим с Long Story Short)"
+            >
+              <Download className="w-3.5 h-3.5 text-primary" />
+              <span>Скачать .json</span>
+            </button>
+          )}
 
-              <button
-                type="button"
-                onClick={() => setImportModalOpen(true)}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-accent/15 text-accent border border-accent/40 hover:bg-accent/25 transition-colors"
-              >
-                <FileJson className="w-3.5 h-3.5" />
-                Загрузить чарник (.json)
-              </button>
-            </>
+          {canEdit && (
+            <button
+              type="button"
+              onClick={() => setImportModalOpen(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-accent/15 text-accent border border-accent/40 hover:bg-accent/25 transition-colors"
+            >
+              <FileJson className="w-3.5 h-3.5" />
+              <span>Загрузить .json</span>
+            </button>
           )}
 
           <button
             type="button"
-            onClick={() => {
-              if (sheetMode === 'iframe') setIframeKey((k) => k + 1);
-              void onRefreshCache();
-            }}
+            onClick={() => void onRefreshCache()}
             disabled={syncing}
             className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs border border-border bg-surface text-muted hover:text-text transition-colors"
-            title="Обновить данные листа из D1"
+            title="Обновить данные листа с сервера"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${syncing ? 'animate-spin text-primary' : ''}`} />
-            Обновить
+            <span>Обновить</span>
           </button>
-
-          <a
-            href="https://longstoryshort.app/characters/list/"
-            target="_blank"
-            rel="noreferrer"
-            className="p-1.5 rounded-xl border border-border text-muted hover:text-text"
-            title="Открыть Long Story Short в отдельной вкладке браузера"
-          >
-            <ExternalLink className="w-3.5 h-3.5" />
-          </a>
         </div>
       </div>
 
-      {/* Mode 1: Built-in Interactive Native LSS Sheet (works without CSP frame-ancestors whitelist!) */}
-      {sheetMode === 'native' ? (
-        <LssNativeSheet
-          profile={profile}
-          isReadOnlyViewer={isReadOnlyViewer}
-          onQuickUploadFile={handleQuickUploadFile}
-          onOpenImportModal={() => setImportModalOpen(true)}
-          onSyncHealth={onSyncHealth}
-        />
-      ) : (
-        <>
-          {/* Helpful Official LSS Whitelist Notice */}
-          <div className="px-4 py-3 bg-amber-500/10 border-b border-amber-500/30 text-xs text-amber-100/90 flex items-start gap-2.5">
-            <Info className="w-4 h-4 text-amber-300 shrink-0 mt-0.5" />
-            <div className="leading-relaxed">
-              <strong>Почему может появляться «longstoryshort.app не позволяет установить соединение»:</strong>{' '}
-              сервер Long Story Short блокирует <code>&lt;iframe&gt;</code> через заголовок{' '}
-              <code>Content-Security-Policy: frame-ancestors</code> для любых доменов вне их белого списка. Чтобы работать без ожидания белого списка — используйте вкладку{' '}
-              <button
-                type="button"
-                onClick={() => setSheetMode('native')}
-                className="text-accent underline font-semibold"
-              >
-                «Лист персонажа (.json)»
-              </button>
-              . А чтобы разблокировать прямой iframe на вашем боевом домене Cloudflare, отправьте адрес вашего сайта автору LSS (
-              <a
-                href="https://t.me/shakusky"
-                target="_blank"
-                rel="noreferrer"
-                className="text-accent underline"
-              >
-                @shakusky в Telegram
-              </a>{' '}
-              или{' '}
-              <a
-                href="https://vk.ru/longstoryshortapp"
-                target="_blank"
-                rel="noreferrer"
-                className="text-accent underline"
-              >
-                сообщество VK LSS
-              </a>
-              , подробнее в{' '}
-              <a
-                href="https://longstoryshort.app/doc/developers/embedding/"
-                target="_blank"
-                rel="noreferrer"
-                className="text-accent underline"
-              >
-                документации LSS
-              </a>
-              ).
-            </div>
-          </div>
+      {/* Full Editable LSS-Compatible Sheet */}
+      <LssNativeSheet
+        profile={profile}
+        canEdit={canEdit}
+        onQuickUploadFile={handleQuickUploadFile}
+        onOpenImportModal={() => setImportModalOpen(true)}
+        onSyncJson={onSyncJson}
+      />
 
-          <div className="relative w-full h-[560px] bg-[#0b0b14]">
-            <iframe
-              key={`${profile.playerId}-${iframeKey}`}
-              ref={iframeRef}
-              src={embedUrl}
-              sandbox={SHEET_IFRAME_SANDBOX}
-              allow="clipboard-write"
-              title={`Лист персонажа Long Story Short — Игрок ${profile.playerId}`}
-              className="w-full h-full border-0 block"
-            />
-
-            {strictPointerLock && (
-              <div className="absolute inset-0 bg-bg/20 backdrop-blur-[1px] flex items-end justify-center p-4 pointer-events-auto">
-                <div className="glass-panel px-4 py-2 rounded-2xl text-xs text-muted flex items-center gap-3 border border-amber-500/30">
-                  <Lock className="w-4 h-4 text-amber-300 shrink-0" />
-                  <span>
-                    Режим строгого просмотра (лист защищён от случайного редактирования). Для
-                    прокрутки внутри LSS нажмите «Экран чтения».
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setStrictPointerLock(false)}
-                    className="px-2.5 py-1 rounded-lg bg-primary/20 text-primary font-semibold hover:bg-primary/30 shrink-0"
-                  >
-                    Разблокировать прокрутку
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        </>
-      )}
-
+      {/* Footer Sync Info */}
       <div className="px-4 py-2 bg-bg/60 border-t border-border text-[11px] text-muted flex flex-wrap items-center justify-between gap-2">
         <span>
-          {sheetMode === 'native' ? (
-            <>
-              Режим: <strong className="text-primary">Встроенный лист LSS (.json)</strong> — все
-              броски к20 и урона синхронизируются со столом в реальном времени.
-            </>
-          ) : (
-            <>
-              Связь только через <code className="text-primary">window.postMessage</code> (
-              <code className="text-accent">@longstoryshort/vtt-sdk</code>) — без доступа к DOM
-              iframe.
-            </>
-          )}
+          Все изменения характеристик, навыков, ячеек и снаряжения автоматически сохраняются в формате{' '}
+          <strong className="text-primary">LSS .json</strong>.
         </span>
         <span>
-          Последняя синхронизация:{' '}
+          Синхронизация:{' '}
           {profile.lastSyncedAt
             ? new Date(profile.lastSyncedAt).toLocaleString('ru-RU')
             : 'не выполнялась'}
         </span>
       </div>
 
+      {/* Import JSON Modal */}
       {importModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="glass-panel neon-border rounded-3xl max-w-xl w-full p-6 space-y-4">
-            <div>
-              <h3 className="font-anime font-bold text-lg">
-                Загрузка чарника из Long Story Short
-              </h3>
-              <p className="text-xs text-muted mt-1">
-                Экспортируйте своего персонажа в файл <code>.json</code> в Long Story Short (формат{' '}
-                <a
-                  href={LSS_SCHEMA_V1_URL}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-accent underline"
-                >
-                  character.json
-                </a>
-                ) и загрузите ниже — откроется полный интерактивный лист с характеристиками,
-                навыками, спасбросками, атаками, бросками к20 и умениями.
-              </p>
-            </div>
+        <div
+          onClick={() => setImportModalOpen(false)}
+          className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="glass-panel neon-border rounded-3xl max-w-xl w-full p-6 space-y-4"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="font-anime font-bold text-lg">
+                  Импорт чарника из Long Story Short (.json)
+                </h3>
+                <p className="text-xs text-muted mt-1">
+                  Экспортируйте своего персонажа в файл <code>.json</code> в Long Story Short (схема{' '}
+                  <a
+                    href={LSS_SCHEMA_V1_URL}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-accent underline"
+                  >
+                    character.json
+                  </a>
+                  ) и выберите его ниже. После импорта все поля можно свободно редактировать прямо на сайте.
+                </p>
+              </div>
 
-            <div className="space-y-1.5">
-              <label className="block text-xs text-muted">
-                Ссылка на embed-лист Long Story Short (для вкладки LSS Iframe, необязательно):
-              </label>
-              <input
-                type="url"
-                value={embedUrlDraft}
-                onChange={(e) => setEmbedUrlDraft(e.target.value)}
-                placeholder="https://longstoryshort.app/iframe/characters/..."
-                className="anime-input w-full text-xs"
-              />
+              <button
+                type="button"
+                onClick={() => setImportModalOpen(false)}
+                className="p-1.5 rounded-xl border border-border text-muted hover:text-text"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
@@ -526,15 +287,11 @@ export const LssSheetEmbed: React.FC<LssSheetEmbedProps> = ({
               </button>
               <button
                 type="button"
-                disabled={
-                  importing ||
-                  (!jsonText.trim() &&
-                    (!embedUrlDraft.trim() || embedUrlDraft.trim() === profile.lssEmbedUrl))
-                }
-                onClick={handleApplyJsonImport}
+                disabled={importing || !jsonText.trim()}
+                onClick={() => void handleApplyJsonImport()}
                 className="anime-btn-primary px-4 py-2 text-xs"
               >
-                {importing ? 'Сохранение...' : 'Сохранить чарник'}
+                {importing ? 'Загрузка...' : 'Импортировать чарник'}
               </button>
             </div>
           </div>

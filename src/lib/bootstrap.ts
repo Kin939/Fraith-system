@@ -30,6 +30,29 @@ async function ensureUsersColumns(db: D1Database): Promise<void> {
   }
 }
 
+async function ensureTalentTreeColumns(db: D1Database): Promise<void> {
+  const { results } = await db
+    .prepare(`PRAGMA table_info(talent_tree)`)
+    .all<{ name: string }>();
+  const existingCols = new Set(results.map((r) => r.name));
+
+  if (!existingCols.has('is_unlocked')) {
+    await db
+      .prepare(`ALTER TABLE talent_tree ADD COLUMN is_unlocked INTEGER NOT NULL DEFAULT 0`)
+      .run();
+    await db
+      .prepare(
+        `UPDATE talent_tree
+         SET is_unlocked = 1
+         WHERE id IN (SELECT DISTINCT talent_id FROM purchased_talents)`
+      )
+      .run();
+  }
+  if (!existingCols.has('unlocked_at')) {
+    await db.prepare(`ALTER TABLE talent_tree ADD COLUMN unlocked_at TEXT`).run();
+  }
+}
+
 async function ensureSpellsDndsuColumns(db: D1Database): Promise<void> {
   const { results } = await db
     .prepare(`PRAGMA table_info(spells)`)
@@ -178,9 +201,11 @@ async function runBootstrap(db: D1Database): Promise<void> {
       description TEXT NOT NULL,
       image_key TEXT,
       cost INTEGER NOT NULL DEFAULT 1 CHECK (cost >= 0),
-      position_x INTEGER NOT NULL DEFAULT 0,
-      position_y INTEGER NOT NULL DEFAULT 0,
-      parent_id INTEGER REFERENCES talent_tree(id) ON DELETE SET NULL
+      position_x INTEGER NOT NULL DEFAULT 60,
+      position_y INTEGER NOT NULL DEFAULT 60,
+      parent_id INTEGER REFERENCES talent_tree(id) ON DELETE SET NULL,
+      is_unlocked INTEGER NOT NULL DEFAULT 0,
+      unlocked_at TEXT
     )`,
     `CREATE TABLE IF NOT EXISTS purchased_talents (
       player_id INTEGER NOT NULL CHECK (player_id IN (1, 2, 3)),
@@ -210,6 +235,7 @@ async function runBootstrap(db: D1Database): Promise<void> {
 
   await db.batch(schemaStatements.map((sql) => db.prepare(sql)));
   await ensureUsersColumns(db);
+  await ensureTalentTreeColumns(db);
   await ensureSpellsDndsuColumns(db);
 
   const existingUser = await db

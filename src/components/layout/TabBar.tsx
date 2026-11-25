@@ -46,6 +46,11 @@ export const TabBar: React.FC<TabBarProps> = ({ onLogout }) => {
     <header className="lg:hidden sticky top-0 z-30 glass-panel border-b border-border px-3 py-2.5 space-y-2">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
+          <img
+            src="/favicon-64.png"
+            alt="FRAITH.SYS"
+            className="w-6 h-6 rounded-lg object-cover border border-primary/40"
+          />
           <span className="font-anime font-extrabold text-base tracking-wide">
             FRAITH<span className="text-primary">.SYS</span>
           </span>
