@@ -1,5 +1,8 @@
 name: Build & Deploy to Cloudflare
 
+permissions:
+  contents: write
+
 on:
   push:
     branches:
@@ -28,6 +31,50 @@ jobs:
 
       - name: Verify Wrangler bundle & build
         run: npx wrangler deploy --dry-run
+
+  publish-cdn-mirror:
+    name: Publish Static JS/CSS Mirror for RU Players (jsDelivr G-Core CDN)
+    needs: build
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies & build frontend
+        run: |
+          npm ci
+          npm run build
+
+      - name: Publish dist/ to gh-pages & immutable commit tag
+        run: |
+          SHORT_SHA="$(git rev-parse --short=12 HEAD)"
+          TAG_NAME="cdn-${SHORT_SHA}"
+          WORK_DIR="$(mktemp -d)"
+          cp -r dist/assets "$WORK_DIR/assets"
+          cp dist/cdn-manifest.json "$WORK_DIR/cdn-manifest.json"
+          touch "$WORK_DIR/.nojekyll"
+
+          cd "$WORK_DIR"
+          git init -b gh-pages
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "chore(cdn): publish frontend assets for ${SHORT_SHA}"
+          git tag -f "$TAG_NAME"
+          git remote add origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git push -f origin gh-pages
+          git push -f origin "$TAG_NAME"
+
+          curl -fsS "https://purge.jsdelivr.net/gh/${GITHUB_REPOSITORY}@gh-pages/cdn-manifest.json" || true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   deploy:
     name: Deploy to Cloudflare Workers + Assets

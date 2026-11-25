@@ -248,14 +248,17 @@ app.get('/characters', async (c) => {
   if (!user) return c.json({ error: 'Необходима авторизация' }, 401);
 
   const allProfiles = await listCharacterProfiles(c.env.DB);
+  // Strip bulky rawLssJson from the summary list (full rawLssJson is fetched via /api/player/:id)
   if (user.role === 'dm') {
-    return c.json({ characters: allProfiles });
+    return c.json({
+      characters: allProfiles.map((p) => ({ ...p, rawLssJson: null })),
+    });
   }
 
-  // Players get their own full profile + party summary names/classes
+  // Players get their own summary + party summary names/classes
   const filtered = allProfiles.map((p) =>
     p.playerId === user.playerId
-      ? p
+      ? { ...p, rawLssJson: null }
       : {
           ...p,
           lssNotes: '',

@@ -13,6 +13,7 @@ import {
   Wifi,
   WifiOff,
 } from 'lucide-react';
+import { resolvePublicAssetUrl } from '../../lib/cdnAssets';
 import { apiFetch } from '../../lib/api';
 import { CampaignTabId, useCampaignStore } from '../../lib/store';
 
@@ -86,7 +87,12 @@ export const Sidebar: React.FC<SidebarProps> = ({ onLogout }) => {
         <div className="flex items-center justify-between px-2 pt-1">
           <div className="flex items-center gap-3">
             <img
-              src="/apple-touch-icon.png"
+              src={resolvePublicAssetUrl('/apple-touch-icon.png')}
+              onError={(e) => {
+                if (!e.currentTarget.src.endsWith('/favicon.svg')) {
+                  e.currentTarget.src = '/favicon.svg';
+                }
+              }}
               alt="FRAITH.SYS"
               className="w-10 h-10 rounded-2xl object-cover border border-primary/50 shadow-neon shrink-0"
             />

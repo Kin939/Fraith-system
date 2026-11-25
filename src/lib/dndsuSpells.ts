@@ -1,3 +1,4 @@
+import { fetchStaticJsonWithFallback } from './cdnAssets';
 import { CANONICAL_TO_DNDSU_CLASS_ID, MAGIC_SCHOOL_LABELS_RU, normalizeDndClass } from './lss';
 import type { DndsuFiltersPayload, Spell } from './types';
 
@@ -34,11 +35,10 @@ function hydrateSpells(rawList: Spell[]): Spell[] {
 
 export function loadOfficialDndsuSpells(): Promise<Spell[]> {
   if (!officialPromise) {
-    officialPromise = fetch('/data/dndsu-spells-official.json')
-      .then((res) => {
-        if (!res.ok) throw new Error('Не удалось загрузить официальные заклинания dnd.su');
-        return res.json() as Promise<Spell[]>;
-      })
+    officialPromise = fetchStaticJsonWithFallback<Spell[]>(
+      '/data/dndsu-spells-official.json',
+      'Не удалось загрузить официальные заклинания dnd.su'
+    )
       .then(hydrateSpells)
       .catch((err) => {
         officialPromise = null;
@@ -50,11 +50,10 @@ export function loadOfficialDndsuSpells(): Promise<Spell[]> {
 
 export function loadHomebrewDndsuSpells(): Promise<Spell[]> {
   if (!homebrewPromise) {
-    homebrewPromise = fetch('/data/dndsu-spells-homebrew.json')
-      .then((res) => {
-        if (!res.ok) throw new Error('Не удалось загрузить homebrew заклинания dnd.su');
-        return res.json() as Promise<Spell[]>;
-      })
+    homebrewPromise = fetchStaticJsonWithFallback<Spell[]>(
+      '/data/dndsu-spells-homebrew.json',
+      'Не удалось загрузить homebrew заклинания dnd.su'
+    )
       .then(hydrateSpells)
       .catch((err) => {
         homebrewPromise = null;
@@ -66,15 +65,13 @@ export function loadHomebrewDndsuSpells(): Promise<Spell[]> {
 
 export function loadDndsuFilters(): Promise<DndsuFiltersPayload> {
   if (!filtersPromise) {
-    filtersPromise = fetch('/data/dndsu-filters.json')
-      .then((res) => {
-        if (!res.ok) throw new Error('Не удалось загрузить фильтры dnd.su');
-        return res.json() as Promise<DndsuFiltersPayload>;
-      })
-      .catch((err) => {
-        filtersPromise = null;
-        throw err;
-      });
+    filtersPromise = fetchStaticJsonWithFallback<DndsuFiltersPayload>(
+      '/data/dndsu-filters.json',
+      'Не удалось загрузить фильтры dnd.su'
+    ).catch((err) => {
+      filtersPromise = null;
+      throw err;
+    });
   }
   return filtersPromise;
 }

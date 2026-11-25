@@ -11,6 +11,7 @@ import {
   Wifi,
   WifiOff,
 } from 'lucide-react';
+import { resolvePublicAssetUrl } from '../../lib/cdnAssets';
 import { CampaignTabId, useCampaignStore } from '../../lib/store';
 
 interface TabBarProps {
@@ -47,7 +48,12 @@ export const TabBar: React.FC<TabBarProps> = ({ onLogout }) => {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <img
-            src="/favicon-64.png"
+            src={resolvePublicAssetUrl('/favicon-64.png')}
+            onError={(e) => {
+              if (!e.currentTarget.src.endsWith('/favicon.svg')) {
+                e.currentTarget.src = '/favicon.svg';
+              }
+            }}
             alt="FRAITH.SYS"
             className="w-6 h-6 rounded-lg object-cover border border-primary/40"
           />

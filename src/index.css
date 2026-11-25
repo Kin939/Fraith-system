@@ -35,6 +35,7 @@
 
 @layer components {
   .glass-panel {
+    background-color: var(--surface);
     background: color-mix(in srgb, var(--surface) 82%, transparent);
     backdrop-filter: blur(16px);
     -webkit-backdrop-filter: blur(16px);
@@ -43,11 +44,13 @@
   }
 
   .neon-border {
+    border: 1px solid var(--primary);
     border: 1px solid color-mix(in srgb, var(--primary) 65%, var(--border));
     box-shadow: 0 0 18px var(--glow);
   }
 
   .anime-input {
+    background-color: var(--bg);
     background: color-mix(in srgb, var(--bg) 78%, var(--surface));
     border: 1px solid var(--border);
     color: var(--text);

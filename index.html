@@ -4,19 +4,99 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#0f0f1a" />
-    <link rel="icon" type="image/png" sizes="64x64" href="/favicon-64.png" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
-    <title>FRAITH.SYSTEM — D&amp;D 5e</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@500;700;800&family=Noto+Sans:wght@400;500;600;700&family=Zen+Maru+Gothic:wght@500;700&display=swap"
-      rel="stylesheet"
+      rel="icon"
+      type="image/svg+xml"
+      href="https://gcore.jsdelivr.net/gh/Kin939/Fraith-system@main/public/favicon.svg"
     />
+    <link
+      rel="apple-touch-icon"
+      href="https://gcore.jsdelivr.net/gh/Kin939/Fraith-system@main/public/apple-touch-icon.png"
+    />
+    <title>FRAITH.SYSTEM — D&amp;D 5e</title>
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@500;700;800&family=Noto+Sans:wght@400;500;600;700&family=Zen+Maru+Gothic:wght@500;700&display=swap"
+      media="print"
+      onload="this.media='all'"
+    />
+    <style>
+      html, body {
+        margin: 0;
+        min-height: 100vh;
+        background-color: #0f0f1a;
+        color: #f4f4fe;
+        font-family: 'Noto Sans', system-ui, -apple-system, sans-serif;
+      }
+      .fraith-boot-wrap {
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 1.25rem;
+        box-sizing: border-box;
+        background-image:
+          radial-gradient(circle at 15% 10%, rgba(168, 85, 247, 0.36) 0%, transparent 34%),
+          radial-gradient(circle at 88% 85%, rgba(34, 211, 238, 0.16) 0%, transparent 36%);
+      }
+      .fraith-boot-card {
+        max-width: 26rem;
+        width: 100%;
+        background: rgba(26, 26, 46, 0.9);
+        border: 1px solid rgba(168, 85, 247, 0.55);
+        box-shadow: 0 0 24px rgba(168, 85, 247, 0.32);
+        border-radius: 1.5rem;
+        padding: 1.75rem 1.5rem;
+        text-align: center;
+      }
+      .fraith-boot-title {
+        font-weight: 800;
+        font-size: 1.25rem;
+        letter-spacing: 0.05em;
+        color: #f4f4fe;
+      }
+      .fraith-boot-title span {
+        color: #a855f7;
+      }
+      .fraith-boot-sub {
+        margin-top: 0.5rem;
+        font-size: 0.8rem;
+        line-height: 1.45;
+        color: #94a3b8;
+      }
+      .fraith-boot-btn {
+        margin-top: 1rem;
+        display: none;
+        background: linear-gradient(135deg, #a855f7, #22d3ee);
+        color: #fff;
+        border: none;
+        border-radius: 0.75rem;
+        padding: 0.6rem 1.1rem;
+        font-size: 0.8rem;
+        font-weight: 700;
+        cursor: pointer;
+      }
+    </style>
   </head>
   <body class="bg-bg text-text antialiased selection:bg-primary/30 selection:text-text">
-    <div id="root"></div>
+    <div id="root">
+      <div class="fraith-boot-wrap">
+        <div class="fraith-boot-card">
+          <div class="fraith-boot-title">FRAITH<span>.SYSTEM</span></div>
+          <div id="fraith-boot-status" class="fraith-boot-sub">
+            Загрузка модулей портала...
+          </div>
+          <button
+            id="fraith-boot-retry"
+            type="button"
+            class="fraith-boot-btn"
+            onclick="window.location.reload()"
+          >
+            Повторить загрузку
+          </button>
+        </div>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

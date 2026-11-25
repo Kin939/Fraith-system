@@ -16,10 +16,12 @@ export function useAuth() {
     let cancelled = false;
     (async () => {
       try {
-        const res = await apiFetch<{ user: AuthUser }>('/api/auth/me');
+        const res = await apiFetch<{ user: AuthUser }>('/api/auth/me', { timeoutMs: 8000 });
         if (!cancelled) {
           setUser(res.user);
-          await bootstrapCampaignData();
+          await bootstrapCampaignData().catch(() => {
+            // Non-fatal on slow/throttled mobile links; individual tabs can still retry
+          });
         }
       } catch {
         if (!cancelled) {
