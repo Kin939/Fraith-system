@@ -25,7 +25,14 @@ import {
 } from 'lucide-react';
 import { apiFetch, uploadImageAsset } from '../../lib/api';
 import { resolveImageUrl } from '../../lib/artwork';
-import { DND_CLASS_LABELS_RU, MAGIC_SCHOOL_LABELS_RU } from '../../lib/lss';
+import {
+  DND_CLASS_LABELS_RU,
+  DND_HOMEBREW_CLASS_BY_KEY,
+  DND_HOMEBREW_CLASSES_META,
+  DND_OFFICIAL_CLASS_LABELS_RU,
+  MAGIC_SCHOOL_LABELS_RU,
+  normalizeDndClass,
+} from '../../lib/lss';
 import {
   ABILITY_META,
   AbilityCode,
@@ -3709,38 +3716,89 @@ const HeroIdentityModal: React.FC<HeroIdentityModalProps> = ({ sheet, onClose, o
 
           <div>
             <label className="block text-xs text-muted mb-1">Класс</label>
-            <select
-              value={charClass in DND_CLASS_LABELS_RU ? charClass : 'custom'}
-              onChange={(e) => {
-                if (e.target.value !== 'custom') setCharClass(e.target.value);
-              }}
-              className="anime-input w-full text-xs"
-            >
-              {Object.entries(DND_CLASS_LABELS_RU).map(([en, ru]) => (
-                <option key={en} value={en}>
-                  {ru}
-                </option>
-              ))}
-              <option value="custom">Свой / мультикласс...</option>
-            </select>
-            {!(charClass in DND_CLASS_LABELS_RU) && (
-              <input
-                value={charClass}
-                onChange={(e) => setCharClass(e.target.value)}
-                placeholder="Например: Alt Воин"
-                className="anime-input w-full text-xs mt-1.5"
-              />
-            )}
+            {(() => {
+              const normCls = normalizeDndClass(charClass);
+              const matchedKey =
+                charClass in DND_CLASS_LABELS_RU
+                  ? charClass
+                  : normCls && normCls in DND_CLASS_LABELS_RU && !charClass.includes('/')
+                    ? normCls
+                    : 'custom';
+              const hbMeta = matchedKey !== 'custom' ? DND_HOMEBREW_CLASS_BY_KEY[matchedKey] : undefined;
+
+              return (
+                <>
+                  <select
+                    value={matchedKey}
+                    onChange={(e) => {
+                      if (e.target.value === 'custom') {
+                        setCharClass('');
+                      } else {
+                        setCharClass(e.target.value);
+                      }
+                    }}
+                    className="anime-input w-full text-xs"
+                  >
+                    <optgroup label="Официальные классы (D&D 5e)">
+                      {Object.entries(DND_OFFICIAL_CLASS_LABELS_RU).map(([en, ru]) => (
+                        <option key={en} value={en}>
+                          {ru}
+                        </option>
+                      ))}
+                    </optgroup>
+                    <optgroup label="Homebrew классы (dnd.su — 15 классов)">
+                      {DND_HOMEBREW_CLASSES_META.map((hb) => (
+                        <option key={hb.key} value={hb.key}>
+                          {hb.labelRu} (HB • {hb.source})
+                        </option>
+                      ))}
+                    </optgroup>
+                    <option value="custom">Свой / мультикласс...</option>
+                  </select>
+                  {hbMeta && (
+                    <a
+                      href={hbMeta.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1 mt-1 text-[11px] text-purple-300 hover:text-accent underline decoration-dotted"
+                    >
+                      Открыть описание класса «{hbMeta.labelRu}» на dnd.su ↗
+                    </a>
+                  )}
+                  {matchedKey === 'custom' && (
+                    <input
+                      value={charClass}
+                      onChange={(e) => setCharClass(e.target.value)}
+                      placeholder="Например: Магус 5 / Колдун 2"
+                      className="anime-input w-full text-xs mt-1.5"
+                    />
+                  )}
+                </>
+              );
+            })()}
           </div>
 
           <div>
             <label className="block text-xs text-muted mb-1">Подкласс</label>
             <input
+              list="hero-subclass-suggestions"
               value={subclass}
               onChange={(e) => setSubclass(e.target.value)}
-              placeholder="Ронин / Мастер боевых искусств..."
+              placeholder="Орден Демиургов / Мастер боевых искусств..."
               className="anime-input w-full text-xs"
             />
+            {(() => {
+              const normCls = normalizeDndClass(charClass);
+              const hbMeta = normCls ? DND_HOMEBREW_CLASS_BY_KEY[normCls] : undefined;
+              if (!hbMeta || hbMeta.archetypes.length === 0) return null;
+              return (
+                <datalist id="hero-subclass-suggestions">
+                  {hbMeta.archetypes.map((arch) => (
+                    <option key={arch} value={arch} />
+                  ))}
+                </datalist>
+              );
+            })()}
           </div>
 
           <div>

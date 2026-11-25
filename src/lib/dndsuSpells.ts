@@ -290,10 +290,19 @@ export function filterAndSortDndsuSpells(
 
     if (filters.classes.length > 0) {
       let fClassIds = sp.fClass;
-      if (!fClassIds) {
-        fClassIds = (sp.classes || [])
-          .map((cl) => CANONICAL_TO_DNDSU_CLASS_ID[normalizeDndClass(cl) || ''])
-          .filter((x): x is number => Boolean(x));
+      if (!fClassIds || fClassIds.length === 0) {
+        const derived = new Set<number>();
+        for (const cl of sp.classes || []) {
+          const cid = CANONICAL_TO_DNDSU_CLASS_ID[normalizeDndClass(cl) || ''];
+          if (cid) derived.add(cid);
+        }
+        if (sp.subclasses) {
+          for (const m of sp.subclasses.matchAll(/\(([^)]+)\)/g)) {
+            const cid = CANONICAL_TO_DNDSU_CLASS_ID[normalizeDndClass(m[1]) || ''];
+            if (cid) derived.add(cid);
+          }
+        }
+        fClassIds = Array.from(derived);
       }
       const allowedIds = filters.disableTasha
         ? fClassIds

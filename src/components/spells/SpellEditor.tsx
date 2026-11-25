@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
 import { FileUp, Plus, Save, Sparkles, Trash2 } from 'lucide-react';
 import { apiFetch } from '../../lib/api';
-import { MAGIC_SCHOOL_LABELS_RU } from '../../lib/lss';
+import { DND_HOMEBREW_CLASSES_META, MAGIC_SCHOOL_LABELS_RU } from '../../lib/lss';
 import { useCampaignStore } from '../../lib/store';
 import type { Spell } from '../../lib/types';
 
-const ALL_CLASSES = [
+const OFFICIAL_CLASSES = [
   'волшебник',
   'бард',
   'друид',
@@ -20,6 +20,8 @@ const ALL_CLASSES = [
   'монах',
   'плут',
 ];
+
+const HOMEBREW_CLASSES = DND_HOMEBREW_CLASSES_META.map((c) => c.labelLower);
 const ALL_SCHOOLS = [
   'Воплощение',
   'Вызов',
@@ -329,26 +331,55 @@ export const SpellEditor: React.FC = () => {
             </div>
           </div>
 
-          <div>
-            <label className="block text-xs text-muted mb-1.5">Доступные классы *</label>
-            <div className="flex flex-wrap gap-2">
-              {ALL_CLASSES.map((cls) => {
-                const active = selectedClasses.includes(cls);
-                return (
-                  <button
-                    key={cls}
-                    type="button"
-                    onClick={() => toggleClass(cls)}
-                    className={`px-3 py-1 rounded-xl text-xs font-medium border transition-colors ${
-                      active
-                        ? 'bg-primary/25 border-primary text-text'
-                        : 'bg-bg/50 border-border text-muted'
-                    }`}
-                  >
-                    {cls}
-                  </button>
-                );
-              })}
+          <div className="space-y-2.5">
+            <label className="block text-xs text-muted">Доступные классы *</label>
+
+            <div>
+              <div className="text-[11px] text-muted mb-1">Официальные классы (D&amp;D 5e):</div>
+              <div className="flex flex-wrap gap-1.5">
+                {OFFICIAL_CLASSES.map((cls) => {
+                  const active = selectedClasses.includes(cls);
+                  return (
+                    <button
+                      key={cls}
+                      type="button"
+                      onClick={() => toggleClass(cls)}
+                      className={`px-2.5 py-1 rounded-xl text-xs font-medium border transition-colors ${
+                        active
+                          ? 'bg-primary/25 border-primary text-text'
+                          : 'bg-bg/50 border-border text-muted hover:text-text'
+                      }`}
+                    >
+                      {cls}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div>
+              <div className="text-[11px] text-purple-300/90 mb-1">
+                Homebrew классы (dnd.su — все 15 классов):
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {HOMEBREW_CLASSES.map((cls) => {
+                  const active = selectedClasses.includes(cls);
+                  return (
+                    <button
+                      key={cls}
+                      type="button"
+                      onClick={() => toggleClass(cls)}
+                      className={`px-2.5 py-1 rounded-xl text-xs font-medium border transition-colors ${
+                        active
+                          ? 'bg-purple-500/25 border-purple-400 text-purple-100'
+                          : 'bg-bg/50 border-border text-muted hover:text-text'
+                      }`}
+                    >
+                      {cls} <span className="text-[9px] opacity-75">HB</span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           </div>
 
