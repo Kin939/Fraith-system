@@ -40,6 +40,8 @@ CREATE TABLE IF NOT EXISTS character_profiles (
   subclass TEXT NOT NULL DEFAULT '',
   race TEXT NOT NULL DEFAULT '',
   level INTEGER NOT NULL DEFAULT 0,
+  experience_current INTEGER NOT NULL DEFAULT 0,
+  experience_max INTEGER NOT NULL DEFAULT 0,
   max_spells INTEGER NOT NULL DEFAULT 0,
   lss_embed_url TEXT NOT NULL DEFAULT 'https://longstoryshort.app/iframe/characters/list/',
   coins_cp INTEGER NOT NULL DEFAULT 0,

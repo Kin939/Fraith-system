@@ -44,12 +44,12 @@ export const InspirationCounter: React.FC<InspirationCounterProps> = ({ points, 
         </div>
         <div>
           <div className="text-xs uppercase tracking-widest text-accent font-bold">
-            Общий пул вдохновений отряда
+            Общие вдохновения
           </div>
           <div className="flex items-baseline gap-2 mt-0.5">
             <span className="font-anime font-extrabold text-3xl text-text">{points}</span>
             <span className="text-xs text-muted">
-              очков доступно без верхнего лимита • тратится персонально каждым игроком на покупку талантов
+              очков доступно без верхнего лимита • открывает общие таланты для всей группы
             </span>
           </div>
         </div>

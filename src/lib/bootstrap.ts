@@ -53,6 +53,28 @@ async function ensureTalentTreeColumns(db: D1Database): Promise<void> {
   }
 }
 
+async function ensureCharacterProfileColumns(db: D1Database): Promise<void> {
+  const { results } = await db
+    .prepare(`PRAGMA table_info(character_profiles)`)
+    .all<{ name: string }>();
+  const existingCols = new Set(results.map((r) => r.name));
+
+  if (!existingCols.has('experience_current')) {
+    await db
+      .prepare(
+        `ALTER TABLE character_profiles ADD COLUMN experience_current INTEGER NOT NULL DEFAULT 0`
+      )
+      .run();
+  }
+  if (!existingCols.has('experience_max')) {
+    await db
+      .prepare(
+        `ALTER TABLE character_profiles ADD COLUMN experience_max INTEGER NOT NULL DEFAULT 0`
+      )
+      .run();
+  }
+}
+
 async function ensureSpellsDndsuColumns(db: D1Database): Promise<void> {
   const { results } = await db
     .prepare(`PRAGMA table_info(spells)`)
@@ -113,6 +135,8 @@ async function runBootstrap(db: D1Database): Promise<void> {
       subclass TEXT NOT NULL DEFAULT '',
       race TEXT NOT NULL DEFAULT '',
       level INTEGER NOT NULL DEFAULT 0,
+      experience_current INTEGER NOT NULL DEFAULT 0,
+      experience_max INTEGER NOT NULL DEFAULT 0,
       max_spells INTEGER NOT NULL DEFAULT 0,
       lss_embed_url TEXT NOT NULL DEFAULT 'https://longstoryshort.app/iframe/characters/list/',
       coins_cp INTEGER NOT NULL DEFAULT 0,
@@ -236,6 +260,7 @@ async function runBootstrap(db: D1Database): Promise<void> {
   await db.batch(schemaStatements.map((sql) => db.prepare(sql)));
   await ensureUsersColumns(db);
   await ensureTalentTreeColumns(db);
+  await ensureCharacterProfileColumns(db);
   await ensureSpellsDndsuColumns(db);
 
   const existingUser = await db

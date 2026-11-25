@@ -1,77 +1,114 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  ArrowUpCircle,
   BookOpen,
   Check,
   Coins,
+  Crown,
   Dices,
   Edit3,
-  Eye,
-  Flame,
-  Heart,
+  ExternalLink,
+  Image as ImageIcon,
   Moon,
   Pencil,
   Plus,
   ScrollText,
+  Settings2,
   Shield,
-  Skull,
   Sparkles,
-  Star,
   Sun,
   Swords,
   Trash2,
   Upload,
   UserPlus,
   X,
-  Zap,
 } from 'lucide-react';
-import { apiFetch } from '../../lib/api';
-import { DND_CLASS_LABELS_RU } from '../../lib/lss';
+import { apiFetch, uploadImageAsset } from '../../lib/api';
+import { resolveImageUrl } from '../../lib/artwork';
+import { DND_CLASS_LABELS_RU, MAGIC_SCHOOL_LABELS_RU } from '../../lib/lss';
 import {
   ABILITY_META,
   AbilityCode,
   createBlankLssStructures,
-  DEFAULT_EDITABLE_TEXT_KEYS,
   DND_CONDITIONS_RU,
   ensureObj,
   formatSigned,
+  getXpProgressInfo,
+  LssManualSpellRow,
+  LssParsedSheet,
   LssParsedWeapon,
+  LssRichParagraph,
   mutateLssRawJson,
   packLssStructures,
   parseFullLssSheet,
   plainTextToLssDoc,
-  PROF_FLAG_LABELS_RU,
   RollMode,
   rollD20WithModifier,
   rollDamageExpression,
   setLssField,
-  SKILL_META,
-  TEXT_BLOCK_LABELS_RU,
 } from '../../lib/lssSheetParser';
 import { useCampaignStore } from '../../lib/store';
-import type { CharacterProfile } from '../../lib/types';
+import type { CharacterProfile, JournalEntry, LearnedSpellRecord } from '../../lib/types';
+import { JournalEditor } from './JournalEditor';
 
 interface LssNativeSheetProps {
   profile: CharacterProfile;
+  journal: JournalEntry | null;
+  learnedSpells: LearnedSpellRecord[];
   canEdit: boolean;
+  isDm: boolean;
   onQuickUploadFile: (file: File) => Promise<void>;
   onOpenImportModal: () => void;
   onSyncJson: (lssJson: unknown) => Promise<void>;
+  onProfileUpdated?: (profile: CharacterProfile) => void;
 }
 
-type SheetSubTab = 'stats' | 'combat' | 'magic' | 'features';
+type ClassicPageId = 'page1' | 'page2' | 'page3';
 
 const HIT_DICE_OPTIONS = ['d6', 'd8', 'd10', 'd12'] as const;
+const SIZE_OPTIONS = [
+  'Крошечный',
+  'Маленький',
+  'Средний',
+  'Большой',
+  'Огромный',
+  'Громадный',
+] as const;
+
+const STANDARD_HANDLED_TEXT_KEYS = new Set([
+  'traits',
+  'features',
+  'attacks',
+  'feats',
+  'prof',
+  'allies',
+  'quests',
+  'notes-1',
+  'items',
+  'appearance',
+  'personality',
+  'ideals',
+  'bonds',
+  'flaws',
+  'background',
+  'equipment',
+]);
 
 export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
   profile,
+  journal,
+  learnedSpells,
   canEdit,
+  isDm,
   onQuickUploadFile,
   onOpenImportModal,
   onSyncJson,
+  onProfileUpdated,
 }) => {
   const pushToast = useCampaignStore((s) => s.pushToast);
+  const jumpToSpellInCatalog = useCampaignStore((s) => s.jumpToSpellInCatalog);
+  const updateLearnedSpellsInStore = useCampaignStore((s) => s.updateLearnedSpellsInStore);
 
-  // Local optimistic raw JSON so edits feel instantaneous (0ms lag)
   const [localRawJson, setLocalRawJson] = useState<string | null>(profile.rawLssJson ?? null);
   const [dirtySaving, setDirtySaving] = useState(false);
   const debounceTimerRef = useRef<number | null>(null);
@@ -115,13 +152,14 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
         if (payload) {
           void onSyncJson(payload).finally(() => setDirtySaving(false));
         }
-      }, 500);
+      }, 480);
     }
   };
 
-  // UI state
-  const [subTab, setSubTab] = useState<SheetSubTab>('stats');
+  // Classic 3-page navigation & controls
+  const [page, setPage] = useState<ClassicPageId>('page1');
   const [rollMode, setRollMode] = useState<RollMode>('normal');
+  const [diceDrawerOpen, setDiceDrawerOpen] = useState(false);
   const [customFormula, setCustomFormula] = useState('');
   const [editUnlocked, setEditUnlocked] = useState(false);
   const [heroModalOpen, setHeroModalOpen] = useState(false);
@@ -129,7 +167,13 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
   const [hpDeltaInput, setHpDeltaInput] = useState('');
   const [dragOver, setDragOver] = useState(false);
 
-  // Weapon form state
+  // DM-only XP Bar state
+  const [xpInput, setXpInput] = useState('');
+  const [xpMaxInput, setXpMaxInput] = useState('');
+  const [xpSettingsOpen, setXpSettingsOpen] = useState(false);
+  const [xpSaving, setXpSaving] = useState(false);
+
+  // Weapon modal/inline form
   const [weaponFormOpen, setWeaponFormOpen] = useState(false);
   const [editingWeaponId, setEditingWeaponId] = useState<string | null>(null);
   const [wName, setWName] = useState('');
@@ -140,22 +184,41 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
   const [wDmgType, setWDmgType] = useState('рубящий');
   const [wNotes, setWNotes] = useState('');
 
-  // Resource form state
+  // Resource inline form
   const [resFormOpen, setResFormOpen] = useState(false);
   const [rName, setRName] = useState('');
-  const [rMax, setRMax] = useState(3);
-  const [rRest, setRRest] = useState<'none' | 'short' | 'long'>('long');
+  const [rMax, setRMax] = useState(2);
+  const [rRest, setRRest] = useState<'none' | 'short' | 'long'>('short');
 
-  // Spell slots config state
+  // Spell slots & manual spell row form
   const [configureSlotsOpen, setConfigureSlotsOpen] = useState(false);
+  const [manualSpellFormOpen, setManualSpellFormOpen] = useState(false);
+  const [msLevel, setMsLevel] = useState(0);
+  const [msName, setMsName] = useState('');
+  const [msTime, setMsTime] = useState('1 д.');
+  const [msRange, setMsRange] = useState('60 фт.');
+  const [msConc, setMsConc] = useState(false);
+  const [msRitual, setMsRitual] = useState(false);
+  const [msMat, setMsMat] = useState(false);
+  const [msNotes, setMsNotes] = useState('');
 
-  // Text block inline editing state
-  const [editingBlockKey, setEditingBlockKey] = useState<string | null>(null);
-  const [editingBlockText, setEditingBlockText] = useState('');
-  const [newSectionKey, setNewSectionKey] = useState<string>('features');
-
-  // New Attunement input
+  // Coins manager & attunement
+  const [coinManageOpen, setCoinManageOpen] = useState(false);
+  const [coinDelta, setCoinDelta] = useState('');
+  const [coinType, setCoinType] = useState<'gp' | 'sp' | 'cp' | 'ep' | 'pp'>('gp');
   const [newAttunement, setNewAttunement] = useState('');
+
+  // Portrait uploader
+  const [portraitEditOpen, setPortraitEditOpen] = useState(false);
+  const [portraitUrlDraft, setPortraitUrlDraft] = useState('');
+  const [uploadingPortrait, setUploadingPortrait] = useState(false);
+
+  // Generic rich-text block modal editor
+  const [editingBlock, setEditingBlock] = useState<{
+    key: string;
+    title: string;
+    text: string;
+  } | null>(null);
 
   const sendRollToTable = async (params: {
     title: string;
@@ -239,10 +302,46 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
     setHeroModalOpen(true);
     await onSyncJson(blank);
     pushToast({
-      title: 'Создан новый лист персонажа',
-      message: 'Заполните имя, класс, характеристики, навыки и снаряжение прямо на сайте.',
+      title: 'Создан классический лист персонажа',
+      message: 'Заполните имя, класс, характеристики и снаряжение прямо в листе.',
       variant: 'success',
     });
+  };
+
+  // DM-only Experience Point handler
+  const handleDmUpdateXp = async (payload: {
+    delta?: number;
+    setXp?: number;
+    setMaxXp?: number | null;
+    levelUp?: boolean;
+  }) => {
+    if (!isDm) return;
+    setXpSaving(true);
+    try {
+      const res = await apiFetch<{ profile: CharacterProfile }>(
+        `/api/dm/characters/${profile.playerId}/xp`,
+        {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        }
+      );
+      onProfileUpdated?.(res.profile);
+      if (payload.levelUp) {
+        pushToast({
+          title: `★ Уровень повышен до ${res.profile.level}!`,
+          message: `Герой игрока #${profile.playerId} достиг ${res.profile.level} уровня.`,
+          variant: 'success',
+        });
+      }
+    } catch (err) {
+      pushToast({
+        title: 'Ошибка изменения опыта',
+        message: err instanceof Error ? err.message : 'Доступно только Мастеру',
+        variant: 'error',
+      });
+    } finally {
+      setXpSaving(false);
+    }
   };
 
   const adjustHp = (delta: number) => {
@@ -303,7 +402,6 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
   const handleShortRest = () => {
     if (!canEdit || !sheet) return;
     commitMutation((s) => {
-      // Restore short-rest resources
       const resObj = ensureObj(s, 'resources');
       for (const val of Object.values(resObj)) {
         if (val && typeof val === 'object') {
@@ -314,7 +412,6 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
           }
         }
       }
-      // Restore Warlock Pact Magic slots
       const pact = ensureObj(s, 'spellsPact');
       for (let lvl = 1; lvl <= 9; lvl++) {
         const entry = pact[`slots-${lvl}`];
@@ -345,7 +442,6 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
       );
       vit.deathSaves = { success: 0, fail: 0 };
 
-      // Restore all spell slots & pact slots
       const sp = ensureObj(s, 'spells');
       for (let lvl = 1; lvl <= 9; lvl++) {
         const entry = sp[`slots-${lvl}`];
@@ -361,7 +457,6 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
         }
       }
 
-      // Restore short & long rest resources
       const resObj = ensureObj(s, 'resources');
       for (const val of Object.values(resObj)) {
         if (val && typeof val === 'object') {
@@ -376,7 +471,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
 
     pushToast({
       title: 'Длинный отдых завершён',
-      message: 'Хиты, ячейки заклинаний, половина костей хитов и ресурсы полностью восстановлены!',
+      message: 'Хиты, ячейки заклинаний, кости хитов и ресурсы восстановлены!',
       variant: 'success',
     });
   };
@@ -505,11 +600,98 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
       };
     }, true);
     setRName('');
-    setRMax(3);
+    setRMax(2);
     setResFormOpen(false);
   };
 
-  // Empty state when no character exists yet: Create from Scratch OR Import LSS `.json`
+  const handleAddManualSpell = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!msName.trim()) return;
+    const entry: LssManualSpellRow = {
+      id: `msp-${Date.now()}`,
+      level: msLevel,
+      name: msName.trim(),
+      castingTime: msTime.trim() || '1 д.',
+      range: msRange.trim() || '60 фт.',
+      concentration: msConc,
+      ritual: msRitual,
+      material: msMat,
+      notes: msNotes.trim(),
+    };
+    commitMutation((s) => {
+      const list = Array.isArray(s.manualSpells) ? [...s.manualSpells] : [];
+      list.push(entry);
+      s.manualSpells = list;
+    }, true);
+    setMsName('');
+    setMsNotes('');
+    setManualSpellFormOpen(false);
+  };
+
+  const handleUnlearnCatalogSpell = async (spellId: number, spellName: string) => {
+    try {
+      const res = await apiFetch<{ learnedSpells: LearnedSpellRecord[] }>(
+        `/api/spells/${spellId}/learn`,
+        { method: 'DELETE' }
+      );
+      updateLearnedSpellsInStore(profile.playerId, res.learnedSpells);
+      pushToast({
+        title: 'Заклинание убрано из списка',
+        message: `«${spellName}» удалено из изученных.`,
+        variant: 'info',
+      });
+    } catch (err) {
+      pushToast({
+        title: 'Не удалось удалить заклинание',
+        message: err instanceof Error ? err.message : 'Ошибка запроса',
+        variant: 'error',
+      });
+    }
+  };
+
+  const handlePortraitFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingPortrait(true);
+    try {
+      if (isDm) {
+        const res = await uploadImageAsset(file, 'avatars');
+        const url = resolveImageUrl(res.key, '⚔');
+        commitMutation((s) => {
+          s.avatar = { webp: url, jpeg: url };
+        }, true);
+      } else {
+        // Compress client-side to compact Data URL so any player can set a portrait directly!
+        const dataUrl = await resizeImageFileToDataUrl(file, 480, 0.82);
+        commitMutation((s) => {
+          s.avatar = { webp: dataUrl, jpeg: dataUrl };
+        }, true);
+      }
+      setPortraitEditOpen(false);
+      pushToast({
+        title: 'Портрет обновлён',
+        message: 'Изображение персонажа сохранено в листе.',
+        variant: 'success',
+      });
+    } catch (err) {
+      pushToast({
+        title: 'Ошибка загрузки портрета',
+        message: err instanceof Error ? err.message : 'Попробуйте другой файл',
+        variant: 'error',
+      });
+    } finally {
+      setUploadingPortrait(false);
+      e.target.value = '';
+    }
+  };
+
+  const openBlockEditor = (key: string, title: string) => {
+    if (!canEdit || !sheet) return;
+    const currentText = sheet.textByKey[key]?.plainText ?? '';
+    setEditingBlock({ key, title, text: currentText });
+  };
+
+  // Empty Slot View
   if (!sheet) {
     return (
       <div
@@ -524,23 +706,23 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
           const f = e.dataTransfer.files?.[0];
           if (f) void onQuickUploadFile(f);
         }}
-        className={`p-8 sm:p-12 text-center space-y-5 transition-colors min-h-[430px] flex flex-col items-center justify-center ${
+        className={`p-8 sm:p-14 text-center space-y-5 transition-colors min-h-[440px] flex flex-col items-center justify-center ${
           dragOver ? 'bg-primary/15' : 'bg-bg/40'
         }`}
       >
-        <div className="w-16 h-16 rounded-3xl bg-primary/15 border border-primary/35 flex items-center justify-center text-primary shadow-neon">
+        <div className="w-16 h-16 rounded-3xl bg-primary/15 border border-primary/40 flex items-center justify-center text-primary shadow-neon">
           <ScrollText className="w-8 h-8" />
         </div>
 
         <div className="max-w-lg space-y-2">
           <h3 className="font-anime font-extrabold text-xl">
-            Интерактивный лист персонажа
+            Классический лист персонажа D&amp;D 5e
           </h3>
           <p className="text-xs sm:text-sm text-muted leading-relaxed">
-            Создайте персонажа с нуля прямо здесь или загрузите готовый файл{' '}
-            <code className="text-accent">.json</code> из Long Story Short. Вам доступны все
-            характеристики, 18 навыков с компетентностью, спасброски, оружие, ячейки заклинаний,
-            ресурсы, инвентарь и броски кубиков в общий лог стола.
+            Создайте героя с нуля прямо на сайте или перетащите готовый файл{' '}
+            <code className="text-accent">.json</code> из Long Story Short. Все 3 страницы
+            классического чарника (характеристики с навыками, бой, портрет, магия, снаряжение и
+            броски кубиков) откроются в стиле нашего сайта.
           </p>
         </div>
 
@@ -575,77 +757,357 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
               onClick={onOpenImportModal}
               className="px-4 py-2.5 rounded-xl bg-surface border border-border hover:border-primary text-xs font-medium text-muted hover:text-text transition-colors"
             >
-              Вставить JSON
+              Вставить текст JSON
             </button>
           </div>
         ) : (
           <div className="text-xs text-muted">
-            В этом слоте ещё не создан персонаж. Включите режим правки выше или загрузите{' '}
-            <code>.json</code> файл.
+            Игрок ещё не создал персонажа. Нажмите «Правка Мастером» выше, чтобы заполнить или
+            импортировать лист за игрока.
           </div>
         )}
       </div>
     );
   }
 
+  const effectiveXp = profile.experienceCurrent ?? sheet.experience ?? 0;
+  const xpInfo = getXpProgressInfo(sheet.level, effectiveXp, profile.experienceMax ?? 0);
   const hpRatio = Math.min(
     100,
-    Math.max(0, Math.round((sheet.combat.hpCurrent / Math.max(1, sheet.combat.hpMaxComputed)) * 100))
+    Math.max(
+      0,
+      Math.round((sheet.combat.hpCurrent / Math.max(1, sheet.combat.hpMaxComputed)) * 100)
+    )
   );
 
-  return (
-    <div className="p-4 sm:p-5 space-y-4">
-      {/* Row 1: Roll Mode Bar + Quick Dice + Edit Mode Switch */}
-      <div className="p-2.5 rounded-2xl bg-bg/75 border border-border flex flex-wrap items-center justify-between gap-2.5">
-        {/* Normal / Advantage / Disadvantage */}
-        <div className="flex items-center gap-1 bg-surface/80 p-1 rounded-xl border border-border">
-          {(
-            [
-              { id: 'normal', label: 'Обычный', color: 'anime-btn-primary' },
-              {
-                id: 'advantage',
-                label: 'Преимущество',
-                color: 'bg-emerald-500/25 text-emerald-200 border border-emerald-500/50',
-              },
-              {
-                id: 'disadvantage',
-                label: 'Помеха',
-                color: 'bg-rose-500/25 text-rose-200 border border-rose-500/50',
-              },
-            ] as const
-          ).map((m) => (
+  // Extra custom text blocks not already placed in fixed classic frames
+  const extraCustomBlocks = sheet.textBlocks.filter(
+    (b) => !STANDARD_HANDLED_TEXT_KEYS.has(b.key)
+  );
+
+  const renderAbilityWithSkillsCard = (code: AbilityCode) => {
+    const ab = sheet.abilities[code];
+    const abilitySkills = sheet.skills.filter((s) => s.stat === code);
+
+    return (
+      <div key={code} className="sheet-frame overflow-hidden">
+        <div className="sheet-frame__header">
+          <span>{ab.fullRu}</span>
+          {canEdit && (
             <button
-              key={m.id}
               type="button"
-              onClick={() => setRollMode(m.id)}
-              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all ${
-                rollMode === m.id ? m.color : 'text-muted hover:text-text'
-              }`}
+              onClick={() => setEditUnlocked((v) => !v)}
+              className="text-muted hover:text-primary transition-colors"
+              title="Изменить значение характеристики"
             >
-              {m.label}
+              <Settings2 className="w-3.5 h-3.5" />
             </button>
-          ))}
+          )}
         </div>
 
-        {/* Quick Polyhedral Dice + Custom Formula */}
-        <div className="flex items-center gap-1 flex-wrap">
-          {([4, 6, 8, 10, 12, 20, 100] as const).map((sides) => (
+        <div className="p-3 space-y-2.5">
+          {/* Classic Modifier Circle + Score Pill */}
+          <div className="flex items-center justify-center gap-2.5">
             <button
-              key={sides}
               type="button"
-              onClick={() => {
-                if (sides === 20) {
-                  handleD20Roll('Бросок к20', 0);
-                } else {
-                  handleDamageRoll(`Бросок к${sides}`, `1к${sides}`);
-                }
-              }}
-              className="px-2 py-1 rounded-lg bg-surface hover:bg-primary/20 border border-border hover:border-primary/50 text-[11px] font-mono font-bold text-muted hover:text-primary transition-colors"
-              title={`Бросить 1к${sides}`}
+              onClick={() => handleD20Roll(`Проверка: ${ab.fullRu}`, ab.checkBonus)}
+              className="w-14 h-14 rounded-full bg-surface border-2 border-primary/65 hover:border-accent shadow-neon flex flex-col items-center justify-center transition-transform hover:scale-105"
+              title={`Бросить проверку ${ab.fullRu} (1к20${formatSigned(ab.checkBonus)})`}
             >
-              к{sides}
+              <span className="font-anime font-extrabold text-xl leading-none text-text">
+                {formatSigned(ab.mod)}
+              </span>
+              <span className="text-[8px] uppercase tracking-wider text-muted mt-0.5">мод</span>
             </button>
-          ))}
+
+            <div className="flex flex-col items-center">
+              {editUnlocked && canEdit ? (
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      commitMutation((s) => {
+                        const st = ensureObj(s, 'stats');
+                        const cur = ensureObj(st, code);
+                        cur.name = code;
+                        cur.score = Math.max(1, ab.baseScore - 1);
+                      })
+                    }
+                    className="w-5 h-6 rounded bg-surface border border-border text-xs font-bold hover:border-primary"
+                  >
+                    -
+                  </button>
+                  <input
+                    type="number"
+                    min={1}
+                    max={30}
+                    value={ab.baseScore}
+                    onChange={(e) =>
+                      commitMutation((s) => {
+                        const st = ensureObj(s, 'stats');
+                        const cur = ensureObj(st, code);
+                        cur.name = code;
+                        cur.score = Math.min(30, Math.max(1, Number(e.target.value) || 10));
+                      })
+                    }
+                    className="anime-input w-12 py-0.5 px-1 text-center font-anime font-extrabold text-sm"
+                  />
+                  <button
+                    type="button"
+                    onClick={() =>
+                      commitMutation((s) => {
+                        const st = ensureObj(s, 'stats');
+                        const cur = ensureObj(st, code);
+                        cur.name = code;
+                        cur.score = Math.min(30, ab.baseScore + 1);
+                      })
+                    }
+                    className="w-5 h-6 rounded bg-surface border border-border text-xs font-bold hover:border-primary"
+                  >
+                    +
+                  </button>
+                </div>
+              ) : (
+                <div className="px-3 py-1.5 rounded-xl bg-surface/85 border border-border text-center min-w-[52px]">
+                  <div className="font-anime font-extrabold text-base leading-none text-accent">
+                    {ab.score}
+                  </div>
+                  <div className="text-[8px] uppercase tracking-wider text-muted mt-0.5">
+                    знач.
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Saving Throw + Nested Governing Skills (exact Classic LSS grouping!) */}
+          <div className="pt-2 border-t border-border/70 space-y-1">
+            {/* Save Row */}
+            <div
+              className={`flex items-center justify-between gap-1.5 px-2 py-1 rounded-lg text-xs transition-colors ${
+                ab.saveProf
+                  ? 'bg-accent/15 text-accent font-semibold border border-accent/30'
+                  : 'hover:bg-surface/70 text-text/90'
+              }`}
+            >
+              <div className="flex items-center gap-1.5 min-w-0">
+                <button
+                  type="button"
+                  disabled={!canEdit}
+                  onClick={() =>
+                    commitMutation((s) => {
+                      const sv = ensureObj(s, 'saves');
+                      const cur = ensureObj(sv, code);
+                      cur.name = code;
+                      cur.isProf = !ab.saveProf;
+                    }, true)
+                  }
+                  className="w-4 h-4 flex items-center justify-center shrink-0 hover:scale-125 transition-transform"
+                  title="Владение спасброском"
+                >
+                  {ab.saveProf ? '●' : '○'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleD20Roll(`Спасбросок: ${ab.fullRu}`, ab.saveBonus)}
+                  className="text-left truncate font-semibold hover:text-primary"
+                >
+                  Спасбросок
+                </button>
+              </div>
+              <button
+                type="button"
+                onClick={() => handleD20Roll(`Спасбросок: ${ab.fullRu}`, ab.saveBonus)}
+                className="font-mono font-bold text-xs shrink-0 hover:text-primary"
+              >
+                {formatSigned(ab.saveBonus)}
+              </button>
+            </div>
+
+            {/* Governing Skills */}
+            {abilitySkills.map((sk) => (
+              <div
+                key={sk.key}
+                className={`flex items-center justify-between gap-1.5 px-2 py-1 rounded-lg text-xs transition-colors ${
+                  sk.profLevel > 0
+                    ? 'bg-primary/12 text-text font-medium'
+                    : 'hover:bg-surface/65 text-muted hover:text-text'
+                }`}
+              >
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <button
+                    type="button"
+                    disabled={!canEdit}
+                    onClick={() =>
+                      commitMutation((s) => {
+                        const skObj = ensureObj(s, 'skills');
+                        const cur = ensureObj(skObj, sk.key);
+                        cur.name = sk.key;
+                        cur.baseStat = sk.stat;
+                        cur.isProf = ((sk.profLevel + 1) % 3) as 0 | 1 | 2;
+                      }, true)
+                    }
+                    className={`w-4 h-4 flex items-center justify-center shrink-0 hover:scale-125 transition-transform ${
+                      sk.profLevel === 2
+                        ? 'text-amber-300 font-bold'
+                        : sk.profLevel === 1
+                          ? 'text-primary font-bold'
+                          : 'text-muted/60'
+                    }`}
+                    title="Переключить: Нет (○) → Владение (●) → Компетентность (◆)"
+                  >
+                    {sk.profLevel === 2 ? '◆' : sk.profLevel === 1 ? '●' : '○'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleD20Roll(`Навык: ${sk.labelRu}`, sk.total)}
+                    className="text-left truncate hover:text-primary"
+                  >
+                    {sk.labelRu}
+                  </button>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => handleD20Roll(`Навык: ${sk.labelRu}`, sk.total)}
+                  className="font-mono font-bold text-xs text-text shrink-0 hover:text-accent"
+                >
+                  {formatSigned(sk.total)}
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div className="p-3 sm:p-5 space-y-4">
+      {/* Classic Page Switcher + Roll Mode + Compact Tools */}
+      <div className="flex flex-wrap items-center justify-between gap-2.5 pb-3 border-b border-border">
+        {/* 3 Classic Pages */}
+        <div className="flex items-center gap-1.5 overflow-x-auto">
+          {(
+            [
+              { id: 'page1', label: '1. Основа и Бой', icon: <Swords className="w-3.5 h-3.5" /> },
+              {
+                id: 'page2',
+                label: '2. Портрет и Заметки',
+                icon: <ImageIcon className="w-3.5 h-3.5" />,
+              },
+              {
+                id: 'page3',
+                label: `3. Магия и Снаряжение`,
+                icon: <Sparkles className="w-3.5 h-3.5" />,
+              },
+            ] as const
+          ).map((tab) => {
+            const active = page === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setPage(tab.id)}
+                className={`px-3.5 py-2 rounded-xl text-xs font-bold inline-flex items-center gap-1.5 whitespace-nowrap transition-all ${
+                  active
+                    ? 'anime-btn-primary'
+                    : 'bg-bg/75 border border-border text-muted hover:text-text hover:border-primary/40'
+                }`}
+              >
+                {tab.icon}
+                <span>{tab.label}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Roll Mode + Quick Dice Tray + Edit Numbers */}
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {dirtySaving && (
+            <span className="text-[10px] text-accent animate-pulse mr-1">Сохранение...</span>
+          )}
+
+          <div className="inline-flex items-center bg-bg/85 p-0.5 rounded-xl border border-border">
+            {(
+              [
+                { id: 'normal', label: '1к20', cls: 'bg-primary/25 text-text border-primary/50' },
+                {
+                  id: 'advantage',
+                  label: 'Преим.',
+                  cls: 'bg-emerald-500/25 text-emerald-200 border-emerald-500/50',
+                },
+                {
+                  id: 'disadvantage',
+                  label: 'Помеха',
+                  cls: 'bg-rose-500/25 text-rose-200 border-rose-500/50',
+                },
+              ] as const
+            ).map((m) => (
+              <button
+                key={m.id}
+                type="button"
+                onClick={() => setRollMode(m.id)}
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border border-transparent transition-all ${
+                  rollMode === m.id ? m.cls : 'text-muted hover:text-text'
+                }`}
+              >
+                {m.label}
+              </button>
+            ))}
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setDiceDrawerOpen((v) => !v)}
+            className={`px-2.5 py-1.5 rounded-xl border text-xs font-semibold inline-flex items-center gap-1 transition-colors ${
+              diceDrawerOpen
+                ? 'bg-accent/20 border-accent/50 text-accent'
+                : 'bg-bg/75 border-border text-muted hover:text-text'
+            }`}
+            title="Быстрые кубики к4..к100 и своя формула"
+          >
+            <Dices className="w-3.5 h-3.5" />
+            <span>Кубики</span>
+          </button>
+
+          {canEdit && (
+            <button
+              type="button"
+              onClick={() => setEditUnlocked((v) => !v)}
+              className={`px-3 py-1.5 rounded-xl border text-xs font-bold inline-flex items-center gap-1.5 transition-all ${
+                editUnlocked
+                  ? 'bg-amber-500/20 border-amber-400/60 text-amber-200'
+                  : 'bg-bg/75 border-border text-muted hover:text-text'
+              }`}
+              title="Редактировать числа характеристик, КД, скорости и максимума ХП прямо в ячейках"
+            >
+              <Edit3 className="w-3.5 h-3.5" />
+              <span>{editUnlocked ? 'Готово' : 'Править числа'}</span>
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Collapsible Polyhedral Dice Bar */}
+      {diceDrawerOpen && (
+        <div className="p-2.5 rounded-2xl bg-bg/85 border border-accent/35 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-[11px] text-muted px-1">Быстрый бросок:</span>
+            {([4, 6, 8, 10, 12, 20, 100] as const).map((sides) => (
+              <button
+                key={sides}
+                type="button"
+                onClick={() => {
+                  if (sides === 20) handleD20Roll('Бросок к20', 0);
+                  else handleDamageRoll(`Бросок к${sides}`, `1к${sides}`);
+                }}
+                className="px-2.5 py-1 rounded-lg bg-surface hover:bg-primary/20 border border-border hover:border-primary/50 text-xs font-mono font-bold text-text"
+              >
+                к{sides}
+              </button>
+            ))}
+          </div>
 
           <form
             onSubmit={(e) => {
@@ -654,1318 +1116,1404 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
               handleDamageRoll(`Формула (${customFormula.trim()})`, customFormula.trim());
               setCustomFormula('');
             }}
-            className="flex items-center gap-1 ml-1"
+            className="flex items-center gap-1.5"
           >
             <input
               value={customFormula}
               onChange={(e) => setCustomFormula(e.target.value)}
-              placeholder="2к6+3"
-              className="anime-input w-20 py-1 px-2 text-[11px] font-mono"
+              placeholder="Своя формула: 2к6+4"
+              className="anime-input w-40 py-1 px-2.5 text-xs font-mono"
             />
-            {customFormula.trim() && (
-              <button
-                type="submit"
-                className="px-2 py-1 rounded-lg bg-accent/20 border border-accent/40 text-accent text-[11px] font-bold"
-              >
-                🎲
-              </button>
-            )}
+            <button type="submit" className="anime-btn-primary px-3 py-1 text-xs">
+              Бросить
+            </button>
           </form>
         </div>
+      )}
 
-        {/* Edit Mode & Hero Settings */}
-        {canEdit && (
-          <div className="flex items-center gap-1.5">
-            {dirtySaving && (
-              <span className="text-[10px] text-accent animate-pulse mr-1">Сохранение...</span>
-            )}
-            <button
-              type="button"
-              onClick={() => setHeroModalOpen(true)}
-              className="px-2.5 py-1.5 rounded-xl bg-surface border border-border hover:border-primary text-[11px] font-semibold text-muted hover:text-text inline-flex items-center gap-1 transition-colors"
-              title="Имя, класс, уровень, раса, предыстория"
-            >
-              <Pencil className="w-3 h-3 text-primary" />
-              <span>Герой</span>
-            </button>
+      {/* ===================================================================== */}
+      {/* CLASSIC PAGE 1: IDENTITY + XP BAR + STATS/SKILLS + COMBAT & FEATURES  */}
+      {/* ===================================================================== */}
+      {page === 'page1' && (
+        <div className="space-y-4">
+          {/* Classic Top Header Strip */}
+          <div className="grid grid-cols-1 xl:grid-cols-12 gap-3 items-stretch">
+            {/* Left Identity Plaque (Name + Background / Class / Species / Subclass + Level Circle) */}
+            <div className="xl:col-span-5 sheet-frame p-3.5 flex items-center justify-between gap-3">
+              <div className="flex-1 min-w-0 space-y-2.5">
+                {/* Character Name */}
+                <div className="flex items-center justify-between gap-2 border-b border-border/80 pb-1.5">
+                  <div className="min-w-0">
+                    <div className="font-anime font-extrabold text-lg sm:text-xl text-text truncate">
+                      {sheet.name}
+                    </div>
+                    <div className="text-[9px] uppercase tracking-widest text-muted">
+                      Имя персонажа
+                    </div>
+                  </div>
+                  {canEdit && (
+                    <button
+                      type="button"
+                      onClick={() => setHeroModalOpen(true)}
+                      className="p-1.5 rounded-lg bg-surface border border-border hover:border-primary text-muted hover:text-primary shrink-0"
+                      title="Редактировать имя, класс, вид, подкласс и уровень"
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
 
-            <button
-              type="button"
-              onClick={() => setEditUnlocked((v) => !v)}
-              className={`px-3 py-1.5 rounded-xl text-[11px] font-bold inline-flex items-center gap-1.5 border transition-all ${
-                editUnlocked
-                  ? 'bg-amber-500/20 border-amber-400/60 text-amber-200 shadow-sm'
-                  : 'bg-surface border-border text-muted hover:text-text'
-              }`}
-              title="Включить редактирование чисел характеристик, формул КД, скорости и бонусов"
-            >
-              <Edit3 className="w-3 h-3" />
-              <span>{editUnlocked ? 'Правка: ВКЛ' : 'Править числа'}</span>
-            </button>
-          </div>
-        )}
-      </div>
+                {/* 2x2 Classic Fields: Background | Class / Species | Subclass */}
+                <div className="grid grid-cols-2 gap-x-3 gap-y-2">
+                  <div className="border-b border-border/60 pb-1 min-w-0">
+                    <div className="text-xs font-semibold text-text truncate">
+                      {sheet.background || '—'}
+                    </div>
+                    <div className="text-[9px] uppercase tracking-wider text-muted">
+                      Предыстория
+                    </div>
+                  </div>
+                  <div className="border-b border-border/60 pb-1 min-w-0">
+                    <div className="text-xs font-bold text-accent truncate">
+                      {sheet.classLabel || '—'}
+                    </div>
+                    <div className="text-[9px] uppercase tracking-wider text-muted">Класс</div>
+                  </div>
+                  <div className="border-b border-border/60 pb-1 min-w-0">
+                    <div className="text-xs font-semibold text-text truncate">
+                      {sheet.race || '—'}
+                    </div>
+                    <div className="text-[9px] uppercase tracking-wider text-muted">Вид / Раса</div>
+                  </div>
+                  <div className="border-b border-border/60 pb-1 min-w-0">
+                    <div className="text-xs font-semibold text-primary truncate">
+                      {sheet.subclass || '—'}
+                    </div>
+                    <div className="text-[9px] uppercase tracking-wider text-muted">Подкласс</div>
+                  </div>
+                </div>
+              </div>
 
-      {/* Row 2: Inspiration, Conditions, Exhaustion & Rests */}
-      <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-        <div className="flex items-center gap-2 flex-wrap">
-          {/* Heroic Inspiration Toggle */}
-          <button
-            type="button"
-            disabled={!canEdit}
-            onClick={() =>
-              commitMutation((s) => {
-                s.inspiration = !sheet.inspiration;
-              }, true)
-            }
-            className={`px-3 py-1.5 rounded-xl border font-bold inline-flex items-center gap-1.5 transition-all ${
-              sheet.inspiration
-                ? 'bg-amber-500/20 border-amber-400/60 text-amber-200'
-                : 'bg-bg/65 border-border text-muted hover:text-text'
-            }`}
-          >
-            <Star
-              className={`w-3.5 h-3.5 ${sheet.inspiration ? 'fill-amber-300 text-amber-300' : ''}`}
-            />
-            <span>Вдохновение</span>
-          </button>
-
-          {/* Exhaustion Stepper */}
-          <div className="px-2.5 py-1 rounded-xl bg-bg/65 border border-border inline-flex items-center gap-1.5">
-            <Flame
-              className={`w-3.5 h-3.5 ${
-                sheet.exhaustion > 0 ? 'text-orange-400' : 'text-muted'
-              }`}
-            />
-            <span className="text-muted text-[11px]">Истощение:</span>
-            {canEdit && (
+              {/* Classic Level Medallion */}
               <button
                 type="button"
-                onClick={() =>
-                  commitMutation((s) => {
-                    s.exhaustion = Math.max(0, sheet.exhaustion - 1);
-                  }, true)
-                }
-                className="w-4 h-4 rounded bg-surface text-muted hover:text-text flex items-center justify-center"
+                disabled={!canEdit}
+                onClick={() => setHeroModalOpen(true)}
+                className="w-20 h-20 rounded-full bg-surface border-2 border-primary/70 shadow-neon flex flex-col items-center justify-center shrink-0 hover:border-accent transition-colors"
+                title="Уровень персонажа"
               >
-                -
+                <span className="font-anime font-extrabold text-2xl leading-none text-text">
+                  {sheet.level}
+                </span>
+                <span className="text-[9px] uppercase tracking-wider text-muted mt-1">
+                  Уровень
+                </span>
               </button>
-            )}
-            <strong
-              className={`text-xs ${
-                sheet.exhaustion >= 3
-                  ? 'text-rose-400'
-                  : sheet.exhaustion > 0
-                    ? 'text-amber-300'
-                    : 'text-text'
-              }`}
-            >
-              {sheet.exhaustion}
-            </strong>
-            {canEdit && (
-              <button
-                type="button"
-                onClick={() =>
-                  commitMutation((s) => {
-                    s.exhaustion = Math.min(6, sheet.exhaustion + 1);
-                  }, true)
-                }
-                className="w-4 h-4 rounded bg-surface text-muted hover:text-text flex items-center justify-center"
-              >
-                +
-              </button>
+            </div>
+
+            {/* Right Classic Vitality Strip: AC Shield | HP | Hit Dice | Death Saves */}
+            <div className="xl:col-span-7 grid grid-cols-2 sm:grid-cols-12 gap-2.5">
+              {/* Armor Class Shield */}
+              <div className="col-span-1 sm:col-span-3 sheet-frame sheet-frame--accent p-3 flex flex-col items-center justify-between text-center">
+                <div className="text-[9px] font-extrabold uppercase tracking-wider text-muted">
+                  Класс защиты
+                </div>
+
+                {editUnlocked && canEdit ? (
+                  <input
+                    value={sheet.combat.acFormula}
+                    onChange={(e) =>
+                      commitMutation((s) => {
+                        const vit = ensureObj(s, 'vitality');
+                        setLssField(vit, 'ac', e.target.value);
+                      })
+                    }
+                    placeholder="10+[DEX]"
+                    className="anime-input w-full py-1 px-1.5 text-xs text-center font-mono my-1"
+                  />
+                ) : (
+                  <div className="font-anime font-extrabold text-3xl text-primary flex items-center gap-1 my-0.5">
+                    <Shield className="w-5 h-5 text-accent" />
+                    <span>{sheet.combat.ac}</span>
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  disabled={!canEdit}
+                  onClick={() =>
+                    commitMutation((s) => {
+                      const vit = ensureObj(s, 'vitality');
+                      vit.shield = {
+                        value: !sheet.combat.shieldEquipped,
+                        mod: sheet.combat.shieldMod || '2',
+                      };
+                    }, true)
+                  }
+                  className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border transition-colors ${
+                    sheet.combat.shieldEquipped
+                      ? 'bg-accent/20 border-accent text-accent'
+                      : 'bg-surface/70 border-border text-muted hover:text-text'
+                  }`}
+                >
+                  Щит {sheet.combat.shieldEquipped ? '+2' : 'нет'}
+                </button>
+              </div>
+
+              {/* Hit Points Box */}
+              <div className="col-span-1 sm:col-span-4 sheet-frame p-3 flex flex-col justify-between">
+                <div className="flex items-center justify-between text-[9px] font-extrabold uppercase tracking-wider text-muted">
+                  <span>Хиты</span>
+                  {sheet.combat.hpTemp > 0 && (
+                    <span className="text-cyan-300">+{sheet.combat.hpTemp} врем.</span>
+                  )}
+                </div>
+
+                {editUnlocked && canEdit ? (
+                  <div className="grid grid-cols-3 gap-1 my-1 text-center">
+                    <div>
+                      <input
+                        type="number"
+                        min={0}
+                        value={sheet.combat.hpCurrent}
+                        onChange={(e) =>
+                          commitMutation((s) => {
+                            const vit = ensureObj(s, 'vitality');
+                            setLssField(vit, 'hp-current', Math.max(0, Number(e.target.value)));
+                          })
+                        }
+                        className="anime-input w-full py-0.5 px-1 text-xs text-center"
+                      />
+                      <div className="text-[8px] text-muted">Тек.</div>
+                    </div>
+                    <div>
+                      <input
+                        type="number"
+                        min={1}
+                        value={sheet.combat.hpMaxBase}
+                        onChange={(e) =>
+                          commitMutation((s) => {
+                            const vit = ensureObj(s, 'vitality');
+                            setLssField(vit, 'hp-max', Math.max(1, Number(e.target.value)));
+                          })
+                        }
+                        className="anime-input w-full py-0.5 px-1 text-xs text-center"
+                      />
+                      <div className="text-[8px] text-muted">Макс.</div>
+                    </div>
+                    <div>
+                      <input
+                        type="number"
+                        min={0}
+                        value={sheet.combat.hpTemp}
+                        onChange={(e) =>
+                          commitMutation((s) => {
+                            const vit = ensureObj(s, 'vitality');
+                            setLssField(vit, 'hp-temp', Math.max(0, Number(e.target.value)));
+                          })
+                        }
+                        className="anime-input w-full py-0.5 px-1 text-xs text-center"
+                      />
+                      <div className="text-[8px] text-cyan-300">Врем.</div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="my-1 space-y-1">
+                    <div className="flex items-baseline justify-between">
+                      <span
+                        className={`font-anime font-extrabold text-2xl leading-none ${
+                          sheet.combat.hpCurrent === 0 ? 'text-rose-400' : 'text-emerald-300'
+                        }`}
+                      >
+                        {sheet.combat.hpCurrent}
+                      </span>
+                      <span className="text-xs text-muted font-bold">
+                        / {sheet.combat.hpMaxComputed} макс.
+                      </span>
+                    </div>
+                    <div className="w-full h-1.5 rounded-full bg-surface overflow-hidden">
+                      <div
+                        className={`h-full transition-all duration-300 ${
+                          hpRatio <= 25
+                            ? 'bg-rose-500'
+                            : hpRatio <= 55
+                              ? 'bg-amber-400'
+                              : 'bg-emerald-400'
+                        }`}
+                        style={{ width: `${hpRatio}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {canEdit && (
+                  <div className="flex items-center gap-1 pt-1">
+                    <input
+                      type="number"
+                      min={1}
+                      value={hpDeltaInput}
+                      onChange={(e) => setHpDeltaInput(e.target.value)}
+                      placeholder="±ХП"
+                      className="anime-input w-12 py-0.5 px-1.5 text-[11px] text-center"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const n = Math.abs(Number(hpDeltaInput)) || 1;
+                        adjustHp(-n);
+                        setHpDeltaInput('');
+                      }}
+                      className="flex-1 py-0.5 rounded-md bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/40 text-[10px] font-bold text-rose-200"
+                      title="Нанести урон (по пустому полю — -1)"
+                    >
+                      Урон
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const n = Math.abs(Number(hpDeltaInput)) || 1;
+                        adjustHp(n);
+                        setHpDeltaInput('');
+                      }}
+                      className="flex-1 py-0.5 rounded-md bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-[10px] font-bold text-emerald-200"
+                      title="Исцелить (по пустому полю — +1)"
+                    >
+                      Леч.
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Hit Dice Box */}
+              <div className="col-span-1 sm:col-span-2 sheet-frame p-3 flex flex-col items-center justify-between text-center">
+                <div className="text-[9px] font-extrabold uppercase tracking-wider text-muted">
+                  Кости хитов
+                </div>
+
+                <div className="font-anime font-extrabold text-lg text-text">
+                  {sheet.combat.hitDiceCurrent} / {sheet.level}
+                </div>
+
+                <div className="w-full flex items-center justify-center gap-1">
+                  <select
+                    disabled={!canEdit}
+                    value={sheet.combat.hitDie}
+                    onChange={(e) =>
+                      commitMutation((s) => {
+                        const vit = ensureObj(s, 'vitality');
+                        setLssField(vit, 'hit-die', e.target.value);
+                      }, true)
+                    }
+                    className="bg-surface border border-border rounded-md px-1.5 py-0.5 text-[11px] font-bold text-accent focus:outline-none"
+                  >
+                    {HIT_DICE_OPTIONS.map((hd) => (
+                      <option key={hd} value={hd}>
+                        {hd}
+                      </option>
+                    ))}
+                  </select>
+
+                  {canEdit && sheet.combat.hitDiceCurrent > 0 && (
+                    <button
+                      type="button"
+                      onClick={handleSpendHitDie}
+                      className="px-1.5 py-0.5 rounded-md bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-[10px] font-bold"
+                      title="Потратить 1 кость хитов для броска исцеления"
+                    >
+                      🎲
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Death Saves Box (Always visible in top-right, just like Classic LSS!) */}
+              <div className="col-span-1 sm:col-span-3 sheet-frame p-3 flex flex-col justify-between">
+                <div className="flex items-center justify-between">
+                  <span className="text-[9px] font-extrabold uppercase tracking-wider text-muted">
+                    Спас. смерти
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleDeathSaveRoll}
+                    className="text-[10px] text-rose-300 hover:text-rose-200 font-bold inline-flex items-center gap-0.5"
+                    title="Бросить спасбросок от смерти (1к20)"
+                  >
+                    <Dices className="w-3 h-3" />
+                    <span>1к20</span>
+                  </button>
+                </div>
+
+                <div className="space-y-1.5 my-1">
+                  <div className="flex items-center justify-between text-[10px]">
+                    <span className="text-emerald-300 font-semibold">Успехи</span>
+                    <div className="flex items-center gap-1.5">
+                      {[1, 2, 3].map((i) => {
+                        const filled = sheet.deathSaves.success >= i;
+                        return (
+                          <button
+                            key={`ds-s-${i}`}
+                            type="button"
+                            disabled={!canEdit}
+                            onClick={() =>
+                              commitMutation((s) => {
+                                const vit = ensureObj(s, 'vitality');
+                                vit.deathSaves = {
+                                  success: filled ? i - 1 : i,
+                                  fail: sheet.deathSaves.fail,
+                                };
+                              }, true)
+                            }
+                            className={`w-3.5 h-3.5 rotate-45 border transition-colors ${
+                              filled
+                                ? 'bg-emerald-400 border-emerald-200 shadow-sm'
+                                : 'bg-surface border-border hover:border-emerald-400'
+                            }`}
+                          />
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between text-[10px]">
+                    <span className="text-rose-300 font-semibold">Провалы</span>
+                    <div className="flex items-center gap-1.5">
+                      {[1, 2, 3].map((i) => {
+                        const filled = sheet.deathSaves.fail >= i;
+                        return (
+                          <button
+                            key={`ds-f-${i}`}
+                            type="button"
+                            disabled={!canEdit}
+                            onClick={() =>
+                              commitMutation((s) => {
+                                const vit = ensureObj(s, 'vitality');
+                                vit.deathSaves = {
+                                  success: sheet.deathSaves.success,
+                                  fail: filled ? i - 1 : i,
+                                };
+                              }, true)
+                            }
+                            className={`w-3.5 h-3.5 rotate-45 border transition-colors ${
+                              filled
+                                ? 'bg-rose-500 border-rose-200 shadow-sm'
+                                : 'bg-surface border-border hover:border-rose-400'
+                            }`}
+                          />
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* MASTER-ONLY EXPERIENCE BAR ON PAGE 1 */}
+          <div className="sheet-frame px-4 py-3 space-y-2">
+            <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+              <div className="flex items-center gap-2 flex-wrap">
+                <Crown className="w-4 h-4 text-amber-400 shrink-0" />
+                <span className="font-anime font-extrabold uppercase tracking-wider text-[11px] text-text">
+                  Шкала опыта (XP)
+                </span>
+                <span className="font-mono font-bold text-accent">
+                  {xpInfo.currentXp.toLocaleString('ru-RU')} /{' '}
+                  {xpInfo.targetXp.toLocaleString('ru-RU')} XP
+                </span>
+                <span className="text-[11px] text-muted">
+                  ({sheet.level >= 20 ? 'Макс. 20 ур.' : `Ур. ${sheet.level} → ${sheet.level + 1} • ${xpInfo.percent}%`})
+                </span>
+              </div>
+
+              {isDm ? (
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {xpInfo.canLevelUp && (
+                    <button
+                      type="button"
+                      disabled={xpSaving}
+                      onClick={() => void handleDmUpdateXp({ levelUp: true })}
+                      className="px-2.5 py-1 rounded-lg bg-amber-500/25 hover:bg-amber-500/35 border border-amber-400 text-amber-200 text-[11px] font-extrabold inline-flex items-center gap-1 animate-pulse"
+                    >
+                      <ArrowUpCircle className="w-3.5 h-3.5" />
+                      <span>Повысить до {sheet.level + 1} ур.!</span>
+                    </button>
+                  )}
+
+                  {[-100, 50, 100, 250, 500, 1000].map((delta) => (
+                    <button
+                      key={delta}
+                      type="button"
+                      disabled={xpSaving}
+                      onClick={() => void handleDmUpdateXp({ delta })}
+                      className={`px-2 py-0.5 rounded-lg text-[11px] font-bold border transition-colors ${
+                        delta < 0
+                          ? 'bg-rose-500/15 border-rose-500/35 text-rose-300 hover:bg-rose-500/25'
+                          : 'bg-primary/15 border-primary/40 text-primary hover:bg-primary/25'
+                      }`}
+                    >
+                      {delta > 0 ? `+${delta}` : delta}
+                    </button>
+                  ))}
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setXpMaxInput(
+                        profile.experienceMax > 0 ? String(profile.experienceMax) : ''
+                      );
+                      setXpSettingsOpen((v) => !v);
+                    }}
+                    className="p-1 rounded-lg bg-surface border border-border text-muted hover:text-accent"
+                    title="Точное управление опытом и порогом уровня (только Мастер)"
+                  >
+                    <Settings2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ) : (
+                <span className="text-[11px] text-muted">
+                  Начисляется Мастером
+                </span>
+              )}
+            </div>
+
+            {/* Neon XP Progress Track */}
+            <div className="w-full h-2.5 rounded-full bg-surface border border-border/80 overflow-hidden p-0.5">
+              <div
+                className="h-full rounded-full transition-all duration-500"
+                style={{
+                  width: `${xpInfo.percent}%`,
+                  background: 'linear-gradient(90deg, var(--primary), var(--accent))',
+                  boxShadow: '0 0 12px var(--glow)',
+                }}
+              />
+            </div>
+
+            {/* Expandable DM Exact XP & Custom Threshold Controls */}
+            {isDm && xpSettingsOpen && (
+              <div className="pt-2 border-t border-border/70 flex flex-wrap items-center gap-2 text-xs">
+                <input
+                  type="number"
+                  min={0}
+                  value={xpInput}
+                  onChange={(e) => setXpInput(e.target.value)}
+                  placeholder="Число XP..."
+                  className="anime-input w-28 py-1 px-2 text-xs"
+                />
+                <button
+                  type="button"
+                  disabled={!xpInput || xpSaving}
+                  onClick={() => {
+                    const n = Number(xpInput);
+                    if (Number.isFinite(n)) void handleDmUpdateXp({ delta: n });
+                    setXpInput('');
+                  }}
+                  className="px-2.5 py-1 rounded-lg bg-accent/20 border border-accent/40 text-accent font-bold text-[11px]"
+                >
+                  Прибавить
+                </button>
+                <button
+                  type="button"
+                  disabled={xpInput === '' || xpSaving}
+                  onClick={() => {
+                    const n = Number(xpInput);
+                    if (Number.isFinite(n)) void handleDmUpdateXp({ setXp: Math.max(0, n) });
+                    setXpInput('');
+                  }}
+                  className="px-2.5 py-1 rounded-lg bg-surface border border-border hover:border-primary text-[11px] font-semibold"
+                >
+                  Установить XP
+                </button>
+
+                <span className="text-border mx-1">|</span>
+
+                <input
+                  type="number"
+                  min={1}
+                  value={xpMaxInput}
+                  onChange={(e) => setXpMaxInput(e.target.value)}
+                  placeholder={`Порог (авто: ${xpInfo.targetXp})`}
+                  className="anime-input w-44 py-1 px-2 text-xs"
+                />
+                <button
+                  type="button"
+                  disabled={xpSaving}
+                  onClick={() => {
+                    const trimmed = xpMaxInput.trim();
+                    if (!trimmed) {
+                      void handleDmUpdateXp({ setMaxXp: null });
+                    } else {
+                      const n = Number(trimmed);
+                      if (Number.isFinite(n) && n > 0) void handleDmUpdateXp({ setMaxXp: n });
+                    }
+                  }}
+                  className="px-2.5 py-1 rounded-lg bg-surface border border-border hover:border-accent text-[11px] font-semibold"
+                >
+                  Задать порог
+                </button>
+              </div>
             )}
           </div>
 
-          {/* Conditions Picker */}
-          <button
-            type="button"
-            onClick={() => setConditionsOpen((v) => !v)}
-            className={`px-2.5 py-1.5 rounded-xl border text-[11px] font-semibold inline-flex items-center gap-1.5 transition-colors ${
-              sheet.conditions.length > 0
-                ? 'bg-rose-500/15 border-rose-500/40 text-rose-200'
-                : 'bg-bg/65 border-border text-muted hover:text-text'
-            }`}
-          >
-            <span>
-              {sheet.conditions.length > 0
-                ? `Состояния: ${sheet.conditions.join(', ')}`
-                : '+ Состояния'}
-            </span>
-          </button>
-        </div>
+          {/* CLASSIC 3-COLUMN BODY (matching image-3.png!) */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-3.5 items-start">
+            {/* COLUMN 1: Proficiency, STR, DEX, CON, Exhaustion, ВТОРОЙ ШАНС, Armor/Weapon/Tool Proficiencies */}
+            <div className="lg:col-span-3 space-y-3">
+              {/* Proficiency Bonus Plaque */}
+              <div className="sheet-frame px-3.5 py-2.5 flex items-center justify-between">
+                <span className="text-[11px] font-extrabold uppercase tracking-wider text-muted">
+                  Бонус владения
+                </span>
+                <span className="px-3 py-1 rounded-xl bg-primary/20 border border-primary/45 font-anime font-extrabold text-base text-primary">
+                  {formatSigned(sheet.proficiencyBonus)}
+                </span>
+              </div>
 
-        {/* Short & Long Rest Buttons */}
-        {canEdit && (
-          <div className="flex items-center gap-1.5">
-            <button
-              type="button"
-              onClick={handleShortRest}
-              className="px-2.5 py-1.5 rounded-xl bg-bg/70 border border-border hover:border-accent text-[11px] font-semibold text-muted hover:text-accent inline-flex items-center gap-1 transition-colors"
-              title="Восстановить ресурсы короткого отдыха и ячейки Пакта"
-            >
-              <Sun className="w-3.5 h-3.5" />
-              <span>Кор. отдых</span>
-            </button>
-            <button
-              type="button"
-              onClick={handleLongRest}
-              className="px-2.5 py-1.5 rounded-xl bg-primary/15 border border-primary/35 hover:bg-primary/25 text-[11px] font-semibold text-primary inline-flex items-center gap-1 transition-colors"
-              title="Восстановить все хиты, ячейки заклинаний, половину костей хитов и все ресурсы"
-            >
-              <Moon className="w-3.5 h-3.5" />
-              <span>Длин. отдых</span>
-            </button>
-          </div>
-        )}
-      </div>
+              {renderAbilityWithSkillsCard('str')}
+              {renderAbilityWithSkillsCard('dex')}
+              {renderAbilityWithSkillsCard('con')}
 
-      {/* Collapsible Conditions Tray */}
-      {conditionsOpen && (
-        <div className="p-3 rounded-2xl bg-bg/85 border border-border flex flex-wrap gap-1.5">
-          {DND_CONDITIONS_RU.map((cond) => {
-            const active = sheet.conditions.includes(cond);
-            return (
+              {/* Exhaustion 6 Checkboxes */}
+              <div className="sheet-frame p-3 space-y-2">
+                <div className="flex items-center justify-between text-[10px] font-extrabold uppercase tracking-wider text-muted">
+                  <span>Истощение</span>
+                  {sheet.exhaustion > 0 && (
+                    <span className="text-rose-400">Ступень {sheet.exhaustion}</span>
+                  )}
+                </div>
+                <div className="flex items-center justify-between gap-1">
+                  {[1, 2, 3, 4, 5, 6].map((lvl) => {
+                    const active = sheet.exhaustion >= lvl;
+                    return (
+                      <button
+                        key={lvl}
+                        type="button"
+                        disabled={!canEdit}
+                        onClick={() =>
+                          commitMutation((s) => {
+                            s.exhaustion = active && sheet.exhaustion === lvl ? lvl - 1 : lvl;
+                          }, true)
+                        }
+                        className={`flex-1 h-6 rounded-md border text-[10px] font-bold transition-colors ${
+                          active
+                            ? 'bg-rose-500/30 border-rose-400 text-rose-200'
+                            : 'bg-surface border-border text-muted/60 hover:border-rose-400/50'
+                        }`}
+                      >
+                        {lvl}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* ВТОРОЙ ШАНС (replaces Heroic Inspiration per user instruction!) */}
               <button
-                key={cond}
                 type="button"
                 disabled={!canEdit}
                 onClick={() =>
                   commitMutation((s) => {
-                    const cur = Array.isArray(s.conditions)
-                      ? s.conditions.filter((x): x is string => typeof x === 'string')
-                      : [];
-                    s.conditions = active ? cur.filter((x) => x !== cond) : [...cur, cond];
+                    s.inspiration = !sheet.inspiration;
                   }, true)
                 }
-                className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition-colors ${
-                  active
-                    ? 'bg-rose-500/25 border-rose-500/50 text-rose-200'
-                    : 'bg-surface border-border text-muted hover:text-text'
+                className={`w-full sheet-frame p-3 flex items-center justify-between transition-all ${
+                  sheet.inspiration
+                    ? 'neon-border bg-accent/15'
+                    : 'hover:border-accent/45'
                 }`}
+                title="Активировать или потратить «Второй шанс» персонажа"
               >
-                {cond}
-              </button>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Row 3: 6 Core Combat Metrics */}
-      <div className="grid grid-cols-2 sm:grid-cols-6 gap-2.5">
-        {/* AC + Shield Toggle */}
-        <div className="p-3 rounded-2xl bg-bg/75 border border-border text-center space-y-1">
-          <div className="text-[10px] uppercase tracking-wider text-muted flex items-center justify-center gap-1">
-            <span>КД (AC)</span>
-            {canEdit && (
-              <button
-                type="button"
-                onClick={() =>
-                  commitMutation((s) => {
-                    const vit = ensureObj(s, 'vitality');
-                    vit.shield = {
-                      value: !sheet.combat.shieldEquipped,
-                      mod: sheet.combat.shieldMod || '2',
-                    };
-                  }, true)
-                }
-                className={`px-1.5 py-0.2 rounded text-[9px] font-bold border ${
-                  sheet.combat.shieldEquipped
-                    ? 'bg-accent/20 border-accent/50 text-accent'
-                    : 'bg-surface border-border text-muted'
-                }`}
-                title="Надеть / снять щит (+2 КД)"
-              >
-                Щит
-              </button>
-            )}
-          </div>
-          {editUnlocked && canEdit ? (
-            <input
-              value={sheet.combat.acFormula}
-              onChange={(e) =>
-                commitMutation((s) => {
-                  const vit = ensureObj(s, 'vitality');
-                  setLssField(vit, 'ac', e.target.value);
-                })
-              }
-              placeholder="10+[DEX]"
-              title="Формула КД (например 10+[DEX], 13+[DEX]+[CON] или число 18)"
-              className="anime-input w-full py-1 px-1.5 text-xs text-center font-mono"
-            />
-          ) : (
-            <div className="font-anime font-extrabold text-xl text-primary flex items-center justify-center gap-1">
-              <Shield className="w-4 h-4" />
-              <span>{sheet.combat.ac}</span>
-            </div>
-          )}
-        </div>
-
-        {/* Initiative */}
-        <div className="p-3 rounded-2xl bg-bg/75 border border-border text-center space-y-1">
-          <div className="text-[10px] uppercase tracking-wider text-muted">Инициатива</div>
-          {editUnlocked && canEdit ? (
-            <input
-              value={sheet.combat.initiativeRaw}
-              onChange={(e) =>
-                commitMutation((s) => {
-                  const vit = ensureObj(s, 'vitality');
-                  setLssField(vit, 'initiative', e.target.value);
-                })
-              }
-              placeholder="[DEX]"
-              title="Формула инициативы ([DEX], [DEX]+5 и т.д.)"
-              className="anime-input w-full py-1 px-1.5 text-xs text-center font-mono"
-            />
-          ) : (
-            <button
-              type="button"
-              onClick={() => handleD20Roll('Инициатива', sheet.combat.initiative)}
-              className="w-full font-anime font-extrabold text-xl text-text hover:text-primary inline-flex items-center justify-center gap-1 transition-colors"
-              title="Бросить Инициативу (1к20)"
-            >
-              <span>{formatSigned(sheet.combat.initiative)}</span>
-              <Dices className="w-3.5 h-3.5 text-accent" />
-            </button>
-          )}
-        </div>
-
-        {/* Speed & Darkvision */}
-        <div className="p-3 rounded-2xl bg-bg/75 border border-border text-center space-y-1">
-          <div className="text-[10px] uppercase tracking-wider text-muted">Скорость</div>
-          {editUnlocked && canEdit ? (
-            <div className="space-y-1">
-              <input
-                value={sheet.combat.speedRaw}
-                onChange={(e) =>
-                  commitMutation((s) => {
-                    const vit = ensureObj(s, 'vitality');
-                    setLssField(vit, 'speed', e.target.value);
-                  })
-                }
-                placeholder="30"
-                className="anime-input w-full py-0.5 px-1.5 text-xs text-center"
-              />
-              <input
-                type="number"
-                min={0}
-                step={10}
-                value={sheet.combat.darkvision}
-                onChange={(e) =>
-                  commitMutation((s) => {
-                    const vit = ensureObj(s, 'vitality');
-                    setLssField(vit, 'darkvision', Math.max(0, Number(e.target.value)));
-                  })
-                }
-                placeholder="Тёмн. зр."
-                title="Тёмное зрение в футах"
-                className="anime-input w-full py-0.5 px-1.5 text-[10px] text-center"
-              />
-            </div>
-          ) : (
-            <>
-              <div className="font-anime font-extrabold text-lg text-text">
-                {sheet.combat.speed}
-              </div>
-              {sheet.combat.darkvision > 0 && (
-                <div className="text-[10px] text-muted">
-                  Тёмн. зр. {sheet.combat.darkvision} фт.
+                <div className="text-left">
+                  <div className="text-[11px] font-extrabold uppercase tracking-wider text-text">
+                    Второй шанс
+                  </div>
+                  <div className="text-[10px] text-muted">
+                    {sheet.inspiration ? 'Активен — готов к использованию' : 'Не активен'}
+                  </div>
                 </div>
-              )}
-            </>
-          )}
-        </div>
+                <div
+                  className={`w-8 h-8 rounded-xl border-2 flex items-center justify-center transition-all ${
+                    sheet.inspiration
+                      ? 'bg-accent/25 border-accent text-accent shadow-neon scale-105'
+                      : 'bg-surface border-border text-muted/40'
+                  }`}
+                >
+                  ✦
+                </div>
+              </button>
 
-        {/* Proficiency Bonus */}
-        <div className="p-3 rounded-2xl bg-bg/75 border border-border text-center space-y-0.5">
-          <div className="text-[10px] uppercase tracking-wider text-muted">Мастерство</div>
-          <div className="font-anime font-extrabold text-xl text-accent">
-            {formatSigned(sheet.proficiencyBonus)}
-          </div>
-          <div className="text-[10px] text-muted">Ур. {sheet.level}</div>
-        </div>
+              {/* Equipment Proficiencies & Tools/Languages (Bottom-Left Classic Box) */}
+              <div className="sheet-frame overflow-hidden">
+                <div className="sheet-frame__header">
+                  <span>Владение снаряжением и языки</span>
+                  {canEdit && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        openBlockEditor('prof', 'Владение инструментами и языками')
+                      }
+                      className="text-muted hover:text-accent"
+                      title="Редактировать инструменты и языки"
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
 
-        {/* Hit Dice */}
-        <div className="p-3 rounded-2xl bg-bg/75 border border-border text-center space-y-1">
-          <div className="text-[10px] uppercase tracking-wider text-muted">Кость хитов</div>
-          {editUnlocked && canEdit ? (
-            <div className="flex items-center gap-1">
-              <input
-                type="number"
-                min={0}
-                max={sheet.level}
-                value={sheet.combat.hitDiceCurrent}
-                onChange={(e) =>
-                  commitMutation((s) => {
-                    const vit = ensureObj(s, 'vitality');
-                    setLssField(vit, 'hp-dice-current', Math.max(0, Number(e.target.value)));
-                  })
-                }
-                className="anime-input w-11 py-0.5 px-1 text-xs text-center"
-              />
-              <select
-                value={sheet.combat.hitDie}
-                onChange={(e) =>
-                  commitMutation((s) => {
-                    const vit = ensureObj(s, 'vitality');
-                    setLssField(vit, 'hit-die', e.target.value);
-                  }, true)
-                }
-                className="anime-input flex-1 py-0.5 px-1 text-xs"
-              >
-                {HIT_DICE_OPTIONS.map((hd) => (
-                  <option key={hd} value={hd}>
-                    {hd}
-                  </option>
-                ))}
-              </select>
-            </div>
-          ) : (
-            <>
-              <div className="font-anime font-extrabold text-base text-text">
-                {sheet.combat.hitDiceCurrent}/{sheet.level} {sheet.combat.hitDie}
+                <div className="p-3 space-y-2.5 text-xs">
+                  <div className="space-y-1">
+                    <div className="text-[10px] uppercase tracking-wider text-muted font-bold">
+                      Доспехи
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {(
+                        [
+                          ['armor-light', 'Лёгкие'],
+                          ['armor-medium', 'Средние'],
+                          ['armor-heavy', 'Тяжёлые'],
+                          ['armor-label', 'Щит'],
+                        ] as const
+                      ).map(([k, lbl]) => {
+                        const on = sheet.profFlagKeys.includes(k);
+                        return (
+                          <button
+                            key={k}
+                            type="button"
+                            disabled={!canEdit}
+                            onClick={() =>
+                              commitMutation((s) => {
+                                const pr = ensureObj(s, 'prof');
+                                setLssField(pr, k, !on);
+                              }, true)
+                            }
+                            className={`px-2 py-0.5 rounded-md text-[11px] border inline-flex items-center gap-1 ${
+                              on
+                                ? 'bg-primary/20 border-primary/50 text-text font-semibold'
+                                : 'bg-surface/60 border-border text-muted'
+                            }`}
+                          >
+                            <span className="text-[10px] text-primary">{on ? '◆' : '◇'}</span>
+                            <span>{lbl}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <div className="text-[10px] uppercase tracking-wider text-muted font-bold">
+                      Оружие
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {(
+                        [
+                          ['weapon-simple', 'Простое'],
+                          ['weapon-martial', 'Воинское'],
+                          ['weapon-other', 'Другое'],
+                        ] as const
+                      ).map(([k, lbl]) => {
+                        const on = sheet.profFlagKeys.includes(k);
+                        return (
+                          <button
+                            key={k}
+                            type="button"
+                            disabled={!canEdit}
+                            onClick={() =>
+                              commitMutation((s) => {
+                                const pr = ensureObj(s, 'prof');
+                                setLssField(pr, k, !on);
+                              }, true)
+                            }
+                            className={`px-2 py-0.5 rounded-md text-[11px] border inline-flex items-center gap-1 ${
+                              on
+                                ? 'bg-primary/20 border-primary/50 text-text font-semibold'
+                                : 'bg-surface/60 border-border text-muted'
+                            }`}
+                          >
+                            <span className="text-[10px] text-primary">{on ? '◆' : '◇'}</span>
+                            <span>{lbl}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="pt-2 border-t border-border/60 space-y-1">
+                    <div className="text-[10px] uppercase tracking-wider text-muted font-bold">
+                      Инструменты и языки
+                    </div>
+                    <div className="sheet-grid-paper rounded-lg p-2 min-h-[48px] text-xs text-text/90 whitespace-pre-line">
+                      {sheet.textByKey.prof?.plainText || (
+                        <span className="text-muted/60">Общий...</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
               </div>
-              {canEdit && sheet.combat.hitDiceCurrent > 0 && (
+            </div>
+
+            {/* COLUMN 2: INT, WIS, CHA with their nested Skills */}
+            <div className="lg:col-span-3 space-y-3">
+              {renderAbilityWithSkillsCard('int')}
+              {renderAbilityWithSkillsCard('wis')}
+              {renderAbilityWithSkillsCard('cha')}
+            </div>
+
+            {/* COLUMN 3: Initiative/Speed/Passive/Conditions + Weapons Table + Resources + Features & Feats */}
+            <div className="lg:col-span-6 space-y-3.5">
+              {/* Top 4 Combat Plaques */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                {/* Initiative */}
+                <div className="sheet-frame p-2.5 text-center">
+                  <div className="text-[9px] font-extrabold uppercase tracking-wider text-muted">
+                    Инициатива
+                  </div>
+                  {editUnlocked && canEdit ? (
+                    <input
+                      value={sheet.combat.initiativeRaw}
+                      onChange={(e) =>
+                        commitMutation((s) => {
+                          const vit = ensureObj(s, 'vitality');
+                          setLssField(vit, 'initiative', e.target.value);
+                        })
+                      }
+                      className="anime-input w-full py-0.5 px-1 text-xs text-center font-mono mt-1"
+                    />
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => handleD20Roll('Инициатива', sheet.combat.initiative)}
+                      className="mt-1 font-anime font-extrabold text-xl text-primary hover:text-accent inline-flex items-center gap-1"
+                      title="Нажмите для броска инициативы"
+                    >
+                      <span>{formatSigned(sheet.combat.initiative)}</span>
+                      <Dices className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Speed */}
+                <div className="sheet-frame p-2.5 text-center">
+                  <div className="text-[9px] font-extrabold uppercase tracking-wider text-muted">
+                    Скорость
+                  </div>
+                  {editUnlocked && canEdit ? (
+                    <input
+                      value={sheet.combat.speedRaw}
+                      onChange={(e) =>
+                        commitMutation((s) => {
+                          const vit = ensureObj(s, 'vitality');
+                          setLssField(vit, 'speed', e.target.value);
+                        })
+                      }
+                      className="anime-input w-full py-0.5 px-1 text-xs text-center mt-1"
+                    />
+                  ) : (
+                    <div className="mt-1 font-anime font-extrabold text-lg text-text">
+                      {sheet.combat.speed}
+                    </div>
+                  )}
+                </div>
+
+                {/* Passive Perception */}
+                <div
+                  className="sheet-frame p-2.5 text-center"
+                  title={`Пассивная Проницательность: ${sheet.combat.passiveInsight} • Пассивный Анализ: ${sheet.combat.passiveInvestigation}`}
+                >
+                  <div className="text-[9px] font-extrabold uppercase tracking-wider text-muted">
+                    П. Восприятие
+                  </div>
+                  <div className="mt-1 font-anime font-extrabold text-xl text-text">
+                    {sheet.combat.passivePerception}
+                  </div>
+                </div>
+
+                {/* Conditions Plaque */}
                 <button
                   type="button"
-                  onClick={handleSpendHitDie}
-                  className="text-[10px] text-emerald-300 hover:underline font-semibold"
-                  title="Потратить 1 кость хитов и бросить исцеление"
+                  onClick={() => setConditionsOpen((v) => !v)}
+                  className={`sheet-frame p-2.5 text-center transition-colors ${
+                    sheet.conditions.length > 0 ? 'border-rose-500/60 bg-rose-500/10' : ''
+                  }`}
                 >
-                  Исцелиться
+                  <div className="text-[9px] font-extrabold uppercase tracking-wider text-muted">
+                    Состояния
+                  </div>
+                  <div className="mt-1 text-xs font-bold truncate text-rose-300">
+                    {sheet.conditions.length > 0
+                      ? sheet.conditions.join(', ')
+                      : 'Норма'}
+                  </div>
                 </button>
-              )}
-            </>
-          )}
-        </div>
-
-        {/* Passive Senses */}
-        <div className="p-3 rounded-2xl bg-bg/75 border border-border text-center space-y-0.5">
-          <div className="text-[10px] uppercase tracking-wider text-muted flex items-center justify-center gap-1">
-            <Eye className="w-3 h-3 text-primary" />
-            <span>Пасс. Вним.</span>
-          </div>
-          <div className="font-anime font-extrabold text-xl text-text">
-            {sheet.combat.passivePerception}
-          </div>
-          <div className="text-[10px] text-muted">
-            Прн {sheet.combat.passiveInsight} • Анл {sheet.combat.passiveInvestigation}
-          </div>
-        </div>
-      </div>
-
-      {/* Row 4: Interactive Health Bar + Temp HP + Death Saves */}
-      <div className="p-3.5 rounded-2xl bg-bg/75 border border-border space-y-3">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-rose-500/15 border border-rose-500/35 flex items-center justify-center text-rose-400">
-              <Heart className="w-5 h-5" />
-            </div>
-
-            {editUnlocked && canEdit ? (
-              <div className="flex items-center gap-2 flex-wrap text-xs">
-                <label className="text-muted">
-                  Тек. ХП:
-                  <input
-                    type="number"
-                    min={0}
-                    value={sheet.combat.hpCurrent}
-                    onChange={(e) =>
-                      commitMutation((s) => {
-                        const vit = ensureObj(s, 'vitality');
-                        setLssField(vit, 'hp-current', Math.max(0, Number(e.target.value)));
-                      })
-                    }
-                    className="anime-input w-16 py-1 px-2 text-xs ml-1 text-center"
-                  />
-                </label>
-                <label className="text-muted">
-                  Макс. ХП:
-                  <input
-                    type="number"
-                    min={1}
-                    value={sheet.combat.hpMaxBase}
-                    onChange={(e) =>
-                      commitMutation((s) => {
-                        const vit = ensureObj(s, 'vitality');
-                        setLssField(vit, 'hp-max', Math.max(1, Number(e.target.value)));
-                      })
-                    }
-                    className="anime-input w-16 py-1 px-2 text-xs ml-1 text-center"
-                  />
-                </label>
-                <label className="text-cyan-300">
-                  Врем. ХП:
-                  <input
-                    type="number"
-                    min={0}
-                    value={sheet.combat.hpTemp}
-                    onChange={(e) =>
-                      commitMutation((s) => {
-                        const vit = ensureObj(s, 'vitality');
-                        setLssField(vit, 'hp-temp', Math.max(0, Number(e.target.value)));
-                      })
-                    }
-                    className="anime-input w-16 py-1 px-2 text-xs ml-1 text-center"
-                  />
-                </label>
               </div>
-            ) : (
-              <div>
-                <div className="text-[11px] text-muted">Хиты персонажа</div>
-                <div className="font-anime font-extrabold text-lg">
-                  <span
-                    className={
-                      sheet.combat.hpCurrent === 0 ? 'text-rose-400' : 'text-emerald-300'
-                    }
+
+              {/* Rest Buttons Bar */}
+              {canEdit && (
+                <div className="flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={handleShortRest}
+                    className="px-3 py-1 rounded-xl bg-surface border border-border hover:border-accent text-[11px] font-semibold text-muted hover:text-accent inline-flex items-center gap-1"
                   >
-                    {sheet.combat.hpCurrent}
-                  </span>
-                  <span className="text-muted"> / {sheet.combat.hpMaxComputed}</span>
-                  {sheet.combat.hpTemp > 0 && (
-                    <span className="ml-2 text-xs text-cyan-300 font-bold">
-                      +{sheet.combat.hpTemp} врем.
-                    </span>
+                    <Sun className="w-3.5 h-3.5" />
+                    <span>Короткий отдых</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleLongRest}
+                    className="px-3 py-1 rounded-xl bg-primary/15 border border-primary/40 hover:bg-primary/25 text-[11px] font-semibold text-primary inline-flex items-center gap-1"
+                  >
+                    <Moon className="w-3.5 h-3.5" />
+                    <span>Длинный отдых</span>
+                  </button>
+                </div>
+              )}
+
+              {conditionsOpen && (
+                <div className="p-3 rounded-2xl bg-surface/95 border border-rose-500/40 flex flex-wrap gap-1.5">
+                  {DND_CONDITIONS_RU.map((cond) => {
+                    const active = sheet.conditions.includes(cond);
+                    return (
+                      <button
+                        key={cond}
+                        type="button"
+                        disabled={!canEdit}
+                        onClick={() =>
+                          commitMutation((s) => {
+                            const cur = Array.isArray(s.conditions)
+                              ? s.conditions.filter((x): x is string => typeof x === 'string')
+                              : [];
+                            s.conditions = active
+                              ? cur.filter((x) => x !== cond)
+                              : [...cur, cond];
+                          }, true)
+                        }
+                        className={`px-2 py-1 rounded-lg text-[11px] font-semibold border ${
+                          active
+                            ? 'bg-rose-500/25 border-rose-400 text-rose-200'
+                            : 'bg-bg/70 border-border text-muted hover:text-text'
+                        }`}
+                      >
+                        {cond}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Classic Weapons & Cantrips Table */}
+              <div className="sheet-frame overflow-hidden">
+                <div className="sheet-frame__header">
+                  <span>Оружие и боевые заговоры</span>
+                  {canEdit && (
+                    <button
+                      type="button"
+                      onClick={() => openWeaponModalFor()}
+                      className="px-2 py-0.5 rounded bg-primary/20 text-primary hover:bg-primary/30 text-[10px] inline-flex items-center gap-1"
+                    >
+                      <Plus className="w-3 h-3" />
+                      <span>Добавить</span>
+                    </button>
+                  )}
+                </div>
+
+                {weaponFormOpen && canEdit && (
+                  <form
+                    onSubmit={handleSaveWeapon}
+                    className="p-3 bg-surface/95 border-b border-border space-y-2.5"
+                  >
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      <input
+                        required
+                        value={wName}
+                        onChange={(e) => setWName(e.target.value)}
+                        placeholder="Название оружия"
+                        className="anime-input py-1.5 px-2.5 text-xs"
+                      />
+                      <select
+                        value={wAbility}
+                        onChange={(e) => {
+                          const val = e.target.value as AbilityCode | 'none';
+                          setWAbility(val);
+                          if (!editingWeaponId && val !== 'none') {
+                            setWDmg(`1к8+[${val.toUpperCase()}]`);
+                          }
+                        }}
+                        className="anime-input py-1.5 px-2.5 text-xs"
+                      >
+                        {(Object.keys(ABILITY_META) as AbilityCode[]).map((c) => (
+                          <option key={c} value={c}>
+                            {ABILITY_META[c].fullRu} ({ABILITY_META[c].shortRu})
+                          </option>
+                        ))}
+                        <option value="none">Без хар-ки</option>
+                      </select>
+                      <div className="flex items-center gap-2">
+                        <label className="text-[11px] flex items-center gap-1 whitespace-nowrap">
+                          <input
+                            type="checkbox"
+                            checked={wIsProf}
+                            onChange={(e) => setWIsProf(e.target.checked)}
+                          />
+                          <span>БМ</span>
+                        </label>
+                        <input
+                          value={wExtraMod}
+                          onChange={(e) => setWExtraMod(e.target.value)}
+                          placeholder="+мод (0)"
+                          className="anime-input w-full py-1.5 px-2 text-xs font-mono"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      <input
+                        required
+                        value={wDmg}
+                        onChange={(e) => setWDmg(e.target.value)}
+                        placeholder="Урон: 1к8+[STR]"
+                        className="anime-input py-1.5 px-2.5 text-xs font-mono"
+                      />
+                      <input
+                        value={wDmgType}
+                        onChange={(e) => setWDmgType(e.target.value)}
+                        placeholder="Вид урона (рубящий)"
+                        className="anime-input py-1.5 px-2.5 text-xs"
+                      />
+                      <input
+                        value={wNotes}
+                        onChange={(e) => setWNotes(e.target.value)}
+                        placeholder="Заметки / свойства"
+                        className="anime-input py-1.5 px-2.5 text-xs"
+                      />
+                    </div>
+
+                    <div className="flex justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setWeaponFormOpen(false)}
+                        className="px-2.5 py-1 rounded-lg border border-border text-xs text-muted"
+                      >
+                        Отмена
+                      </button>
+                      <button type="submit" className="anime-btn-primary px-3 py-1 text-xs">
+                        Сохранить
+                      </button>
+                    </div>
+                  </form>
+                )}
+
+                <div className="p-2.5 overflow-x-auto">
+                  {sheet.weapons.length === 0 ? (
+                    <div className="text-xs text-muted py-3 text-center">
+                      Оружие не добавлено. Нажмите «+ Добавить» для создания строки атаки.
+                    </div>
+                  ) : (
+                    <table className="w-full text-xs border-collapse">
+                      <thead>
+                        <tr className="text-[10px] uppercase tracking-wider text-muted border-b border-border/70">
+                          <th className="text-left py-1 px-1.5">Название</th>
+                          <th className="text-center py-1 px-1.5">Попадание</th>
+                          <th className="text-center py-1 px-1.5">Урон / Вид</th>
+                          <th className="text-left py-1 px-1.5">Заметки</th>
+                          {canEdit && <th className="w-12" />}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border/40">
+                        {sheet.weapons.map((w) => (
+                          <tr key={w.id} className="hover:bg-surface/50">
+                            <td className="py-1.5 px-1.5 font-semibold text-text">{w.name}</td>
+                            <td className="py-1.5 px-1.5 text-center">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleD20Roll(`Атака: ${w.name}`, w.attackBonus)
+                                }
+                                className="px-2 py-0.5 rounded-md bg-primary/20 hover:bg-primary/30 border border-primary/40 font-mono font-bold text-primary"
+                              >
+                                {formatSigned(w.attackBonus)}
+                              </button>
+                            </td>
+                            <td className="py-1.5 px-1.5 text-center">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleDamageRoll(`Урон (${w.name})`, w.damageResolved)
+                                }
+                                className="px-2 py-0.5 rounded-md bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/40 font-mono font-bold text-rose-300"
+                              >
+                                {w.damageResolved}
+                              </button>
+                              {w.damageType && (
+                                <span className="block text-[10px] text-muted">
+                                  {w.damageType}
+                                </span>
+                              )}
+                            </td>
+                            <td className="py-1.5 px-1.5 text-[11px] text-muted">{w.notes}</td>
+                            {canEdit && (
+                              <td className="py-1.5 px-1 text-right whitespace-nowrap">
+                                <button
+                                  type="button"
+                                  onClick={() => openWeaponModalFor(w)}
+                                  className="p-1 text-muted hover:text-primary"
+                                >
+                                  <Pencil className="w-3 h-3" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteWeapon(w.id)}
+                                  className="p-1 text-muted hover:text-rose-400"
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                </button>
+                              </td>
+                            )}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   )}
                 </div>
               </div>
-            )}
-          </div>
 
-          {canEdit && (
-            <div className="flex items-center gap-1.5 flex-wrap">
-              {[-5, -1, 1, 5].map((delta) => (
-                <button
-                  key={delta}
-                  type="button"
-                  onClick={() => adjustHp(delta)}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition-colors ${
-                    delta < 0
-                      ? 'bg-rose-500/15 border-rose-500/35 text-rose-300 hover:bg-rose-500/25'
-                      : 'bg-emerald-500/15 border-emerald-500/35 text-emerald-300 hover:bg-emerald-500/25'
-                  }`}
-                >
-                  {delta > 0 ? `+${delta}` : delta}
-                </button>
-              ))}
-
-              <div className="flex items-center gap-1 ml-1">
-                <input
-                  type="number"
-                  min={1}
-                  value={hpDeltaInput}
-                  onChange={(e) => setHpDeltaInput(e.target.value)}
-                  placeholder="Число"
-                  className="anime-input w-16 py-1 px-2 text-xs text-center"
-                />
-                <button
-                  type="button"
-                  disabled={!hpDeltaInput}
-                  onClick={() => {
-                    const n = Math.abs(Number(hpDeltaInput));
-                    if (n > 0) adjustHp(-n);
-                    setHpDeltaInput('');
-                  }}
-                  className="px-2 py-1 rounded-lg bg-rose-500/20 border border-rose-500/40 text-[11px] font-semibold text-rose-200 disabled:opacity-40"
-                >
-                  Урон
-                </button>
-                <button
-                  type="button"
-                  disabled={!hpDeltaInput}
-                  onClick={() => {
-                    const n = Math.abs(Number(hpDeltaInput));
-                    if (n > 0) adjustHp(n);
-                    setHpDeltaInput('');
-                  }}
-                  className="px-2 py-1 rounded-lg bg-emerald-500/20 border border-emerald-500/40 text-[11px] font-semibold text-emerald-200 disabled:opacity-40"
-                >
-                  Леч.
-                </button>
-                <button
-                  type="button"
-                  disabled={!hpDeltaInput}
-                  onClick={() => {
-                    const n = Math.abs(Number(hpDeltaInput));
-                    if (n > 0) {
-                      commitMutation((s) => {
-                        const vit = ensureObj(s, 'vitality');
-                        setLssField(vit, 'hp-temp', n);
-                      }, true);
-                    }
-                    setHpDeltaInput('');
-                  }}
-                  className="px-2 py-1 rounded-lg bg-cyan-500/20 border border-cyan-500/40 text-[11px] font-semibold text-cyan-200 disabled:opacity-40"
-                  title="Установить временные хиты"
-                >
-                  +Врем.
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Visual HP Bar */}
-        <div className="w-full h-2 rounded-full bg-surface overflow-hidden">
-          <div
-            className={`h-full transition-all duration-300 ${
-              hpRatio <= 25
-                ? 'bg-rose-500'
-                : hpRatio <= 55
-                  ? 'bg-amber-400'
-                  : 'bg-emerald-400'
-            }`}
-            style={{ width: `${hpRatio}%` }}
-          />
-        </div>
-
-        {/* Death Saves Strip (always visible at 0 HP or when ticks > 0 or in edit mode) */}
-        {(sheet.combat.hpCurrent === 0 ||
-          sheet.deathSaves.success > 0 ||
-          sheet.deathSaves.fail > 0 ||
-          editUnlocked) && (
-          <div className="pt-2 border-t border-border/70 flex flex-wrap items-center justify-between gap-3 text-xs">
-            <div className="flex items-center gap-4 flex-wrap">
-              <div className="flex items-center gap-1.5 text-rose-300 font-bold">
-                <Skull className="w-4 h-4" />
-                <span>Спасброски от смерти:</span>
-              </div>
-
-              <div className="flex items-center gap-1.5">
-                <span className="text-emerald-300 text-[11px]">Успехи:</span>
-                {[1, 2, 3].map((i) => {
-                  const filled = sheet.deathSaves.success >= i;
-                  return (
+              {/* Class Resources & Dice Pools (just like Fighter Maneuver Dice inside Page 1!) */}
+              <div className="sheet-frame overflow-hidden">
+                <div className="sheet-frame__header">
+                  <span>Классовые ресурсы и заряды</span>
+                  {canEdit && (
                     <button
-                      key={`succ-${i}`}
                       type="button"
-                      disabled={!canEdit}
-                      onClick={() =>
-                        commitMutation((s) => {
-                          const vit = ensureObj(s, 'vitality');
-                          vit.deathSaves = {
-                            success: filled ? i - 1 : i,
-                            fail: sheet.deathSaves.fail,
-                          };
-                        }, true)
-                      }
-                      className={`w-4 h-4 rounded-full border transition-colors ${
-                        filled
-                          ? 'bg-emerald-400 border-emerald-300'
-                          : 'bg-surface border-border hover:border-emerald-400'
-                      }`}
-                    />
-                  );
-                })}
-              </div>
+                      onClick={() => setResFormOpen((v) => !v)}
+                      className="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 text-[10px] inline-flex items-center gap-1"
+                    >
+                      <Plus className="w-3 h-3" />
+                      <span>Ресурс</span>
+                    </button>
+                  )}
+                </div>
 
-              <div className="flex items-center gap-1.5">
-                <span className="text-rose-300 text-[11px]">Провалы:</span>
-                {[1, 2, 3].map((i) => {
-                  const filled = sheet.deathSaves.fail >= i;
-                  return (
-                    <button
-                      key={`fail-${i}`}
-                      type="button"
-                      disabled={!canEdit}
-                      onClick={() =>
-                        commitMutation((s) => {
-                          const vit = ensureObj(s, 'vitality');
-                          vit.deathSaves = {
-                            success: sheet.deathSaves.success,
-                            fail: filled ? i - 1 : i,
-                          };
-                        }, true)
-                      }
-                      className={`w-4 h-4 rounded-full border transition-colors ${
-                        filled
-                          ? 'bg-rose-500 border-rose-300'
-                          : 'bg-surface border-border hover:border-rose-400'
-                      }`}
-                    />
-                  );
-                })}
-              </div>
-            </div>
-
-            <button
-              type="button"
-              onClick={handleDeathSaveRoll}
-              className="px-3 py-1 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/45 text-rose-200 font-bold inline-flex items-center gap-1.5"
-            >
-              <Dices className="w-3.5 h-3.5" />
-              <span>Бросить 1к20</span>
-            </button>
-          </div>
-        )}
-      </div>
-
-      {/* Sheet Internal 4-Tab Navigation */}
-      <div className="flex items-center gap-1.5 border-b border-border pb-2.5 overflow-x-auto">
-        {(
-          [
-            {
-              id: 'stats',
-              label: 'Характеристики и Навыки',
-              icon: <Dices className="w-3.5 h-3.5" />,
-            },
-            {
-              id: 'combat',
-              label: `Оружие (${sheet.weapons.length}) и Ресурсы (${sheet.resources.length})`,
-              icon: <Swords className="w-3.5 h-3.5" />,
-            },
-            {
-              id: 'magic',
-              label: 'Магия и Ячейки',
-              icon: <Sparkles className="w-3.5 h-3.5" />,
-            },
-            {
-              id: 'features',
-              label: 'Инвентарь, Черты и Личность',
-              icon: <ScrollText className="w-3.5 h-3.5" />,
-            },
-          ] as const
-        ).map((t) => {
-          const active = subTab === t.id;
-          return (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => setSubTab(t.id)}
-              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold inline-flex items-center gap-1.5 whitespace-nowrap transition-all ${
-                active
-                  ? 'anime-btn-primary'
-                  : 'bg-bg/60 border border-border text-muted hover:text-text'
-              }`}
-            >
-              {t.icon}
-              <span>{t.label}</span>
-            </button>
-          );
-        })}
-      </div>
-
-      {/* TAB 1: ABILITIES, SAVING THROWS, 18 SKILLS & PROFICIENCIES */}
-      {subTab === 'stats' && (
-        <div className="space-y-4">
-          {/* 6 Ability Cards */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
-            {(Object.keys(ABILITY_META) as AbilityCode[]).map((code) => {
-              const ab = sheet.abilities[code];
-              return (
-                <div
-                  key={code}
-                  className="p-3 rounded-2xl bg-bg/75 border border-border flex flex-col justify-between gap-2"
-                >
-                  <div className="text-center">
-                    <div className="text-[11px] font-extrabold tracking-wider text-primary">
-                      {ab.shortRu}
-                    </div>
-                    <div className="text-[10px] text-muted">{ab.fullRu}</div>
-                  </div>
-
-                  {/* Check Roll Button */}
-                  <button
-                    type="button"
-                    onClick={() => handleD20Roll(`Проверка: ${ab.fullRu}`, ab.checkBonus)}
-                    className="py-1.5 rounded-xl bg-surface/80 hover:bg-primary/15 border border-border hover:border-primary/50 transition-colors text-center group"
-                    title={`Бросить проверку ${ab.fullRu} (1к20${formatSigned(ab.checkBonus)})`}
+                {resFormOpen && canEdit && (
+                  <form
+                    onSubmit={handleAddResource}
+                    className="p-3 bg-surface/95 border-b border-border grid grid-cols-1 sm:grid-cols-4 gap-2 items-end"
                   >
-                    <div className="font-anime font-extrabold text-xl text-text group-hover:text-primary">
-                      {formatSigned(ab.mod)}
-                    </div>
-                    {!editUnlocked && (
-                      <div className="text-[11px] text-muted font-semibold">
-                        Знач. {ab.score}
-                      </div>
-                    )}
-                  </button>
-
-                  {/* Inline Score Stepper when Edit Mode is ON */}
-                  {editUnlocked && canEdit && (
-                    <div className="flex items-center justify-between gap-1">
-                      <button
-                        type="button"
-                        onClick={() =>
-                          commitMutation((s) => {
-                            const st = ensureObj(s, 'stats');
-                            const cur = ensureObj(st, code);
-                            cur.name = code;
-                            cur.score = Math.max(1, ab.baseScore - 1);
-                          })
-                        }
-                        className="w-6 h-6 rounded-lg bg-surface border border-border text-xs font-bold hover:border-primary"
+                    <input
+                      required
+                      value={rName}
+                      onChange={(e) => setRName(e.target.value)}
+                      placeholder="Кости приёмов / Ярость / Ци"
+                      className="anime-input sm:col-span-2 py-1.5 px-2.5 text-xs"
+                    />
+                    <input
+                      type="number"
+                      min={1}
+                      max={99}
+                      value={rMax}
+                      onChange={(e) => setRMax(Math.max(1, Number(e.target.value)))}
+                      className="anime-input py-1.5 px-2 text-xs"
+                    />
+                    <div className="flex gap-1">
+                      <select
+                        value={rRest}
+                        onChange={(e) => setRRest(e.target.value as 'none' | 'short' | 'long')}
+                        className="anime-input flex-1 py-1.5 px-1.5 text-xs"
                       >
-                        -
-                      </button>
-                      <input
-                        type="number"
-                        min={1}
-                        max={30}
-                        value={ab.baseScore}
-                        onChange={(e) =>
-                          commitMutation((s) => {
-                            const st = ensureObj(s, 'stats');
-                            const cur = ensureObj(st, code);
-                            cur.name = code;
-                            cur.score = Math.min(30, Math.max(1, Number(e.target.value) || 10));
-                          })
-                        }
-                        className="anime-input w-12 py-0.5 px-1 text-xs text-center font-bold"
-                      />
-                      <button
-                        type="button"
-                        onClick={() =>
-                          commitMutation((s) => {
-                            const st = ensureObj(s, 'stats');
-                            const cur = ensureObj(st, code);
-                            cur.name = code;
-                            cur.score = Math.min(30, ab.baseScore + 1);
-                          })
-                        }
-                        className="w-6 h-6 rounded-lg bg-surface border border-border text-xs font-bold hover:border-primary"
-                      >
+                        <option value="short">Кор. отд.</option>
+                        <option value="long">Дл. отд.</option>
+                        <option value="none">Вручную</option>
+                      </select>
+                      <button type="submit" className="anime-btn-primary px-2.5 py-1.5 text-xs">
                         +
                       </button>
                     </div>
+                  </form>
+                )}
+
+                <div className="p-2.5">
+                  {sheet.resources.length === 0 ? (
+                    <div className="text-[11px] text-muted text-center py-1.5">
+                      Нет активных счётчиков ресурсов.
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {sheet.resources.map((r) => (
+                        <div
+                          key={r.id}
+                          className="px-3 py-2 rounded-xl bg-surface/75 border border-border flex items-center justify-between gap-2"
+                        >
+                          <div className="min-w-0">
+                            <div className="text-xs font-bold text-text truncate">{r.name}</div>
+                            {r.restLabel && (
+                              <div className="text-[10px] text-muted">{r.restLabel}</div>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-1 shrink-0">
+                            {canEdit && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  commitMutation((s) => {
+                                    const ro = ensureObj(s, 'resources');
+                                    const t = ensureObj(ro, r.id);
+                                    t.current = Math.max(0, r.current - 1);
+                                  }, true)
+                                }
+                                className="w-5 h-5 rounded bg-bg border border-border text-xs font-bold hover:border-amber-400"
+                              >
+                                -
+                              </button>
+                            )}
+                            <span className="font-mono font-bold text-xs text-amber-300 px-2 py-0.5 rounded bg-amber-500/15 border border-amber-500/30">
+                              {r.current} / {r.max}
+                            </span>
+                            {canEdit && (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    commitMutation((s) => {
+                                      const ro = ensureObj(s, 'resources');
+                                      const t = ensureObj(ro, r.id);
+                                      t.current = Math.min(r.max, r.current + 1);
+                                    }, true)
+                                  }
+                                  className="w-5 h-5 rounded bg-bg border border-border text-xs font-bold hover:border-amber-400"
+                                >
+                                  +
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    commitMutation((s) => {
+                                      const ro = ensureObj(s, 'resources');
+                                      delete ro[r.id];
+                                    }, true)
+                                  }
+                                  className="p-0.5 text-muted hover:text-rose-400"
+                                >
+                                  <X className="w-3 h-3" />
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   )}
-
-                  {/* Save Proficiency Toggle + Save Roll */}
-                  <div
-                    className={`px-2 py-1 rounded-xl text-[11px] font-semibold flex items-center justify-between border transition-colors ${
-                      ab.saveProf
-                        ? 'bg-accent/15 border-accent/40 text-accent'
-                        : 'bg-bg/60 border-border text-muted'
-                    }`}
-                  >
-                    <button
-                      type="button"
-                      disabled={!canEdit}
-                      onClick={() =>
-                        commitMutation((s) => {
-                          const sv = ensureObj(s, 'saves');
-                          const cur = ensureObj(sv, code);
-                          cur.name = code;
-                          cur.isProf = !ab.saveProf;
-                        }, true)
-                      }
-                      className="hover:scale-125 transition-transform px-0.5"
-                      title={
-                        canEdit
-                          ? 'Переключить владение спасброском'
-                          : 'Владение спасброском'
-                      }
-                    >
-                      {ab.saveProf ? '●' : '○'}
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => handleD20Roll(`Спасбросок: ${ab.fullRu}`, ab.saveBonus)}
-                      className="flex-1 flex items-center justify-between pl-1 hover:text-text"
-                      title={`Бросить спасбросок ${ab.fullRu}`}
-                    >
-                      <span>Спас</span>
-                      <span className="font-mono font-bold">{formatSigned(ab.saveBonus)}</span>
-                    </button>
-                  </div>
                 </div>
-              );
-            })}
-          </div>
+              </div>
 
-          {/* 18 Skills Grid with 1-Click Proficiency Cycle */}
-          <div className="space-y-2">
-            <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted px-1">
-              <span className="font-semibold text-text/90">
-                Навыки (нажмите на кружок слева для смены владения, на строку — для броска 1к20)
-              </span>
-              <span>○ нет • ● владение (+БМ) • ◆ компетентность (+2×БМ)</span>
+              {/* УМЕНИЯ И СПОСОБНОСТИ (Classic Graph-Paper Box) */}
+              <ClassicTextBox
+                title="Умения и способности"
+                primaryNodes={sheet.textByKey.traits?.nodes}
+                secondaryNodes={sheet.textByKey.features?.nodes}
+                canEdit={canEdit}
+                onEdit={() => {
+                  const targetKey =
+                    sheet.textByKey.traits?.nodes?.length || !sheet.textByKey.features?.nodes?.length
+                      ? 'traits'
+                      : 'features';
+                  openBlockEditor(targetKey, 'Умения и способности');
+                }}
+                minHeight="min-h-[210px]"
+              />
+
+              {/* Bottom 2-Column Split: АТАКИ И ЗАКЛИНАНИЯ | ЧЕРТЫ (FEATS) */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                <ClassicTextBox
+                  title="Атаки и особые приёмы"
+                  primaryNodes={sheet.textByKey.attacks?.nodes}
+                  canEdit={canEdit}
+                  onEdit={() => openBlockEditor('attacks', 'Атаки и особые приёмы')}
+                  minHeight="min-h-[150px]"
+                />
+                <ClassicTextBox
+                  title="Черты (Feats)"
+                  primaryNodes={sheet.textByKey.feats?.nodes}
+                  canEdit={canEdit}
+                  onEdit={() => openBlockEditor('feats', 'Черты (Feats)')}
+                  minHeight="min-h-[150px]"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===================================================================== */}
+      {/* CLASSIC PAGE 2: PORTRAIT, ALLIES, GOALS, EXTRA FEATURES & JOURNAL     */}
+      {/* ===================================================================== */}
+      {page === 'page2' && (
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
+            {/* Left Column: PORTRAIT + GOALS & QUESTS */}
+            <div className="lg:col-span-5 space-y-4">
+              <div className="sheet-frame overflow-hidden">
+                <div className="sheet-frame__header">
+                  <span>Портрет</span>
+                  {canEdit && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPortraitUrlDraft(sheet.avatarUrl || '');
+                        setPortraitEditOpen((v) => !v);
+                      }}
+                      className="text-muted hover:text-accent inline-flex items-center gap-1"
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                {portraitEditOpen && canEdit && (
+                  <div className="p-3 bg-surface/95 border-b border-border space-y-2 text-xs">
+                    <div className="flex items-center gap-2">
+                      <label className="anime-btn-primary px-3 py-1.5 text-xs cursor-pointer inline-flex items-center gap-1.5">
+                        <Upload className="w-3.5 h-3.5" />
+                        <span>{uploadingPortrait ? 'Загрузка...' : 'Загрузить файл'}</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handlePortraitFileUpload}
+                          className="hidden"
+                        />
+                      </label>
+                      {sheet.avatarUrl && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            commitMutation((s) => {
+                              delete s.avatar;
+                            }, true);
+                            setPortraitEditOpen(false);
+                          }}
+                          className="px-2.5 py-1.5 rounded-lg border border-rose-500/40 text-rose-300 text-xs"
+                        >
+                          Убрать
+                        </button>
+                      )}
+                    </div>
+
+                    <form
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        commitMutation((s) => {
+                          s.avatar = {
+                            webp: portraitUrlDraft.trim(),
+                            jpeg: portraitUrlDraft.trim(),
+                          };
+                        }, true);
+                        setPortraitEditOpen(false);
+                      }}
+                      className="flex gap-1.5"
+                    >
+                      <input
+                        value={portraitUrlDraft}
+                        onChange={(e) => setPortraitUrlDraft(e.target.value)}
+                        placeholder="Или вставьте URL изображения..."
+                        className="anime-input flex-1 py-1 px-2 text-xs"
+                      />
+                      <button
+                        type="submit"
+                        className="px-3 py-1 rounded-lg bg-accent/20 border border-accent/40 text-accent font-bold"
+                      >
+                        ОК
+                      </button>
+                    </form>
+                  </div>
+                )}
+
+                <div className="p-3 flex items-center justify-center bg-bg/60 min-h-[300px]">
+                  {sheet.avatarUrl ? (
+                    <img
+                      src={sheet.avatarUrl}
+                      alt={sheet.name}
+                      className="max-h-[420px] w-full object-contain rounded-xl border border-border/70"
+                    />
+                  ) : (
+                    <div className="text-center space-y-2 text-muted py-12">
+                      <ImageIcon className="w-10 h-10 mx-auto text-primary/40" />
+                      <div className="text-xs">Портрет не загружен</div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <ClassicTextBox
+                title="Цели и задачи"
+                primaryNodes={sheet.textByKey.quests?.nodes}
+                canEdit={canEdit}
+                onEdit={() => openBlockEditor('quests', 'Цели и задачи')}
+                minHeight="min-h-[200px]"
+              />
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-              {sheet.skills.map((sk) => (
-                <div
-                  key={sk.key}
-                  className={`px-3 py-2 rounded-xl border flex items-center justify-between gap-2 transition-all ${
-                    sk.profLevel > 0
-                      ? 'bg-primary/10 border-primary/35 hover:border-primary'
-                      : 'bg-bg/65 border-border/80 hover:border-primary/40'
-                  }`}
-                >
-                  <div className="flex items-center gap-2 min-w-0 flex-1">
-                    <button
-                      type="button"
-                      disabled={!canEdit}
-                      onClick={() =>
-                        commitMutation((s) => {
-                          const skObj = ensureObj(s, 'skills');
-                          const cur = ensureObj(skObj, sk.key);
-                          cur.name = sk.key;
-                          cur.baseStat = sk.stat;
-                          const nextProf = ((sk.profLevel + 1) % 3) as 0 | 1 | 2;
-                          cur.isProf = nextProf;
-                        }, true)
-                      }
-                      className={`text-xs w-5 h-5 rounded-md flex items-center justify-center shrink-0 border transition-colors ${
-                        sk.profLevel === 2
-                          ? 'bg-amber-500/20 border-amber-400/50 text-amber-300 font-bold'
-                          : sk.profLevel === 1
-                            ? 'bg-accent/20 border-accent/50 text-accent font-bold'
-                            : 'bg-surface/70 border-border text-muted/60 hover:text-text'
-                      }`}
-                      title="Переключить: Нет (○) → Владение (●) → Компетентность (◆)"
-                    >
-                      {sk.profLevel === 2 ? '◆' : sk.profLevel === 1 ? '●' : '○'}
-                    </button>
+            {/* Right Column: ALLIES & ORGANIZATIONS + ADDITIONAL FEATURES + TREASURES */}
+            <div className="lg:col-span-7 space-y-4">
+              <ClassicTextBox
+                title="Союзники и организации"
+                primaryNodes={sheet.textByKey.allies?.nodes}
+                canEdit={canEdit}
+                onEdit={() => openBlockEditor('allies', 'Союзники и организации')}
+                minHeight="min-h-[190px]"
+              />
 
-                    <button
-                      type="button"
-                      onClick={() => handleD20Roll(`Навык: ${sk.labelRu}`, sk.total)}
-                      className="flex items-center gap-1.5 min-w-0 flex-1 text-left group"
-                    >
-                      <span className="text-xs font-medium text-text truncate group-hover:text-primary transition-colors">
-                        {sk.labelRu}
-                      </span>
-                      <span className="text-[10px] uppercase text-muted shrink-0">
-                        ({sk.statShortRu})
-                      </span>
-                    </button>
-                  </div>
+              <ClassicTextBox
+                title="Дополнительные способности и умения"
+                primaryNodes={sheet.textByKey['notes-1']?.nodes}
+                secondaryNodes={
+                  sheet.textByKey.traits?.nodes?.length ? sheet.textByKey.features?.nodes : undefined
+                }
+                canEdit={canEdit}
+                onEdit={() =>
+                  openBlockEditor('notes-1', 'Дополнительные способности и умения')
+                }
+                minHeight="min-h-[190px]"
+              />
 
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    {editUnlocked && canEdit && (
-                      <input
-                        type="number"
-                        value={sk.extraBonus}
-                        onChange={(e) =>
-                          commitMutation((s) => {
-                            const skObj = ensureObj(s, 'skills');
-                            const cur = ensureObj(skObj, sk.key);
-                            cur.bonus = Number(e.target.value) || 0;
-                          })
-                        }
-                        title="Доп. бонус к навыку"
-                        className="anime-input w-12 py-0.5 px-1 text-[11px] text-center font-mono"
-                      />
-                    )}
+              <ClassicTextBox
+                title="Сокровища и редкие диковинки"
+                primaryNodes={sheet.textByKey.items?.nodes}
+                canEdit={canEdit}
+                onEdit={() => openBlockEditor('items', 'Сокровища и редкие диковинки')}
+                minHeight="min-h-[140px]"
+              />
 
-                    <button
-                      type="button"
-                      onClick={() => handleD20Roll(`Навык: ${sk.labelRu}`, sk.total)}
-                      className="font-mono font-bold text-xs text-text hover:text-accent px-1"
-                    >
-                      {formatSigned(sk.total)}
-                    </button>
-                  </div>
-                </div>
+              {extraCustomBlocks.map((b) => (
+                <ClassicTextBox
+                  key={b.key}
+                  title={b.label}
+                  primaryNodes={b.nodes}
+                  canEdit={canEdit}
+                  onEdit={() => openBlockEditor(b.key, b.label)}
+                  minHeight="min-h-[110px]"
+                />
               ))}
             </div>
           </div>
 
-          {/* Armor & Weapon Proficiencies Interactive Chips */}
-          <div className="p-3.5 rounded-2xl bg-bg/65 border border-border space-y-2">
-            <div className="text-xs font-semibold text-muted">
-              Владение доспехами, щитами и оружием:
-            </div>
-            <div className="flex flex-wrap gap-1.5">
-              {Object.entries(PROF_FLAG_LABELS_RU).map(([flagKey, label]) => {
-                const checked = sheet.profFlagKeys.includes(flagKey);
-                return (
-                  <button
-                    key={flagKey}
-                    type="button"
-                    disabled={!canEdit}
-                    onClick={() =>
-                      commitMutation((s) => {
-                        const pr = ensureObj(s, 'prof');
-                        setLssField(pr, flagKey, !checked);
-                      }, true)
-                    }
-                    className={`px-2.5 py-1 rounded-xl text-[11px] font-semibold border transition-colors ${
-                      checked
-                        ? 'bg-primary/20 border-primary/45 text-primary'
-                        : 'bg-surface/60 border-border text-muted hover:text-text'
-                    }`}
-                  >
-                    {checked ? '✓ ' : ''}
-                    {label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+          {/* Personal Campaign Journal integrated cleanly at bottom of Page 2 */}
+          <JournalEditor
+            key={`journal-${profile.playerId}`}
+            playerId={profile.playerId}
+            journal={journal}
+            readOnly={!canEdit}
+          />
         </div>
       )}
 
-      {/* TAB 2: WEAPONS, ATTACKS & CLASS RESOURCES */}
-      {subTab === 'combat' && (
-        <div className="space-y-5">
-          {/* Weapons Section */}
-          <div className="space-y-2.5">
-            <div className="flex items-center justify-between gap-2">
-              <div className="text-xs font-bold text-text flex items-center gap-1.5">
-                <Swords className="w-4 h-4 text-primary" />
-                <span>Оружие, заговоры и боевые атаки</span>
-              </div>
-
-              {canEdit && (
-                <button
-                  type="button"
-                  onClick={() => openWeaponModalFor()}
-                  className="anime-btn-primary px-3 py-1.5 text-xs inline-flex items-center gap-1.5"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>Добавить оружие</span>
-                </button>
-              )}
-            </div>
-
-            {weaponFormOpen && canEdit && (
-              <form
-                onSubmit={handleSaveWeapon}
-                className="p-4 rounded-2xl bg-surface/90 border border-primary/45 space-y-3"
-              >
-                <div className="flex items-center justify-between">
-                  <span className="font-anime font-bold text-xs text-primary">
-                    {editingWeaponId ? 'Редактирование оружия' : 'Новое оружие / атака'}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setWeaponFormOpen(false)}
-                    className="text-muted hover:text-text"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                  <div>
-                    <label className="block text-[11px] text-muted mb-1">Название</label>
-                    <input
-                      required
-                      value={wName}
-                      onChange={(e) => setWName(e.target.value)}
-                      placeholder="Длинный меч / Рапира +1"
-                      className="anime-input w-full text-xs"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-[11px] text-muted mb-1">Характеристика</label>
-                    <select
-                      value={wAbility}
-                      onChange={(e) => {
-                        const val = e.target.value as AbilityCode | 'none';
-                        setWAbility(val);
-                        if (!editingWeaponId && val !== 'none') {
-                          setWDmg(`1к8+[${val.toUpperCase()}]`);
-                        }
-                      }}
-                      className="anime-input w-full text-xs"
-                    >
-                      {(Object.keys(ABILITY_META) as AbilityCode[]).map((c) => (
-                        <option key={c} value={c}>
-                          {ABILITY_META[c].fullRu} ({ABILITY_META[c].shortRu})
-                        </option>
-                      ))}
-                      <option value="none">Без характеристики</option>
-                    </select>
-                  </div>
-
-                  <div className="flex items-end gap-2">
-                    <label className="flex items-center gap-1.5 text-xs cursor-pointer py-2">
-                      <input
-                        type="checkbox"
-                        checked={wIsProf}
-                        onChange={(e) => setWIsProf(e.target.checked)}
-                      />
-                      <span>Владение (+БМ)</span>
-                    </label>
-                    <div className="flex-1">
-                      <label className="block text-[11px] text-muted mb-1">Доп. к попад.</label>
-                      <input
-                        value={wExtraMod}
-                        onChange={(e) => setWExtraMod(e.target.value)}
-                        placeholder="0 или +1"
-                        className="anime-input w-full text-xs font-mono"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                  <div>
-                    <label className="block text-[11px] text-muted mb-1">
-                      Формула урона (поддерживает [STR], [DEX]...)
-                    </label>
-                    <input
-                      required
-                      value={wDmg}
-                      onChange={(e) => setWDmg(e.target.value)}
-                      placeholder="1к8+[DEX] или 2к6+3"
-                      className="anime-input w-full text-xs font-mono"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] text-muted mb-1">Вид урона</label>
-                    <input
-                      value={wDmgType}
-                      onChange={(e) => setWDmgType(e.target.value)}
-                      placeholder="колющий / рубящий / огонь"
-                      className="anime-input w-full text-xs"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] text-muted mb-1">Свойства / дистанция</label>
-                    <input
-                      value={wNotes}
-                      onChange={(e) => setWNotes(e.target.value)}
-                      placeholder="Фехтовальное, универсальное (1к10)"
-                      className="anime-input w-full text-xs"
-                    />
-                  </div>
-                </div>
-
-                <div className="flex justify-end gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setWeaponFormOpen(false)}
-                    className="px-3 py-1.5 rounded-xl border border-border text-xs text-muted"
-                  >
-                    Отмена
-                  </button>
-                  <button type="submit" className="anime-btn-primary px-4 py-1.5 text-xs">
-                    Сохранить оружие
-                  </button>
-                </div>
-              </form>
-            )}
-
-            {sheet.weapons.length === 0 ? (
-              <div className="p-4 rounded-2xl bg-bg/50 border border-border text-xs text-muted">
-                Список оружия пуст. Нажмите «Добавить оружие», чтобы создать атаку с автоматическим расчётом попадания и урона.
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {sheet.weapons.map((w) => (
-                  <div
-                    key={w.id}
-                    className="p-3.5 rounded-2xl bg-bg/75 border border-border flex flex-wrap items-center justify-between gap-3"
-                  >
-                    <div className="min-w-0 space-y-0.5">
-                      <div className="font-anime font-bold text-sm text-text flex items-center gap-2 flex-wrap">
-                        <span>{w.name}</span>
-                        {w.damageType && (
-                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-surface border border-border text-muted font-normal">
-                            {w.damageType}
-                          </span>
-                        )}
-                      </div>
-                      {w.notes && <div className="text-[11px] text-muted">{w.notes}</div>}
-                    </div>
-
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <button
-                        type="button"
-                        onClick={() => handleD20Roll(`Атака: ${w.name}`, w.attackBonus)}
-                        className="px-3 py-1.5 rounded-xl bg-primary/15 hover:bg-primary/25 border border-primary/40 text-xs font-bold text-primary inline-flex items-center gap-1.5 transition-colors"
-                      >
-                        <Dices className="w-3.5 h-3.5" />
-                        <span>Попадание {formatSigned(w.attackBonus)}</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => handleDamageRoll(`Урон (${w.name})`, w.damageResolved)}
-                        className="px-3 py-1.5 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/40 text-xs font-bold text-rose-300 inline-flex items-center gap-1.5 transition-colors"
-                      >
-                        <Swords className="w-3.5 h-3.5" />
-                        <span>{w.damageResolved}</span>
-                      </button>
-
-                      {canEdit && (
-                        <>
-                          <button
-                            type="button"
-                            onClick={() => openWeaponModalFor(w)}
-                            className="p-1.5 rounded-xl bg-surface border border-border text-muted hover:text-primary"
-                            title="Редактировать оружие"
-                          >
-                            <Pencil className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteWeapon(w.id)}
-                            className="p-1.5 rounded-xl bg-surface border border-border text-muted hover:text-rose-400"
-                            title="Удалить оружие"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Class Resources & Charges */}
-          <div className="space-y-2.5">
-            <div className="flex items-center justify-between gap-2">
-              <div className="text-xs font-bold text-text flex items-center gap-1.5">
-                <Zap className="w-4 h-4 text-amber-400" />
-                <span>Классовые ресурсы и заряды</span>
-              </div>
-
-              {canEdit && (
-                <button
-                  type="button"
-                  onClick={() => setResFormOpen((v) => !v)}
-                  className="px-3 py-1.5 rounded-xl bg-amber-500/15 border border-amber-500/40 text-amber-300 text-xs font-bold inline-flex items-center gap-1.5 hover:bg-amber-500/25"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>Добавить ресурс</span>
-                </button>
-              )}
-            </div>
-
-            {resFormOpen && canEdit && (
-              <form
-                onSubmit={handleAddResource}
-                className="p-3.5 rounded-2xl bg-surface/90 border border-amber-500/40 grid grid-cols-1 sm:grid-cols-4 gap-2.5 items-end"
-              >
-                <div className="sm:col-span-2">
-                  <label className="block text-[11px] text-muted mb-1">Название ресурса</label>
-                  <input
-                    required
-                    value={rName}
-                    onChange={(e) => setRName(e.target.value)}
-                    placeholder="Ярость / Очки Ци / Божественный канал"
-                    className="anime-input w-full text-xs"
-                  />
-                </div>
+      {/* ===================================================================== */}
+      {/* CLASSIC PAGE 3: SPELLCASTING, PHYSICAL, PREPARED SPELLS & EQUIPMENT   */}
+      {/* ===================================================================== */}
+      {page === 'page3' && (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
+          {/* Left 8 Columns: Spellcasting Header + Physical Stats + Slots + Spells Table */}
+          <div className="lg:col-span-8 space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
+              {/* Spellcasting Ability / Mod / Save DC / Attack Bonus Box */}
+              <div className="md:col-span-4 sheet-frame p-3 space-y-2.5">
                 <div>
-                  <label className="block text-[11px] text-muted mb-1">Максимум</label>
-                  <input
-                    type="number"
-                    min={1}
-                    max={99}
-                    value={rMax}
-                    onChange={(e) => setRMax(Math.max(1, Number(e.target.value)))}
-                    className="anime-input w-full text-xs"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[11px] text-muted mb-1">Восстановление</label>
-                  <div className="flex gap-1.5">
-                    <select
-                      value={rRest}
-                      onChange={(e) => setRRest(e.target.value as 'none' | 'short' | 'long')}
-                      className="anime-input flex-1 text-xs"
-                    >
-                      <option value="long">Дл. отдых</option>
-                      <option value="short">Кор. отдых</option>
-                      <option value="none">Вручную</option>
-                    </select>
-                    <button type="submit" className="anime-btn-primary px-3 py-1.5 text-xs">
-                      +
-                    </button>
-                  </div>
-                </div>
-              </form>
-            )}
-
-            {sheet.resources.length === 0 ? (
-              <div className="p-4 rounded-2xl bg-bg/50 border border-border text-xs text-muted">
-                Нет добавленных ресурсов (например: Второе дыхание, Ярость, Вдохновение барда, Единицы чародейства).
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {sheet.resources.map((r) => (
-                  <div
-                    key={r.id}
-                    className="p-3 rounded-2xl bg-bg/75 border border-border flex items-center justify-between gap-2"
-                  >
-                    <div className="min-w-0">
-                      <div className="text-xs font-bold text-text truncate">{r.name}</div>
-                      {r.restLabel && (
-                        <div className="text-[10px] text-muted">Восст.: {r.restLabel}</div>
-                      )}
-                    </div>
-
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      {canEdit && (
-                        <button
-                          type="button"
-                          onClick={() =>
-                            commitMutation((s) => {
-                              const ro = ensureObj(s, 'resources');
-                              const target = ensureObj(ro, r.id);
-                              target.current = Math.max(0, r.current - 1);
-                            }, true)
-                          }
-                          className="w-6 h-6 rounded-lg bg-surface border border-border text-xs font-bold hover:border-amber-400"
-                        >
-                          -
-                        </button>
-                      )}
-                      <span className="font-anime font-extrabold text-sm text-amber-300 px-2.5 py-1 rounded-xl bg-amber-500/10 border border-amber-500/30">
-                        {r.current} / {r.max}
-                      </span>
-                      {canEdit && (
-                        <>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              commitMutation((s) => {
-                                const ro = ensureObj(s, 'resources');
-                                const target = ensureObj(ro, r.id);
-                                target.current = Math.min(r.max, r.current + 1);
-                              }, true)
-                            }
-                            className="w-6 h-6 rounded-lg bg-surface border border-border text-xs font-bold hover:border-amber-400"
-                          >
-                            +
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              commitMutation((s) => {
-                                const ro = ensureObj(s, 'resources');
-                                delete ro[r.id];
-                              }, true)
-                            }
-                            className="p-1 text-muted hover:text-rose-400"
-                            title="Удалить ресурс"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* TAB 3: SPELLCASTING & INTERACTIVE SPELL SLOTS */}
-      {subTab === 'magic' && (
-        <div className="space-y-4">
-          <div className="p-4 rounded-2xl bg-bg/75 border border-primary/35 space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-accent" />
-                <span className="font-anime font-bold text-sm">Параметры заклинателя</span>
-              </div>
-
-              <div className="flex items-center gap-2 flex-wrap">
-                <label className="text-xs text-muted flex items-center gap-1.5">
-                  <span>Базовая хар-ка:</span>
                   <select
                     disabled={!canEdit}
                     value={sheet.spellcasting.baseAbility ?? ''}
@@ -1975,531 +2523,991 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                         si.base = { code: e.target.value };
                       }, true)
                     }
-                    className="anime-input py-1 px-2 text-xs"
+                    className="anime-input w-full py-1.5 px-2 text-xs font-bold"
                   >
-                    <option value="">Не выбрана</option>
+                    <option value="">Без базовой хар-ки</option>
                     <option value="int">Интеллект (ИНТ)</option>
                     <option value="wis">Мудрость (МДР)</option>
                     <option value="cha">Харизма (ХАР)</option>
                   </select>
-                </label>
+                  <div className="text-[9px] uppercase tracking-wider text-muted mt-0.5 px-1">
+                    Характеристика заклинателя
+                  </div>
+                </div>
+
+                <div className="space-y-1.5 pt-1 border-t border-border/60 text-xs">
+                  <div className="flex items-center justify-between px-2 py-1.5 rounded-lg bg-surface/75 border border-border">
+                    <span className="text-[10px] uppercase text-muted font-bold">
+                      Модификатор
+                    </span>
+                    <span className="font-anime font-extrabold text-base text-text">
+                      {sheet.spellcasting.abilityMod !== null
+                        ? formatSigned(sheet.spellcasting.abilityMod)
+                        : '—'}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between px-2 py-1.5 rounded-lg bg-surface/75 border border-border">
+                    <span className="text-[10px] uppercase text-muted font-bold">
+                      Сл спасброска
+                    </span>
+                    <span className="font-anime font-extrabold text-base text-primary">
+                      {sheet.spellcasting.saveDc ?? '—'}
+                    </span>
+                  </div>
+
+                  <button
+                    type="button"
+                    disabled={sheet.spellcasting.attackBonus === null}
+                    onClick={() =>
+                      handleD20Roll(
+                        'Атака заклинанием',
+                        sheet.spellcasting.attackBonus ?? 0
+                      )
+                    }
+                    className="w-full flex items-center justify-between px-2 py-1.5 rounded-lg bg-accent/15 hover:bg-accent/25 border border-accent/40 disabled:opacity-50"
+                  >
+                    <span className="text-[10px] uppercase text-accent font-bold inline-flex items-center gap-1">
+                      <Dices className="w-3.5 h-3.5" />
+                      <span>Бонус атаки</span>
+                    </span>
+                    <span className="font-anime font-extrabold text-base text-accent">
+                      {sheet.spellcasting.attackBonus !== null
+                        ? formatSigned(sheet.spellcasting.attackBonus)
+                        : '—'}
+                    </span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Right 8 Columns of Top Magic Header: 4 Physical Plaques + 1–9 Spell Slots */}
+              <div className="md:col-span-8 space-y-3">
+                {/* SIZE | CARRYING CAPACITY | HIGH JUMP | LONG JUMP (matching image-5.png!) */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  <div className="sheet-frame p-2.5 text-center">
+                    <div className="text-[9px] font-extrabold uppercase tracking-wider text-muted">
+                      Размер
+                    </div>
+                    {canEdit ? (
+                      <select
+                        value={sheet.physical.size}
+                        onChange={(e) =>
+                          commitMutation((s) => {
+                            const info = ensureObj(s, 'info');
+                            setLssField(info, 'size', e.target.value);
+                          }, true)
+                        }
+                        className="mt-1 bg-transparent font-anime font-bold text-xs text-text text-center focus:outline-none"
+                      >
+                        {SIZE_OPTIONS.map((sz) => (
+                          <option key={sz} value={sz} className="bg-surface text-text">
+                            {sz}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <div className="mt-1 font-anime font-bold text-xs text-text">
+                        {sheet.physical.size}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="sheet-frame p-2.5 text-center">
+                    <div className="text-[9px] font-extrabold uppercase tracking-wider text-muted">
+                      Грузоподъёмн.
+                    </div>
+                    <div className="mt-1 font-anime font-extrabold text-xs text-text">
+                      {sheet.physical.carryCapacity}
+                    </div>
+                  </div>
+
+                  <div className="sheet-frame p-2.5 text-center">
+                    <div className="text-[9px] font-extrabold uppercase tracking-wider text-muted">
+                      Прыжок В.
+                    </div>
+                    <div className="mt-1 font-anime font-extrabold text-xs text-text">
+                      {sheet.physical.highJump}
+                    </div>
+                  </div>
+
+                  <div className="sheet-frame p-2.5 text-center">
+                    <div className="text-[9px] font-extrabold uppercase tracking-wider text-muted">
+                      Прыжок Д.
+                    </div>
+                    <div className="mt-1 font-anime font-extrabold text-xs text-text">
+                      {sheet.physical.longJump}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Classic 3-Column Spell Slots Matrix (1-3 | 4-6 | 7-9 + Pact) */}
+                <div className="sheet-frame overflow-hidden">
+                  <div className="sheet-frame__header">
+                    <span>Ячейки заклинаний</span>
+                    {canEdit && (
+                      <button
+                        type="button"
+                        onClick={() => setConfigureSlotsOpen((v) => !v)}
+                        className="text-[10px] text-accent hover:underline font-bold"
+                      >
+                        {configureSlotsOpen ? 'Готово' : 'Максимум ячеек'}
+                      </button>
+                    )}
+                  </div>
+
+                  {configureSlotsOpen && canEdit && (
+                    <div className="p-3 bg-surface/95 border-b border-border space-y-2">
+                      <div className="grid grid-cols-3 sm:grid-cols-9 gap-1.5">
+                        {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((lvl) => (
+                          <div key={lvl} className="text-center">
+                            <div className="text-[10px] text-muted">{lvl}-й</div>
+                            <input
+                              type="number"
+                              min={0}
+                              max={9}
+                              value={sheet.spellcasting.slotsByLevel[lvl]?.total ?? 0}
+                              onChange={(e) => {
+                                const total = Math.max(
+                                  0,
+                                  Math.min(9, Number(e.target.value) || 0)
+                                );
+                                commitMutation((s) => {
+                                  const sp = ensureObj(s, 'spells');
+                                  const cur = ensureObj(sp, `slots-${lvl}`);
+                                  cur.value = total;
+                                  if (Number(cur.filled ?? 0) > total) cur.filled = total;
+                                });
+                              }}
+                              className="anime-input w-full py-0.5 px-1 text-xs text-center"
+                            />
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="flex items-center gap-2 text-xs pt-1 border-t border-border/60">
+                        <span className="text-muted">Ячейки Пакта:</span>
+                        <select
+                          value={sheet.spellcasting.pactSlots.level}
+                          onChange={(e) => {
+                            const nextLvl = Number(e.target.value);
+                            commitMutation((s) => {
+                              const pact: Record<string, unknown> = {};
+                              pact[`slots-${nextLvl}`] = {
+                                value: sheet.spellcasting.pactSlots.total,
+                                filled: sheet.spellcasting.pactSlots.expended,
+                              };
+                              s.spellsPact = pact;
+                            }, true);
+                          }}
+                          className="anime-input py-0.5 px-2 text-xs"
+                        >
+                          {[1, 2, 3, 4, 5].map((l) => (
+                            <option key={l} value={l}>
+                              {l}-й круг
+                            </option>
+                          ))}
+                        </select>
+                        <input
+                          type="number"
+                          min={0}
+                          max={6}
+                          value={sheet.spellcasting.pactSlots.total}
+                          onChange={(e) => {
+                            const total = Math.max(0, Math.min(6, Number(e.target.value) || 0));
+                            commitMutation((s) => {
+                              const pact: Record<string, unknown> = {};
+                              pact[`slots-${sheet.spellcasting.pactSlots.level}`] = {
+                                value: total,
+                                filled: Math.min(total, sheet.spellcasting.pactSlots.expended),
+                              };
+                              s.spellsPact = pact;
+                            });
+                          }}
+                          className="anime-input w-14 py-0.5 px-1.5 text-xs text-center"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="p-3 grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                    {[
+                      [1, 2, 3],
+                      [4, 5, 6],
+                      [7, 8, 9],
+                    ].map((colLevels, colIdx) => (
+                      <div key={colIdx} className="space-y-1.5">
+                        {colLevels.map((lvl) => {
+                          const info = sheet.spellcasting.slotsByLevel[lvl] ?? {
+                            total: 0,
+                            expended: 0,
+                          };
+                          const available = Math.max(0, info.total - info.expended);
+                          return (
+                            <div
+                              key={lvl}
+                              className="flex items-center justify-between gap-2 px-2 py-1 rounded-lg bg-surface/60 border border-border/60"
+                            >
+                              <span className="font-bold text-muted w-8">{lvl}-й</span>
+                              <div className="flex items-center gap-1 flex-wrap justify-end">
+                                {info.total === 0 ? (
+                                  <span className="text-[10px] text-muted/50">—</span>
+                                ) : (
+                                  Array.from({ length: info.total }).map((_, idx) => {
+                                    const free = idx < available;
+                                    return (
+                                      <button
+                                        key={idx}
+                                        type="button"
+                                        disabled={!canEdit}
+                                        onClick={() => {
+                                          const nextAvail = free ? idx : idx + 1;
+                                          const nextExp = Math.max(0, info.total - nextAvail);
+                                          commitMutation((s) => {
+                                            const sp = ensureObj(s, 'spells');
+                                            const cur = ensureObj(sp, `slots-${lvl}`);
+                                            cur.value = info.total;
+                                            cur.filled = nextExp;
+                                          }, true);
+                                        }}
+                                        className={`w-3.5 h-3.5 rotate-45 border transition-colors ${
+                                          free
+                                            ? 'bg-primary border-accent shadow-sm'
+                                            : 'bg-bg border-border'
+                                        }`}
+                                      />
+                                    );
+                                  })
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ))}
+                  </div>
+
+                  {sheet.spellcasting.pactSlots.total > 0 && (
+                    <div className="px-3 pb-3">
+                      <div className="px-2.5 py-1.5 rounded-lg bg-accent/10 border border-accent/35 flex items-center justify-between text-xs">
+                        <span className="font-bold text-accent">
+                          Магия Пакта ({sheet.spellcasting.pactSlots.level}-й круг)
+                        </span>
+                        <div className="flex items-center gap-1.5">
+                          {Array.from({ length: sheet.spellcasting.pactSlots.total }).map(
+                            (_, idx) => {
+                              const avail =
+                                sheet.spellcasting.pactSlots.total -
+                                sheet.spellcasting.pactSlots.expended;
+                              const free = idx < avail;
+                              return (
+                                <button
+                                  key={idx}
+                                  type="button"
+                                  disabled={!canEdit}
+                                  onClick={() => {
+                                    const nextAvail = free ? idx : idx + 1;
+                                    const nextExp = Math.max(
+                                      0,
+                                      sheet.spellcasting.pactSlots.total - nextAvail
+                                    );
+                                    commitMutation((s) => {
+                                      const pact = ensureObj(s, 'spellsPact');
+                                      const cur = ensureObj(
+                                        pact,
+                                        `slots-${sheet.spellcasting.pactSlots.level}`
+                                      );
+                                      cur.value = sheet.spellcasting.pactSlots.total;
+                                      cur.filled = nextExp;
+                                    }, true);
+                                  }}
+                                  className={`w-3.5 h-3.5 rotate-45 border ${
+                                    free
+                                      ? 'bg-accent border-white'
+                                      : 'bg-bg border-border'
+                                  }`}
+                                />
+                              );
+                            }
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* CANTRIPS & PREPARED SPELLS TABLE (Classic Page 3 Table + dnd.su Learned Spells!) */}
+            <div className="sheet-frame overflow-hidden">
+              <div className="sheet-frame__header">
+                <div className="flex items-center gap-2">
+                  <span>Заговоры и подготовленные заклинания</span>
+                  <span className="px-2 py-0.2 rounded bg-primary/20 text-primary text-[10px] font-mono">
+                    Изучено: {learnedSpells.length} / {profile.maxSpells}
+                  </span>
+                </div>
 
                 {canEdit && (
                   <button
                     type="button"
-                    onClick={() => setConfigureSlotsOpen((v) => !v)}
-                    className="px-3 py-1 rounded-xl bg-surface border border-border hover:border-primary text-xs font-semibold text-muted hover:text-text"
+                    onClick={() => setManualSpellFormOpen((v) => !v)}
+                    className="px-2 py-0.5 rounded bg-primary/20 text-primary hover:bg-primary/30 text-[10px] inline-flex items-center gap-1"
                   >
-                    {configureSlotsOpen ? 'Скрыть настройку ячеек' : 'Настроить ячейки'}
+                    <Plus className="w-3 h-3" />
+                    <span>Записать вручную</span>
                   </button>
+                )}
+              </div>
+
+              {manualSpellFormOpen && canEdit && (
+                <form
+                  onSubmit={handleAddManualSpell}
+                  className="p-3 bg-surface/95 border-b border-border space-y-2 text-xs"
+                >
+                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                    <select
+                      value={msLevel}
+                      onChange={(e) => setMsLevel(Number(e.target.value))}
+                      className="anime-input py-1 px-2 text-xs"
+                    >
+                      <option value={0}>Заговор (0)</option>
+                      {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((l) => (
+                        <option key={l} value={l}>
+                          {l} уровень
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      required
+                      value={msName}
+                      onChange={(e) => setMsName(e.target.value)}
+                      placeholder="Название заклинания"
+                      className="anime-input sm:col-span-2 py-1 px-2 text-xs"
+                    />
+                    <input
+                      value={msTime}
+                      onChange={(e) => setMsTime(e.target.value)}
+                      placeholder="Время (1 д.)"
+                      className="anime-input py-1 px-2 text-xs"
+                    />
+                    <input
+                      value={msRange}
+                      onChange={(e) => setMsRange(e.target.value)}
+                      placeholder="Дистанция"
+                      className="anime-input py-1 px-2 text-xs"
+                    />
+                  </div>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-3">
+                      <label className="inline-flex items-center gap-1 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={msConc}
+                          onChange={(e) => setMsConc(e.target.checked)}
+                        />
+                        <span>Концентрация (К)</span>
+                      </label>
+                      <label className="inline-flex items-center gap-1 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={msRitual}
+                          onChange={(e) => setMsRitual(e.target.checked)}
+                        />
+                        <span>Ритуал (Р)</span>
+                      </label>
+                      <label className="inline-flex items-center gap-1 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={msMat}
+                          onChange={(e) => setMsMat(e.target.checked)}
+                        />
+                        <span>Материальный (М)</span>
+                      </label>
+                    </div>
+                    <div className="flex items-center gap-2 flex-1 sm:max-w-xs">
+                      <input
+                        value={msNotes}
+                        onChange={(e) => setMsNotes(e.target.value)}
+                        placeholder="Заметки / урон..."
+                        className="anime-input flex-1 py-1 px-2 text-xs"
+                      />
+                      <button type="submit" className="anime-btn-primary px-3 py-1 text-xs">
+                        Добавить
+                      </button>
+                    </div>
+                  </div>
+                </form>
+              )}
+
+              <div className="p-3 overflow-x-auto">
+                {learnedSpells.length === 0 && sheet.spellcasting.manualSpells.length === 0 ? (
+                  <div className="py-6 text-center text-xs text-muted space-y-2">
+                    <div>
+                      Изученных заклинаний пока нет. Откройте вкладку «Заклинания», чтобы изучить
+                      заклинания из справочника dnd.su, или добавьте строку вручную.
+                    </div>
+                  </div>
+                ) : (
+                  <table className="w-full text-xs border-collapse">
+                    <thead>
+                      <tr className="text-[10px] uppercase tracking-wider text-muted border-b border-border/80">
+                        <th className="text-left py-1.5 px-1.5 w-10">Ур.</th>
+                        <th className="text-left py-1.5 px-1.5">Название</th>
+                        <th className="text-left py-1.5 px-1.5">Время</th>
+                        <th className="text-left py-1.5 px-1.5">Дистанция</th>
+                        <th className="text-center py-1.5 px-1.5">К • Р • М</th>
+                        <th className="text-left py-1.5 px-1.5">Школа / Заметки</th>
+                        <th className="w-14" />
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border/40">
+                      {/* Learned Spells from dnd.su */}
+                      {[...learnedSpells]
+                        .sort((a, b) => a.spell.level - b.spell.level || a.spell.name.localeCompare(b.spell.name, 'ru'))
+                        .map((rec) => {
+                          const sp = rec.spell;
+                          const hasMat = Boolean(sp.components?.includes('М'));
+                          return (
+                            <tr key={`cat-${sp.id}`} className="hover:bg-surface/60">
+                              <td className="py-1.5 px-1.5 font-mono font-bold text-primary">
+                                {sp.level === 0 ? 'Заг.' : sp.level}
+                              </td>
+                              <td className="py-1.5 px-1.5 font-semibold text-text">
+                                <button
+                                  type="button"
+                                  onClick={() => jumpToSpellInCatalog(sp.id)}
+                                  className="hover:text-accent text-left inline-flex items-center gap-1"
+                                  title="Открыть полное описание заклинания в справочнике"
+                                >
+                                  <span>{sp.name}</span>
+                                  <ExternalLink className="w-3 h-3 text-accent shrink-0" />
+                                </button>
+                              </td>
+                              <td className="py-1.5 px-1.5 text-muted">{sp.castingTime}</td>
+                              <td className="py-1.5 px-1.5 text-muted">{sp.spellRange}</td>
+                              <td className="py-1.5 px-1.5 text-center font-mono text-[10px]">
+                                <span
+                                  className={
+                                    sp.concentration ? 'text-amber-300 font-bold' : 'text-muted/35'
+                                  }
+                                >
+                                  {sp.concentration ? '◆К' : '◇К'}
+                                </span>{' '}
+                                <span
+                                  className={
+                                    sp.ritual ? 'text-cyan-300 font-bold' : 'text-muted/35'
+                                  }
+                                >
+                                  {sp.ritual ? '◆Р' : '◇Р'}
+                                </span>{' '}
+                                <span
+                                  className={hasMat ? 'text-primary font-bold' : 'text-muted/35'}
+                                >
+                                  {hasMat ? '◆М' : '◇М'}
+                                </span>
+                              </td>
+                              <td className="py-1.5 px-1.5 text-[11px] text-muted">
+                                {MAGIC_SCHOOL_LABELS_RU[sp.school] || sp.school}
+                              </td>
+                              <td className="py-1.5 px-1 text-right">
+                                {!isDm && canEdit && (
+                                  <button
+                                    type="button"
+                                    onClick={() => void handleUnlearnCatalogSpell(sp.id, sp.name)}
+                                    className="p-1 text-muted hover:text-rose-400"
+                                    title="Забыть заклинание"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+
+                      {/* Manual Spell Rows */}
+                      {sheet.spellcasting.manualSpells.map((ms) => (
+                        <tr key={ms.id} className="hover:bg-surface/60">
+                          <td className="py-1.5 px-1.5 font-mono font-bold text-accent">
+                            {ms.level === 0 ? 'Заг.' : ms.level}
+                          </td>
+                          <td className="py-1.5 px-1.5 font-semibold text-text">{ms.name}</td>
+                          <td className="py-1.5 px-1.5 text-muted">{ms.castingTime}</td>
+                          <td className="py-1.5 px-1.5 text-muted">{ms.range}</td>
+                          <td className="py-1.5 px-1.5 text-center font-mono text-[10px]">
+                            <span className={ms.concentration ? 'text-amber-300 font-bold' : 'text-muted/35'}>
+                              {ms.concentration ? '◆К' : '◇К'}
+                            </span>{' '}
+                            <span className={ms.ritual ? 'text-cyan-300 font-bold' : 'text-muted/35'}>
+                              {ms.ritual ? '◆Р' : '◇Р'}
+                            </span>{' '}
+                            <span className={ms.material ? 'text-primary font-bold' : 'text-muted/35'}>
+                              {ms.material ? '◆М' : '◇М'}
+                            </span>
+                          </td>
+                          <td className="py-1.5 px-1.5 text-[11px] text-muted">{ms.notes}</td>
+                          <td className="py-1.5 px-1 text-right">
+                            {canEdit && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  commitMutation((s) => {
+                                    const list = Array.isArray(s.manualSpells)
+                                      ? s.manualSpells
+                                      : [];
+                                    s.manualSpells = list.filter(
+                                      (it) =>
+                                        it &&
+                                        typeof it === 'object' &&
+                                        (it as Record<string, unknown>).id !== ms.id
+                                    );
+                                  }, true)
+                                }
+                                className="p-1 text-muted hover:text-rose-400"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Right 4 Columns: APPEARANCE | BACKSTORY & PERSONALITY + ALIGNMENT | EQUIPMENT & ATTUNEMENT | COINS */}
+          <div className="lg:col-span-4 space-y-4">
+            {/* APPEARANCE */}
+            <div className="sheet-frame overflow-hidden">
+              <div className="sheet-frame__header">
+                <span>Внешность</span>
+                {canEdit && (
+                  <button
+                    type="button"
+                    onClick={() => openBlockEditor('appearance', 'Описание внешности')}
+                    className="text-muted hover:text-accent"
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+              <div className="p-3 space-y-2.5 text-xs">
+                <div className="grid grid-cols-3 gap-1.5">
+                  {(
+                    [
+                      ['age', 'Возраст'],
+                      ['height', 'Рост'],
+                      ['weight', 'Вес'],
+                      ['eyes', 'Глаза'],
+                      ['skin', 'Кожа'],
+                      ['hair', 'Волосы'],
+                    ] as const
+                  ).map(([k, lbl]) => (
+                    <div key={k} className="p-1.5 rounded-lg bg-surface/65 border border-border/70">
+                      <div className="text-[9px] uppercase text-muted">{lbl}</div>
+                      {canEdit ? (
+                        <input
+                          value={sheet.subInfoMap[k] ?? ''}
+                          onChange={(e) =>
+                            commitMutation((s) => {
+                              const sub = ensureObj(s, 'subInfo');
+                              setLssField(sub, k, e.target.value);
+                            })
+                          }
+                          placeholder="—"
+                          className="w-full bg-transparent text-xs font-semibold text-text focus:outline-none"
+                        />
+                      ) : (
+                        <div className="text-xs font-semibold text-text truncate">
+                          {sheet.subInfoMap[k] || '—'}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                {sheet.textByKey.appearance?.plainText && (
+                  <div className="sheet-grid-paper rounded-lg p-2.5 text-xs text-text/90 whitespace-pre-line">
+                    {sheet.textByKey.appearance.plainText}
+                  </div>
                 )}
               </div>
             </div>
 
-            {sheet.spellcasting.baseAbility && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="p-3 rounded-2xl bg-surface/75 border border-border flex items-center justify-between">
-                  <span className="text-xs text-muted">Сложность спасброска (Сл):</span>
-                  <span className="font-anime font-extrabold text-lg text-primary">
-                    {sheet.spellcasting.saveDc}
-                  </span>
+            {/* BACKSTORY & PERSONALITY + ALIGNMENT */}
+            <div className="sheet-frame overflow-hidden">
+              <div className="sheet-frame__header">
+                <span>Предыстория и личные качества</span>
+                {canEdit && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      openBlockEditor('background', 'Предыстория и личные качества')
+                    }
+                    className="text-muted hover:text-accent"
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+
+              <div className="p-3 space-y-2 text-xs">
+                <div className="sheet-grid-paper rounded-lg p-2.5 min-h-[120px] space-y-2">
+                  {(['personality', 'ideals', 'bonds', 'flaws', 'background'] as const).map(
+                    (k) => {
+                      const entry = sheet.textByKey[k];
+                      if (!entry?.plainText) return null;
+                      return (
+                        <div key={k}>
+                          {k !== 'background' && (
+                            <span className="text-[10px] font-bold uppercase text-accent block">
+                              {entry.label}:
+                            </span>
+                          )}
+                          <p className="whitespace-pre-line text-text/90">{entry.plainText}</p>
+                        </div>
+                      );
+                    }
+                  )}
+                  {!sheet.textByKey.background?.plainText &&
+                    !sheet.textByKey.personality?.plainText && (
+                      <span className="text-muted/60">Запишите историю и черты характера...</span>
+                    )}
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() =>
-                    handleD20Roll(
-                      'Атака заклинанием',
-                      sheet.spellcasting.attackBonus ?? 0
-                    )
-                  }
-                  className="p-3 rounded-2xl bg-accent/15 hover:bg-accent/25 border border-accent/40 flex items-center justify-between transition-colors"
-                >
-                  <span className="text-xs font-semibold text-accent inline-flex items-center gap-1.5">
-                    <Dices className="w-4 h-4" />
-                    <span>Бросить атаку заклинанием</span>
-                  </span>
-                  <span className="font-anime font-extrabold text-lg text-accent">
-                    {formatSigned(sheet.spellcasting.attackBonus ?? 0)}
-                  </span>
-                </button>
-              </div>
-            )}
-
-            {/* Max Slots Configurator */}
-            {configureSlotsOpen && canEdit && (
-              <div className="p-3.5 rounded-2xl bg-surface/90 border border-border space-y-3">
-                <div className="text-xs font-bold text-muted">
-                  Максимум ячеек заклинаний по кругам (1–9):
-                </div>
-                <div className="grid grid-cols-3 sm:grid-cols-9 gap-2">
-                  {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((lvl) => (
-                    <div key={lvl} className="text-center">
-                      <div className="text-[10px] text-muted mb-1">{lvl} кр.</div>
-                      <input
-                        type="number"
-                        min={0}
-                        max={9}
-                        value={sheet.spellcasting.slotsByLevel[lvl]?.total ?? 0}
-                        onChange={(e) => {
-                          const total = Math.max(0, Math.min(9, Number(e.target.value) || 0));
-                          commitMutation((s) => {
-                            const sp = ensureObj(s, 'spells');
-                            const cur = ensureObj(sp, `slots-${lvl}`);
-                            cur.value = total;
-                            if (Number(cur.filled ?? 0) > total) cur.filled = total;
-                          });
-                        }}
-                        className="anime-input w-full py-1 px-1 text-xs text-center"
-                      />
-                    </div>
-                  ))}
-                </div>
-
-                <div className="pt-2 border-t border-border flex flex-wrap items-center gap-3 text-xs">
-                  <span className="text-muted font-semibold">Магия Пакта (Колдун):</span>
-                  <label className="flex items-center gap-1.5">
-                    <span className="text-muted">Круг:</span>
-                    <select
-                      value={sheet.spellcasting.pactSlots.level}
-                      onChange={(e) => {
-                        const nextLvl = Number(e.target.value);
-                        commitMutation((s) => {
-                          const pact: Record<string, unknown> = {};
-                          pact[`slots-${nextLvl}`] = {
-                            value: sheet.spellcasting.pactSlots.total,
-                            filled: sheet.spellcasting.pactSlots.expended,
-                          };
-                          s.spellsPact = pact;
-                        }, true);
-                      }}
-                      className="anime-input py-1 px-2 text-xs"
-                    >
-                      {[1, 2, 3, 4, 5].map((l) => (
-                        <option key={l} value={l}>
-                          {l} круг
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-
-                  <label className="flex items-center gap-1.5">
-                    <span className="text-muted">Кол-во ячеек:</span>
-                    <input
-                      type="number"
-                      min={0}
-                      max={6}
-                      value={sheet.spellcasting.pactSlots.total}
-                      onChange={(e) => {
-                        const total = Math.max(0, Math.min(6, Number(e.target.value) || 0));
-                        commitMutation((s) => {
-                          const pact: Record<string, unknown> = {};
-                          pact[`slots-${sheet.spellcasting.pactSlots.level}`] = {
-                            value: total,
-                            filled: Math.min(total, sheet.spellcasting.pactSlots.expended),
-                          };
-                          s.spellsPact = pact;
-                        });
-                      }}
-                      className="anime-input w-16 py-1 px-2 text-xs text-center"
-                    />
-                  </label>
-                </div>
-              </div>
-            )}
-
-            {/* Interactive Clickable Spell Slot Gems */}
-            {sheet.spellcasting.slots.length === 0 ? (
-              <div className="text-xs text-muted">
-                Ячейки заклинаний не заданы. Нажмите «Настроить ячейки», чтобы указать доступные круги заклинаний.
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                {sheet.spellcasting.slots.map((sl, idx) => {
-                  const available = Math.max(0, sl.total - sl.expended);
-                  return (
-                    <div
-                      key={`${sl.level}-${sl.isPact ? 'pact' : 'std'}-${idx}`}
-                      className="p-3 rounded-2xl bg-surface/75 border border-border space-y-2"
-                    >
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="font-bold text-text">
-                          {sl.isPact ? `Пакт (${sl.level} круг)` : `${sl.level} круг`}
-                        </span>
-                        <span className="text-primary font-mono font-bold">
-                          {available}/{sl.total} своб.
-                        </span>
-                      </div>
-
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        {Array.from({ length: sl.total }).map((_, gemIdx) => {
-                          const isAvailable = gemIdx < available;
-                          return (
-                            <button
-                              key={gemIdx}
-                              type="button"
-                              disabled={!canEdit}
-                              onClick={() => {
-                                const nextAvailable = isAvailable ? gemIdx : gemIdx + 1;
-                                const nextExpended = Math.max(0, sl.total - nextAvailable);
-                                commitMutation((s) => {
-                                  const targetContainer = ensureObj(
-                                    s,
-                                    sl.isPact ? 'spellsPact' : 'spells'
-                                  );
-                                  const slotEntry = ensureObj(
-                                    targetContainer,
-                                    `slots-${sl.level}`
-                                  );
-                                  slotEntry.value = sl.total;
-                                  slotEntry.filled = nextExpended;
-                                }, true);
-                              }}
-                              className={`w-6 h-6 rounded-lg border flex items-center justify-center text-xs transition-all ${
-                                isAvailable
-                                  ? 'bg-primary/25 border-primary text-primary shadow-sm'
-                                  : 'bg-bg/70 border-border text-muted/40'
-                              }`}
-                              title={
-                                isAvailable
-                                  ? 'Нажмите, чтобы потратить ячейку'
-                                  : 'Нажмите, чтобы восстановить ячейку'
-                              }
-                            >
-                              ✦
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* TAB 4: COINS, ATTUNEMENT, APPEARANCE & EDITABLE RICH TEXT BLOCKS */}
-      {subTab === 'features' && (
-        <div className="space-y-4">
-          {/* Coins Purse */}
-          <div className="p-4 rounded-2xl bg-bg/75 border border-border space-y-2.5">
-            <div className="flex items-center gap-2 text-xs font-bold text-text">
-              <Coins className="w-4 h-4 text-amber-400" />
-              <span>Кошелёк монет</span>
-            </div>
-
-            <div className="grid grid-cols-5 gap-2 text-center">
-              {(
-                [
-                  { key: 'pp', label: 'ПМ', color: 'text-cyan-300' },
-                  { key: 'gp', label: 'ЗМ', color: 'text-amber-300' },
-                  { key: 'ep', label: 'ЭМ', color: 'text-indigo-300' },
-                  { key: 'sp', label: 'СМ', color: 'text-slate-200' },
-                  { key: 'cp', label: 'ММ', color: 'text-orange-300' },
-                ] as const
-              ).map(({ key, label, color }) => (
-                <div key={key} className="p-2.5 rounded-2xl bg-surface/75 border border-border">
-                  <div className={`text-[10px] font-bold ${color}`}>{label}</div>
+                <div className="pt-1 border-t border-border/70">
+                  <div className="text-[9px] uppercase tracking-wider text-muted">
+                    Мировоззрение
+                  </div>
                   {canEdit ? (
                     <input
-                      type="number"
-                      min={0}
-                      value={sheet.coins[key]}
-                      onChange={(e) => {
-                        const val = Math.max(0, Number(e.target.value) || 0);
+                      value={sheet.alignment}
+                      onChange={(e) =>
                         commitMutation((s) => {
-                          const cObj = ensureObj(s, 'coins');
-                          setLssField(cObj, key, val);
-                        });
-                      }}
-                      className="w-full bg-transparent text-center font-anime font-extrabold text-sm mt-1 focus:outline-none border-b border-transparent focus:border-primary"
+                          const info = ensureObj(s, 'info');
+                          setLssField(info, 'alignment', e.target.value);
+                        })
+                      }
+                      placeholder="Нейтрально-добрый..."
+                      className="w-full bg-transparent text-xs font-bold text-text border-b border-border/60 focus:border-primary py-0.5 focus:outline-none"
                     />
                   ) : (
-                    <div className="font-anime font-extrabold text-sm mt-1">
-                      {sheet.coins[key]}
-                    </div>
+                    <div className="text-xs font-bold text-text">{sheet.alignment || '—'}</div>
                   )}
                 </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Attunement (Настройка на магические предметы) */}
-          <div className="p-4 rounded-2xl bg-bg/75 border border-border space-y-2.5">
-            <div className="text-xs font-bold text-text">
-              Настройка на магические предметы (Attunement)
+              </div>
             </div>
 
-            {sheet.attunements.length > 0 && (
-              <div className="flex flex-wrap gap-2">
-                {sheet.attunements.map((att) => (
-                  <div
-                    key={att.id}
-                    className={`px-3 py-1.5 rounded-xl border text-xs inline-flex items-center gap-2 ${
-                      att.active
-                        ? 'bg-accent/15 border-accent/45 text-accent font-semibold'
-                        : 'bg-surface border-border text-muted'
-                    }`}
+            {/* EQUIPMENT + ATTUNEMENT (matching image-6.png!) */}
+            <div className="sheet-frame overflow-hidden">
+              <div className="sheet-frame__header">
+                <span>Снаряжение</span>
+                {canEdit && (
+                  <button
+                    type="button"
+                    onClick={() => openBlockEditor('equipment', 'Снаряжение и инвентарь')}
+                    className="text-muted hover:text-accent"
                   >
-                    <input
-                      type="checkbox"
-                      disabled={!canEdit}
-                      checked={att.active}
-                      onChange={() =>
+                    <Pencil className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+
+              <div className="p-3 space-y-3 text-xs">
+                <div className="sheet-grid-paper rounded-lg p-2.5 min-h-[140px]">
+                  {sheet.textByKey.equipment?.nodes?.length ? (
+                    <RichNodesView nodes={sheet.textByKey.equipment.nodes} />
+                  ) : (
+                    <span className="text-muted/60">Список предметов и экипировки...</span>
+                  )}
+                </div>
+
+                {/* Attunement Diamonds */}
+                <div className="pt-2 border-t border-border/70 space-y-2">
+                  <div className="text-[10px] font-extrabold uppercase tracking-wider text-muted">
+                    Настройка на магические предметы
+                  </div>
+
+                  {sheet.attunements.map((att) => (
+                    <div
+                      key={att.id}
+                      className="flex items-center justify-between gap-2 px-2 py-1 rounded-lg bg-surface/70 border border-border"
+                    >
+                      <button
+                        type="button"
+                        disabled={!canEdit}
+                        onClick={() =>
+                          commitMutation((s) => {
+                            const list = Array.isArray(s.attunementsList)
+                              ? [...s.attunementsList]
+                              : [];
+                            s.attunementsList = list.map((it, idx) => {
+                              if (!it || typeof it !== 'object') return it;
+                              const r = it as Record<string, unknown>;
+                              const rId = typeof r.id === 'string' ? r.id : `attune-${idx}`;
+                              return rId === att.id ? { ...r, checked: !att.active } : r;
+                            });
+                          }, true)
+                        }
+                        className="flex items-center gap-2 text-left min-w-0 flex-1"
+                      >
+                        <span className={att.active ? 'text-accent font-bold' : 'text-muted'}>
+                          {att.active ? '◆' : '◇'}
+                        </span>
+                        <span className="truncate text-text">{att.name}</span>
+                      </button>
+
+                      {canEdit && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            commitMutation((s) => {
+                              const list = Array.isArray(s.attunementsList)
+                                ? s.attunementsList
+                                : [];
+                              s.attunementsList = list.filter((it, idx) => {
+                                if (!it || typeof it !== 'object') return false;
+                                const r = it as Record<string, unknown>;
+                                const rId = typeof r.id === 'string' ? r.id : `attune-${idx}`;
+                                return rId !== att.id;
+                              });
+                            }, true)
+                          }
+                          className="text-muted hover:text-rose-400"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+
+                  {canEdit && (
+                    <form
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        if (!newAttunement.trim()) return;
                         commitMutation((s) => {
                           const list = Array.isArray(s.attunementsList)
                             ? [...s.attunementsList]
                             : [];
-                          s.attunementsList = list.map((item, idx) => {
-                            if (!item || typeof item !== 'object') return item;
-                            const r = item as Record<string, unknown>;
-                            const rId = typeof r.id === 'string' ? r.id : `attune-${idx}`;
-                            if (rId === att.id) {
-                              return { ...r, checked: !att.active };
-                            }
-                            return r;
+                          list.push({
+                            id: `att-${Date.now()}`,
+                            checked: true,
+                            value: newAttunement.trim(),
                           });
-                        }, true)
-                      }
-                    />
-                    <span>{att.name}</span>
-                    {canEdit && (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          commitMutation((s) => {
-                            const list = Array.isArray(s.attunementsList)
-                              ? s.attunementsList
-                              : [];
-                            s.attunementsList = list.filter((item, idx) => {
-                              if (!item || typeof item !== 'object') return false;
-                              const r = item as Record<string, unknown>;
-                              const rId = typeof r.id === 'string' ? r.id : `attune-${idx}`;
-                              return rId !== att.id;
-                            });
-                          }, true)
-                        }
-                        className="text-muted hover:text-rose-400"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                      </button>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {canEdit && (
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  if (!newAttunement.trim()) return;
-                  commitMutation((s) => {
-                    const list = Array.isArray(s.attunementsList) ? [...s.attunementsList] : [];
-                    list.push({
-                      id: `att-${Date.now()}`,
-                      checked: true,
-                      value: newAttunement.trim(),
-                    });
-                    s.attunementsList = list;
-                  }, true);
-                  setNewAttunement('');
-                }}
-                className="flex gap-2"
-              >
-                <input
-                  value={newAttunement}
-                  onChange={(e) => setNewAttunement(e.target.value)}
-                  placeholder="Добавить предмет с настройкой (Плащ защиты, Кольцо...)"
-                  className="anime-input flex-1 text-xs py-1.5"
-                />
-                <button
-                  type="submit"
-                  className="px-3 py-1.5 rounded-xl bg-surface border border-border hover:border-accent text-xs font-semibold"
-                >
-                  + Добавить
-                </button>
-              </form>
-            )}
-          </div>
-
-          {/* Add Text Section Bar */}
-          {canEdit && (
-            <div className="flex flex-wrap items-center justify-between gap-2 p-3 rounded-2xl bg-bg/60 border border-border">
-              <span className="text-xs text-muted">
-                Разделы черт, снаряжения, личности и предыстории:
-              </span>
-              <div className="flex items-center gap-2">
-                <select
-                  value={newSectionKey}
-                  onChange={(e) => setNewSectionKey(e.target.value)}
-                  className="anime-input py-1 px-2.5 text-xs"
-                >
-                  {DEFAULT_EDITABLE_TEXT_KEYS.map((k) => (
-                    <option key={k} value={k}>
-                      {TEXT_BLOCK_LABELS_RU[k] || k}
-                    </option>
-                  ))}
-                </select>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const existing = sheet.textBlocks.find((b) => b.key === newSectionKey);
-                    setEditingBlockKey(newSectionKey);
-                    setEditingBlockText(existing ? existing.plainText : '');
-                  }}
-                  className="anime-btn-primary px-3 py-1.5 text-xs inline-flex items-center gap-1"
-                >
-                  <Pencil className="w-3 h-3" />
-                  <span>Открыть / добавить</span>
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Active Section Editor */}
-          {editingBlockKey && canEdit && (
-            <div className="p-4 rounded-2xl bg-surface/95 border border-primary/50 space-y-2.5">
-              <div className="flex items-center justify-between">
-                <span className="font-anime font-bold text-xs text-primary uppercase">
-                  Редактирование: {TEXT_BLOCK_LABELS_RU[editingBlockKey] || editingBlockKey}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setEditingBlockKey(null)}
-                  className="text-muted hover:text-text"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-
-              <textarea
-                rows={6}
-                value={editingBlockText}
-                onChange={(e) => setEditingBlockText(e.target.value)}
-                placeholder="Введите умения, предметы инвентаря или заметки..."
-                className="anime-input w-full text-xs leading-relaxed"
-              />
-
-              <div className="flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setEditingBlockKey(null)}
-                  className="px-3 py-1.5 rounded-xl border border-border text-xs text-muted"
-                >
-                  Отмена
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const keyToSave = editingBlockKey;
-                    const textToSave = editingBlockText;
-                    commitMutation((s) => {
-                      const txt = ensureObj(s, 'text');
-                      const block = ensureObj(txt, keyToSave);
-                      block.value = plainTextToLssDoc(textToSave);
-                    }, true);
-                    setEditingBlockKey(null);
-                  }}
-                  className="anime-btn-primary px-4 py-1.5 text-xs inline-flex items-center gap-1.5"
-                >
-                  <Check className="w-3.5 h-3.5" />
-                  <span>Сохранить раздел</span>
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Rendered Rich Text Blocks */}
-          {sheet.textBlocks.length === 0 ? (
-            <div className="p-6 rounded-2xl bg-bg/50 border border-border text-center text-xs text-muted">
-              Текстовые разделы пока пусты. Выберите раздел выше и нажмите «Открыть / добавить», чтобы записать черты, инвентарь или предысторию.
-            </div>
-          ) : (
-            sheet.textBlocks.map((block) => (
-              <div
-                key={block.key}
-                className="p-4 rounded-2xl bg-bg/70 border border-border space-y-2"
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <div className="font-anime font-bold text-xs uppercase tracking-wider text-primary flex items-center gap-1.5">
-                    <BookOpen className="w-3.5 h-3.5" />
-                    <span>{block.label}</span>
-                  </div>
-
-                  {canEdit && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setEditingBlockKey(block.key);
-                        setEditingBlockText(block.plainText);
+                          s.attunementsList = list;
+                        }, true);
+                        setNewAttunement('');
                       }}
-                      className="text-[11px] text-muted hover:text-accent inline-flex items-center gap-1"
+                      className="flex gap-1.5"
                     >
-                      <Pencil className="w-3 h-3" />
-                      <span>Изменить</span>
-                    </button>
+                      <input
+                        value={newAttunement}
+                        onChange={(e) => setNewAttunement(e.target.value)}
+                        placeholder="+ Предмет настройки..."
+                        className="anime-input flex-1 py-1 px-2 text-xs"
+                      />
+                      <button
+                        type="submit"
+                        className="px-2.5 py-1 rounded-lg bg-surface border border-border hover:border-accent text-xs font-bold"
+                      >
+                        +
+                      </button>
+                    </form>
                   )}
                 </div>
-
-                <div className="space-y-2 text-xs text-text/90 leading-relaxed">
-                  {block.nodes.map((node, idx) => {
-                    if (node.kind === 'divider') {
-                      return <hr key={idx} className="border-border/70 my-2" />;
-                    }
-                    if (node.kind === 'bullet') {
-                      return (
-                        <ul key={idx} className="list-disc pl-5 space-y-1">
-                          {node.items?.map((it, i) => (
-                            <li key={i} className="whitespace-pre-line">
-                              {it}
-                            </li>
-                          ))}
-                        </ul>
-                      );
-                    }
-                    if (node.kind === 'ordered') {
-                      return (
-                        <ol key={idx} className="list-decimal pl-5 space-y-1">
-                          {node.items?.map((it, i) => (
-                            <li key={i} className="whitespace-pre-line">
-                              {it}
-                            </li>
-                          ))}
-                        </ol>
-                      );
-                    }
-                    if (node.kind === 'spoiler') {
-                      return (
-                        <details
-                          key={idx}
-                          className="rounded-xl bg-surface/70 border border-border px-3 py-2"
-                        >
-                          <summary className="cursor-pointer font-semibold text-accent">
-                            {node.title}
-                          </summary>
-                          <div className="mt-2 whitespace-pre-line text-text/90">
-                            {node.text}
-                          </div>
-                        </details>
-                      );
-                    }
-                    return (
-                      <p key={idx} className="whitespace-pre-line">
-                        {node.text}
-                      </p>
-                    );
-                  })}
-                </div>
               </div>
-            ))
-          )}
+            </div>
+
+            {/* COINS BOX (ММ | СМ | ЗМ | ЭМ | ПМ + «Управлять», matching image-6.png!) */}
+            <div className="sheet-frame overflow-hidden">
+              <div className="sheet-frame__header">
+                <span className="inline-flex items-center gap-1.5">
+                  <Coins className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Монеты</span>
+                </span>
+              </div>
+
+              <div className="p-3 space-y-2.5">
+                <div className="grid grid-cols-5 gap-1.5 text-center">
+                  {(
+                    [
+                      { key: 'cp', label: 'ММ', color: 'text-orange-300' },
+                      { key: 'sp', label: 'СМ', color: 'text-slate-200' },
+                      { key: 'gp', label: 'ЗМ', color: 'text-amber-300' },
+                      { key: 'ep', label: 'ЭМ', color: 'text-indigo-300' },
+                      { key: 'pp', label: 'ПМ', color: 'text-cyan-300' },
+                    ] as const
+                  ).map(({ key, label, color }) => (
+                    <div
+                      key={key}
+                      className="p-2 rounded-xl bg-surface/80 border border-border"
+                    >
+                      <div className={`text-[10px] font-extrabold ${color}`}>{label}</div>
+                      {canEdit ? (
+                        <input
+                          type="number"
+                          min={0}
+                          value={sheet.coins[key]}
+                          onChange={(e) => {
+                            const val = Math.max(0, Number(e.target.value) || 0);
+                            commitMutation((s) => {
+                              const cObj = ensureObj(s, 'coins');
+                              setLssField(cObj, key, val);
+                            });
+                          }}
+                          className="w-full bg-transparent text-center font-anime font-extrabold text-sm mt-0.5 focus:outline-none"
+                        />
+                      ) : (
+                        <div className="font-anime font-extrabold text-sm mt-0.5">
+                          {sheet.coins[key]}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                {canEdit && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setCoinManageOpen((v) => !v)}
+                      className="w-full py-1.5 rounded-xl bg-primary/15 hover:bg-primary/25 border border-primary/40 text-xs font-bold text-primary transition-colors"
+                    >
+                      Управлять
+                    </button>
+
+                    {coinManageOpen && (
+                      <div className="p-2.5 rounded-xl bg-surface border border-border flex items-center gap-1.5 text-xs">
+                        <input
+                          type="number"
+                          min={1}
+                          value={coinDelta}
+                          onChange={(e) => setCoinDelta(e.target.value)}
+                          placeholder="Сумма"
+                          className="anime-input w-20 py-1 px-2 text-xs text-center"
+                        />
+                        <select
+                          value={coinType}
+                          onChange={(e) =>
+                            setCoinType(e.target.value as 'gp' | 'sp' | 'cp' | 'ep' | 'pp')
+                          }
+                          className="anime-input py-1 px-2 text-xs"
+                        >
+                          <option value="gp">ЗМ</option>
+                          <option value="sp">СМ</option>
+                          <option value="cp">ММ</option>
+                          <option value="ep">ЭМ</option>
+                          <option value="pp">ПМ</option>
+                        </select>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const n = Math.abs(Number(coinDelta));
+                            if (!n) return;
+                            commitMutation((s) => {
+                              const cObj = ensureObj(s, 'coins');
+                              setLssField(cObj, coinType, sheet.coins[coinType] + n);
+                            }, true);
+                            setCoinDelta('');
+                          }}
+                          className="flex-1 py-1 rounded-lg bg-emerald-500/20 border border-emerald-500/40 text-emerald-200 font-bold"
+                        >
+                          +
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const n = Math.abs(Number(coinDelta));
+                            if (!n) return;
+                            commitMutation((s) => {
+                              const cObj = ensureObj(s, 'coins');
+                              setLssField(
+                                cObj,
+                                coinType,
+                                Math.max(0, sheet.coins[coinType] - n)
+                              );
+                            }, true);
+                            setCoinDelta('');
+                          }}
+                          className="flex-1 py-1 rounded-lg bg-rose-500/20 border border-rose-500/40 text-rose-200 font-bold"
+                        >
+                          -
+                        </button>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
-      {/* Hero Identity & Appearance Modal */}
+      {/* Rich Text Block Editor Modal */}
+      {editingBlock && canEdit && (
+        <div
+          onClick={() => setEditingBlock(null)}
+          className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="glass-panel neon-border rounded-3xl max-w-xl w-full p-6 space-y-4"
+          >
+            <div className="flex items-center justify-between">
+              <h3 className="font-anime font-extrabold text-base uppercase tracking-wide text-primary">
+                {editingBlock.title}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setEditingBlock(null)}
+                className="p-1.5 rounded-xl border border-border text-muted hover:text-text"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <textarea
+              rows={10}
+              value={editingBlock.text}
+              onChange={(e) => setEditingBlock({ ...editingBlock, text: e.target.value })}
+              placeholder="Введите текст раздела (разделяйте блоки пустой строкой или --- для горизонтальной линии)..."
+              className="anime-input w-full text-xs leading-relaxed"
+            />
+
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setEditingBlock(null)}
+                className="px-4 py-2 rounded-xl border border-border text-xs text-muted"
+              >
+                Отмена
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const { key, text } = editingBlock;
+                  commitMutation((s) => {
+                    const txt = ensureObj(s, 'text');
+                    const block = ensureObj(txt, key);
+                    block.value = plainTextToLssDoc(text);
+                  }, true);
+                  setEditingBlock(null);
+                }}
+                className="anime-btn-primary px-5 py-2 text-xs inline-flex items-center gap-1.5"
+              >
+                <Check className="w-3.5 h-3.5" />
+                <span>Сохранить</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Hero Identity Modal (No XP input for players — XP is Master-only!) */}
       {heroModalOpen && canEdit && (
         <HeroIdentityModal
           sheet={sheet}
@@ -2514,12 +3522,6 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
               setLssField(info, 'level', updates.level);
               setLssField(info, 'background', updates.background);
               setLssField(info, 'alignment', updates.alignment);
-              setLssField(info, 'experience', updates.experience);
-
-              const sub = ensureObj(s, 'subInfo');
-              for (const [k, v] of Object.entries(updates.subInfo)) {
-                setLssField(sub, k, v);
-              }
             }, true);
             setHeroModalOpen(false);
           }}
@@ -2529,8 +3531,106 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
   );
 };
 
+const RichNodesView: React.FC<{ nodes: LssRichParagraph[] }> = ({ nodes }) => (
+  <div className="space-y-2 text-xs text-text/90 leading-relaxed">
+    {nodes.map((node, idx) => {
+      if (node.kind === 'divider') {
+        return <hr key={idx} className="border-border/70 my-2" />;
+      }
+      if (node.kind === 'bullet') {
+        return (
+          <ul key={idx} className="list-disc pl-4 space-y-1">
+            {node.items?.map((it, i) => (
+              <li key={i} className="whitespace-pre-line">
+                {it}
+              </li>
+            ))}
+          </ul>
+        );
+      }
+      if (node.kind === 'ordered') {
+        return (
+          <ol key={idx} className="list-decimal pl-4 space-y-1">
+            {node.items?.map((it, i) => (
+              <li key={i} className="whitespace-pre-line">
+                {it}
+              </li>
+            ))}
+          </ol>
+        );
+      }
+      if (node.kind === 'spoiler') {
+        return (
+          <details
+            key={idx}
+            className="rounded-xl bg-surface/80 border border-border px-3 py-2"
+          >
+            <summary className="cursor-pointer font-semibold text-accent">
+              {node.title}
+            </summary>
+            <div className="mt-1.5 whitespace-pre-line text-text/90">{node.text}</div>
+          </details>
+        );
+      }
+      return (
+        <p key={idx} className="whitespace-pre-line">
+          {node.text}
+        </p>
+      );
+    })}
+  </div>
+);
+
+interface ClassicTextBoxProps {
+  title: string;
+  primaryNodes?: LssRichParagraph[];
+  secondaryNodes?: LssRichParagraph[];
+  canEdit: boolean;
+  onEdit: () => void;
+  minHeight?: string;
+}
+
+const ClassicTextBox: React.FC<ClassicTextBoxProps> = ({
+  title,
+  primaryNodes,
+  secondaryNodes,
+  canEdit,
+  onEdit,
+  minHeight = 'min-h-[140px]',
+}) => {
+  const combined = [...(primaryNodes ?? []), ...(secondaryNodes ?? [])];
+  return (
+    <div className="sheet-frame overflow-hidden">
+      <div className="sheet-frame__header">
+        <span className="inline-flex items-center gap-1.5">
+          <BookOpen className="w-3.5 h-3.5 text-primary" />
+          <span>{title}</span>
+        </span>
+        {canEdit && (
+          <button
+            type="button"
+            onClick={onEdit}
+            className="text-muted hover:text-accent transition-colors"
+            title={`Редактировать «${title}»`}
+          >
+            <Pencil className="w-3.5 h-3.5" />
+          </button>
+        )}
+      </div>
+
+      <div className={`p-3 sheet-grid-paper ${minHeight}`}>
+        {combined.length === 0 ? (
+          <div className="text-xs text-muted/55">Нажмите на карандаш в углу, чтобы заполнить...</div>
+        ) : (
+          <RichNodesView nodes={combined} />
+        )}
+      </div>
+    </div>
+  );
+};
+
 interface HeroIdentityModalProps {
-  sheet: NonNullable<ReturnType<typeof parseFullLssSheet>>;
+  sheet: LssParsedSheet;
   onClose: () => void;
   onSave: (updates: {
     name: string;
@@ -2540,8 +3640,6 @@ interface HeroIdentityModalProps {
     level: number;
     background: string;
     alignment: string;
-    experience: number;
-    subInfo: Record<string, string>;
   }) => void;
 }
 
@@ -2553,15 +3651,6 @@ const HeroIdentityModal: React.FC<HeroIdentityModalProps> = ({ sheet, onClose, o
   const [level, setLevel] = useState(sheet.level);
   const [background, setBackground] = useState(sheet.background);
   const [alignment, setAlignment] = useState(sheet.alignment);
-  const [experience, setExperience] = useState(sheet.experience ?? 0);
-  const [subInfo, setSubInfo] = useState<Record<string, string>>({
-    age: sheet.subInfoMap.age ?? '',
-    height: sheet.subInfoMap.height ?? '',
-    weight: sheet.subInfoMap.weight ?? '',
-    eyes: sheet.subInfoMap.eyes ?? '',
-    skin: sheet.subInfoMap.skin ?? '',
-    hair: sheet.subInfoMap.hair ?? '',
-  });
 
   return (
     <div
@@ -2580,14 +3669,12 @@ const HeroIdentityModal: React.FC<HeroIdentityModalProps> = ({ sheet, onClose, o
             level: Math.min(20, Math.max(1, level)),
             background: background.trim(),
             alignment: alignment.trim(),
-            experience: Math.max(0, experience),
-            subInfo,
           });
         }}
-        className="glass-panel neon-border rounded-3xl max-w-xl w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto"
+        className="glass-panel neon-border rounded-3xl max-w-lg w-full p-6 space-y-4"
       >
         <div className="flex items-center justify-between">
-          <h3 className="font-anime font-extrabold text-lg">Основные данные персонажа</h3>
+          <h3 className="font-anime font-extrabold text-lg">Шапка персонажа</h3>
           <button
             type="button"
             onClick={onClose}
@@ -2621,7 +3708,7 @@ const HeroIdentityModal: React.FC<HeroIdentityModalProps> = ({ sheet, onClose, o
           </div>
 
           <div>
-            <label className="block text-xs text-muted mb-1">Класс D&D 5e</label>
+            <label className="block text-xs text-muted mb-1">Класс</label>
             <select
               value={charClass in DND_CLASS_LABELS_RU ? charClass : 'custom'}
               onChange={(e) => {
@@ -2631,37 +3718,37 @@ const HeroIdentityModal: React.FC<HeroIdentityModalProps> = ({ sheet, onClose, o
             >
               {Object.entries(DND_CLASS_LABELS_RU).map(([en, ru]) => (
                 <option key={en} value={en}>
-                  {ru} ({en})
+                  {ru}
                 </option>
               ))}
-              <option value="custom">Мультикласс / другой...</option>
+              <option value="custom">Свой / мультикласс...</option>
             </select>
             {!(charClass in DND_CLASS_LABELS_RU) && (
               <input
                 value={charClass}
                 onChange={(e) => setCharClass(e.target.value)}
-                placeholder="Например: Паладин, Колдун"
+                placeholder="Например: Alt Воин"
                 className="anime-input w-full text-xs mt-1.5"
               />
             )}
           </div>
 
           <div>
-            <label className="block text-xs text-muted mb-1">Подкласс / Архетип</label>
+            <label className="block text-xs text-muted mb-1">Подкласс</label>
             <input
               value={subclass}
               onChange={(e) => setSubclass(e.target.value)}
-              placeholder="Школа Воплощения / Клятва Мести..."
+              placeholder="Ронин / Мастер боевых искусств..."
               className="anime-input w-full text-xs"
             />
           </div>
 
           <div>
-            <label className="block text-xs text-muted mb-1">Раса / Происхождение</label>
+            <label className="block text-xs text-muted mb-1">Вид / Раса</label>
             <input
               value={race}
               onChange={(e) => setRace(e.target.value)}
-              placeholder="Эльф / Тифлинг / Человек..."
+              placeholder="Человек / Эльф..."
               className="anime-input w-full text-xs"
             />
           </div>
@@ -2671,55 +3758,19 @@ const HeroIdentityModal: React.FC<HeroIdentityModalProps> = ({ sheet, onClose, o
             <input
               value={background}
               onChange={(e) => setBackground(e.target.value)}
-              placeholder="Мудрец / Благородный / Солдат..."
+              placeholder="Разорённый / Солдат..."
               className="anime-input w-full text-xs"
             />
           </div>
 
-          <div>
+          <div className="sm:col-span-2">
             <label className="block text-xs text-muted mb-1">Мировоззрение</label>
             <input
               value={alignment}
               onChange={(e) => setAlignment(e.target.value)}
-              placeholder="Хаотично-добрый..."
+              placeholder="Нейтрально-добрый..."
               className="anime-input w-full text-xs"
             />
-          </div>
-
-          <div>
-            <label className="block text-xs text-muted mb-1">Опыт (XP)</label>
-            <input
-              type="number"
-              min={0}
-              value={experience}
-              onChange={(e) => setExperience(Math.max(0, Number(e.target.value) || 0))}
-              className="anime-input w-full text-xs"
-            />
-          </div>
-        </div>
-
-        <div className="pt-2 border-t border-border">
-          <div className="text-xs font-semibold text-muted mb-2">Детали внешности (необязательно)</div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
-            {(
-              [
-                ['age', 'Возраст'],
-                ['height', 'Рост'],
-                ['weight', 'Вес'],
-                ['eyes', 'Глаза'],
-                ['skin', 'Кожа'],
-                ['hair', 'Волосы'],
-              ] as const
-            ).map(([k, lbl]) => (
-              <div key={k}>
-                <label className="block text-[10px] text-muted mb-0.5">{lbl}</label>
-                <input
-                  value={subInfo[k] ?? ''}
-                  onChange={(e) => setSubInfo({ ...subInfo, [k]: e.target.value })}
-                  className="anime-input w-full text-xs py-1.5"
-                />
-              </div>
-            ))}
           </div>
         </div>
 
@@ -2732,10 +3783,39 @@ const HeroIdentityModal: React.FC<HeroIdentityModalProps> = ({ sheet, onClose, o
             Отмена
           </button>
           <button type="submit" className="anime-btn-primary px-5 py-2 text-xs">
-            Сохранить героя
+            Сохранить
           </button>
         </div>
       </form>
     </div>
   );
 };
+
+async function resizeImageFileToDataUrl(
+  file: File,
+  maxDim = 480,
+  quality = 0.82
+): Promise<string> {
+  const bitmapUrl = URL.createObjectURL(file);
+  try {
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const el = new Image();
+      el.onload = () => resolve(el);
+      el.onerror = () => reject(new Error('Не удалось прочитать изображение'));
+      el.src = bitmapUrl;
+    });
+
+    const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+    const w = Math.max(1, Math.round(img.width * scale));
+    const h = Math.max(1, Math.round(img.height * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('Canvas недоступен');
+    ctx.drawImage(img, 0, 0, w, h);
+    return canvas.toDataURL('image/webp', quality);
+  } finally {
+    URL.revokeObjectURL(bitmapUrl);
+  }
+}

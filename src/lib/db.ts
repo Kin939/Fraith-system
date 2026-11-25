@@ -208,6 +208,8 @@ interface CharacterRow {
   subclass: string;
   race: string;
   level: number;
+  experience_current: number;
+  experience_max: number;
   max_spells: number;
   lss_embed_url: string;
   coins_cp: number;
@@ -231,6 +233,8 @@ function mapCharacterRow(row: CharacterRow): CharacterProfile {
     subclass: row.subclass,
     race: row.race,
     level: row.level,
+    experienceCurrent: row.experience_current ?? 0,
+    experienceMax: row.experience_max ?? 0,
     maxSpells: row.max_spells,
     lssEmbedUrl: row.lss_embed_url,
     coins: {

@@ -38,6 +38,8 @@ export interface CharacterProfile {
   subclass: string;
   race: string;
   level: number;
+  experienceCurrent: number;
+  experienceMax: number;
   maxSpells: number;
   lssEmbedUrl: string;
   coins: CharacterCoins;
