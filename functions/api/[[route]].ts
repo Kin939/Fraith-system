@@ -9,6 +9,7 @@ import {
   verifyPassword,
   verifySessionJwt,
 } from '../../src/lib/auth';
+import { ensureDatabaseInitialized } from '../../src/lib/bootstrap';
 import {
   getCharacterProfile,
   getJournalEntry,
@@ -38,8 +39,9 @@ import type { AuthUser, PlayerId, QuestStatus, ThemeVariables } from '../../src/
 
 export interface Env {
   DB: D1Database;
-  BUCKET: R2Bucket;
+  BUCKET?: R2Bucket;
   CAMPAIGN_DO: DurableObjectNamespace;
+  ASSETS?: Fetcher;
   JWT_SECRET?: string;
   CAMPAIGN_ID?: string;
   CF_ACCESS_ENABLED?: string;
@@ -49,7 +51,7 @@ type Variables = {
   user: AuthUser | null;
 };
 
-const app = new Hono<{ Bindings: Env; Variables: Variables }>().basePath('/api');
+export const app = new Hono<{ Bindings: Env; Variables: Variables }>().basePath('/api');
 
 function getJwtSecret(env: Env): string {
   return env.JWT_SECRET || 'dev-fraith-secret-change-in-production';
@@ -86,8 +88,9 @@ function parseValidPlayerId(raw: string): PlayerId | null {
   return null;
 }
 
-// Global authentication resolver (JWT httpOnly cookie OR Cloudflare Access Zero Trust email)
+// Global database bootstrap + authentication resolver (JWT httpOnly cookie OR Cloudflare Access Zero Trust email)
 app.use('*', async (c, next) => {
+  await ensureDatabaseInitialized(c.env.DB);
   let resolvedUser: AuthUser | null = null;
 
   // 1. Optional Cloudflare Access (Zero Trust) identity header
@@ -209,7 +212,7 @@ app.get('/auth/me', (c) => {
 
 app.get('/r2/:key{.*}', async (c) => {
   const rawKey = decodeURIComponent(c.req.param('key'));
-  return getImageFromR2(c.env.BUCKET, rawKey);
+  return getImageFromR2(c.env.BUCKET, c.env.DB, rawKey);
 });
 
 // ============================================================================
@@ -1160,7 +1163,7 @@ app.post('/dm/upload', async (c) => {
   }
 
   try {
-    const uploaded = await uploadImageToR2(c.env.BUCKET, file, folder);
+    const uploaded = await uploadImageToR2(c.env.BUCKET, c.env.DB, file, folder);
     return c.json(uploaded);
   } catch (err) {
     return c.json({ error: err instanceof Error ? err.message : 'Ошибка загрузки в R2' }, 400);

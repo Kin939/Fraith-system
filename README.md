@@ -47,26 +47,31 @@ npx wrangler pages dev dist --ip 0.0.0.0 --port 8788
 
 ---
 
-## Деплой в Cloudflare Production
+## Деплой в Cloudflare Production (в один клик через Git / `npx wrangler deploy`)
 
+Проект сконфигурирован под современный единый стек **Cloudflare Workers + Static Assets (`wrangler@4`)**:
+- В `wrangler.toml` задан `[build] command = "npm run build"`, `[assets] directory = "./dist"`, автопровижининг D1 (`fraith-dnd-db`) без необходимости вручную указывать `database_id`, и встроенный класс `CampaignRoom` Durable Object (`workers/index.ts`).
+- При первом старте воркер автоматически создаёт все таблицы в D1 и заполняет seed-данные (`src/lib/bootstrap.ts`), а загрузка иллюстраций прозрачно использует бакет R2 `BUCKET` (если подключён) либо резервную таблицу `media_blobs` в D1.
+
+В настройках **Cloudflare Workers & Pages → Build configuration** достаточно стандартной команды:
 ```bash
-# 1. Создайте базу D1 и бакет R2 (один раз)
-npx wrangler d1 create fraith-dnd-db
-npx wrangler r2 bucket create fraith-dnd-assets
-# Скопируйте полученный database_id в wrangler.toml -> [[d1_databases]]
-
-# 2. Задеплойте воркер Durable Object (CampaignRoom с Hibernation API)
-npm run deploy:do
-# эквивалент: npx wrangler deploy -c wrangler.do.toml
-
-# 3. Примените SQL-миграции и seed-данные на удалённую D1
-npm run db:migrate:remote
-# эквивалент: npx wrangler d1 migrations apply fraith-dnd-db --remote
-
-# 4. Соберите и задеплойте Cloudflare Pages (фронтенд + /functions/api)
-npm run deploy:pages
-# эквивалент: npm run build && npx wrangler pages deploy dist --project-name fraith-system
-
-# 5. Задайте продакшен-секрет для подписи JWT-куки
-npx wrangler pages secret put JWT_SECRET --project-name fraith-system
+npx wrangler deploy
 ```
+(или локально: `npm run deploy`).
+
+Для установки продакшен-секрета подписи JWT:
+```bash
+npx wrangler secret put JWT_SECRET
+```
+
+---
+
+## Автодеплой через GitHub Actions (`.github/workflows/deploy.yml`)
+
+В репозитории настроен CI/CD пайплайн:
+1. В настройках репозитория GitHub (**Settings → Secrets and variables → Actions**) добавьте два секрета:
+   - `CLOUDFLARE_API_TOKEN` — API-токен Cloudflare с правами на *Cloudflare Pages (Edit)*, *Workers Scripts (Edit)*, *D1 (Edit)* и *R2 (Edit)*.
+   - `CLOUDFLARE_ACCOUNT_ID` — ваш Account ID из панели Cloudflare.
+2. Убедитесь, что в `wrangler.toml` прописан реальный `database_id` вашей D1-базы `fraith-dnd-db`.
+3. При каждом слиянии в `main` (или ручном запуске **Run workflow** во вкладке Actions) GitHub автоматически проверит типы, соберёт `dist`, обновит Durable Object, применит миграции D1 и задеплоит сайт на Cloudflare Pages.
+
