@@ -14,6 +14,7 @@ import type {
   QuestStatus,
   RollLogEntry,
   Spell,
+  SpellCastMode,
   TalentNode,
   ThemeVariables,
   UserRole,
@@ -211,6 +212,7 @@ interface CharacterRow {
   experience_current: number;
   experience_max: number;
   max_spells: number;
+  allow_off_class_spells?: number;
   lss_embed_url: string;
   coins_cp: number;
   coins_sp: number;
@@ -236,6 +238,7 @@ function mapCharacterRow(row: CharacterRow): CharacterProfile {
     experienceCurrent: row.experience_current ?? 0,
     experienceMax: row.experience_max ?? 0,
     maxSpells: row.max_spells,
+    allowOffClassSpells: Boolean(row.allow_off_class_spells),
     lssEmbedUrl: row.lss_embed_url,
     coins: {
       cp: row.coins_cp,
@@ -558,37 +561,88 @@ export async function nextCustomSpellId(db: D1Database): Promise<number> {
   return row?.next_id ?? 100000;
 }
 
+const VALID_SPELL_CAST_MODES = new Set<SpellCastMode>([
+  'slot',
+  'at_will',
+  'long_rest',
+  'short_rest',
+  'resource',
+  'ritual_only',
+  'custom',
+]);
+
+function normalizeSpellCastMode(raw?: string | null): SpellCastMode {
+  if (raw && VALID_SPELL_CAST_MODES.has(raw as SpellCastMode)) {
+    return raw as SpellCastMode;
+  }
+  return 'slot';
+}
+
 export async function listLearnedSpellsForPlayer(
   db: D1Database,
   playerId: PlayerId
 ): Promise<LearnedSpellRecord[]> {
   const { results } = await db
     .prepare(
-      `SELECT ls.player_id, ls.spell_id, ls.learned_at, s.*
+      `SELECT ls.player_id,
+              ls.spell_id,
+              ls.learned_at,
+              ls.cast_mode,
+              ls.cast_max_uses,
+              ls.cast_note,
+              ls.granted_by_dm,
+              s.*
        FROM learned_spells ls
        JOIN spells s ON s.id = ls.spell_id
        WHERE ls.player_id = ?
        ORDER BY s.level ASC, s.name ASC`
     )
     .bind(playerId)
-    .all<SpellRow & { player_id: PlayerId; spell_id: number; learned_at: string }>();
+    .all<
+      SpellRow & {
+        player_id: PlayerId;
+        spell_id: number;
+        learned_at: string;
+        cast_mode?: string;
+        cast_max_uses?: number;
+        cast_note?: string;
+        granted_by_dm?: number;
+      }
+    >();
 
   return results.map((row) => ({
     playerId: row.player_id,
     spellId: row.spell_id,
     learnedAt: row.learned_at,
+    castMode: normalizeSpellCastMode(row.cast_mode),
+    castMaxUses: Math.max(1, row.cast_max_uses ?? 1),
+    castNote: row.cast_note ?? '',
+    grantedByDm: Boolean(row.granted_by_dm),
     spell: mapSpellRow(row),
   }));
+}
+
+export interface LearnSpellOptions {
+  bypassClassCheck?: boolean;
+  bypassLimitCheck?: boolean;
+  castMode?: SpellCastMode;
+  castMaxUses?: number;
+  castNote?: string;
+  grantedByDm?: boolean;
 }
 
 export async function learnSpellForPlayer(
   db: D1Database,
   playerId: PlayerId,
   spellId: number,
-  catalogSpell?: Spell | null
+  catalogSpell?: Spell | null,
+  options?: LearnSpellOptions
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const profile = await getCharacterProfile(db, playerId);
-  if (!profile || !profile.characterName.trim() || !profile.charClass.trim()) {
+  const bypassClass = Boolean(options?.bypassClassCheck || profile?.allowOffClassSpells);
+  const bypassLimit = Boolean(options?.bypassLimitCheck);
+
+  if (!bypassClass && (!profile || !profile.characterName.trim() || !profile.charClass.trim())) {
     return {
       ok: false,
       error:
@@ -615,50 +669,106 @@ export async function learnSpellForPlayer(
   const spell = mapSpellRow(spellRow);
   const checkTarget = catalogSpell ? { ...spell, fClass: catalogSpell.fClass } : spell;
 
-  const classMatches = isSpellAllowedForCharacter(
-    checkTarget,
-    profile.charClass,
-    profile.subclass
-  );
-  if (!classMatches) {
-    const reqList = [
-      ...(spell.classes || []),
-      ...(spell.subclasses ? [spell.subclasses] : []),
-    ].join(', ');
-    const classLabel = formatCharacterClassesRu(profile.charClass) || profile.charClass;
-    return {
-      ok: false,
-      error: `Заклинание недоступно для вашего класса (${classLabel}). Доступно для: ${reqList || 'особых источников'}`,
-    };
+  if (!bypassClass && profile) {
+    const classMatches = isSpellAllowedForCharacter(
+      checkTarget,
+      profile.charClass,
+      profile.subclass
+    );
+    if (!classMatches) {
+      const reqList = [
+        ...(spell.classes || []),
+        ...(spell.subclasses ? [spell.subclasses] : []),
+      ].join(', ');
+      const classLabel = formatCharacterClassesRu(profile.charClass) || profile.charClass;
+      return {
+        ok: false,
+        error: `Заклинание недоступно для вашего класса (${classLabel}). Мастер может выдать его вручную или включить для персонажа заклинания вне класса. Доступно для: ${reqList || 'особых источников'}`,
+      };
+    }
   }
+
+  const castMode = normalizeSpellCastMode(options?.castMode);
+  const castMaxUses = Math.max(1, Math.min(99, Math.trunc(options?.castMaxUses ?? 1)));
+  const castNote = (options?.castNote ?? '').trim();
+  const grantedByDm = options?.grantedByDm ? 1 : 0;
 
   const existing = await db
     .prepare(`SELECT 1 FROM learned_spells WHERE player_id = ? AND spell_id = ?`)
     .bind(playerId, spellId)
     .first();
   if (existing) {
+    await db
+      .prepare(
+        `UPDATE learned_spells
+         SET cast_mode = ?,
+             cast_max_uses = ?,
+             cast_note = ?,
+             granted_by_dm = CASE WHEN ? = 1 THEN 1 ELSE granted_by_dm END
+         WHERE player_id = ? AND spell_id = ?`
+      )
+      .bind(castMode, castMaxUses, castNote, grantedByDm, playerId, spellId)
+      .run();
     return { ok: true };
   }
 
-  const countRow = await db
-    .prepare(`SELECT COUNT(*) as cnt FROM learned_spells WHERE player_id = ?`)
-    .bind(playerId)
-    .first<{ cnt: number }>();
+  if (!bypassLimit && profile) {
+    const countRow = await db
+      .prepare(`SELECT COUNT(*) as cnt FROM learned_spells WHERE player_id = ?`)
+      .bind(playerId)
+      .first<{ cnt: number }>();
 
-  const currentCount = countRow?.cnt ?? 0;
-  if (currentCount >= profile.maxSpells) {
-    return {
-      ok: false,
-      error: `Достигнут максимум изученных заклинаний (${currentCount}/${profile.maxSpells})`,
-    };
+    const currentCount = countRow?.cnt ?? 0;
+    if (currentCount >= profile.maxSpells) {
+      return {
+        ok: false,
+        error: `Достигнут максимум изученных заклинаний (${currentCount}/${profile.maxSpells})`,
+      };
+    }
   }
 
   await db
-    .prepare(`INSERT INTO learned_spells (player_id, spell_id, learned_at) VALUES (?, ?, datetime('now'))`)
-    .bind(playerId, spellId)
+    .prepare(
+      `INSERT INTO learned_spells (
+         player_id, spell_id, learned_at, cast_mode, cast_max_uses, cast_note, granted_by_dm
+       ) VALUES (?, ?, datetime('now'), ?, ?, ?, ?)`
+    )
+    .bind(playerId, spellId, castMode, castMaxUses, castNote, grantedByDm)
     .run();
 
   return { ok: true };
+}
+
+export async function updateLearnedSpellMeta(
+  db: D1Database,
+  playerId: PlayerId,
+  spellId: number,
+  updates: {
+    castMode?: SpellCastMode;
+    castMaxUses?: number;
+    castNote?: string;
+  }
+): Promise<boolean> {
+  const existing = await db
+    .prepare(`SELECT 1 FROM learned_spells WHERE player_id = ? AND spell_id = ?`)
+    .bind(playerId, spellId)
+    .first();
+  if (!existing) return false;
+
+  const castMode = normalizeSpellCastMode(updates.castMode);
+  const castMaxUses = Math.max(1, Math.min(99, Math.trunc(updates.castMaxUses ?? 1)));
+  const castNote = (updates.castNote ?? '').trim();
+
+  await db
+    .prepare(
+      `UPDATE learned_spells
+       SET cast_mode = ?, cast_max_uses = ?, cast_note = ?
+       WHERE player_id = ? AND spell_id = ?`
+    )
+    .bind(castMode, castMaxUses, castNote, playerId, spellId)
+    .run();
+
+  return true;
 }
 
 export async function unlearnSpellForPlayer(

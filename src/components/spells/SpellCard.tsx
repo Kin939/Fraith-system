@@ -1,5 +1,17 @@
-import React, { useState } from 'react';
-import { BookMarked, Check, Copy, ExternalLink, Lock, Plus, Trash2, Upload, X } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import {
+  BookMarked,
+  Check,
+  Copy,
+  Crown,
+  ExternalLink,
+  Lock,
+  Plus,
+  Sparkles,
+  Trash2,
+  Upload,
+  X,
+} from 'lucide-react';
 import { apiFetch } from '../../lib/api';
 import { getSchoolMeta } from '../../lib/dndsuSpells';
 import {
@@ -10,8 +22,16 @@ import {
   MAGIC_SCHOOL_LABELS_RU,
   normalizeDndClass,
 } from '../../lib/lss';
+import { formatSpellCastBadge, SPELL_CAST_MODE_OPTIONS } from '../../lib/spellCasting';
 import { useCampaignStore } from '../../lib/store';
-import type { CharacterProfile, LearnedSpellRecord, Spell } from '../../lib/types';
+import type {
+  CharacterProfile,
+  LearnedSpellRecord,
+  PlayerId,
+  Spell,
+  SpellCastMode,
+} from '../../lib/types';
+import { FormattedText } from '../common/FormattedText';
 
 interface SpellCardProps {
   spell: Spell;
@@ -33,20 +53,41 @@ export const SpellCard: React.FC<SpellCardProps> = ({
   onClose,
 }) => {
   const user = useCampaignStore((s) => s.user);
+  const charactersById = useCampaignStore((s) => s.charactersById);
+  const learnedSpellsById = useCampaignStore((s) => s.learnedSpellsById);
+  const dmSelectedPlayerId = useCampaignStore((s) => s.dmSelectedPlayerId);
+  const setDmSelectedPlayerId = useCampaignStore((s) => s.setDmSelectedPlayerId);
   const setActiveTab = useCampaignStore((s) => s.setActiveTab);
   const updateLearnedSpellsInStore = useCampaignStore((s) => s.updateLearnedSpellsInStore);
   const pushToast = useCampaignStore((s) => s.pushToast);
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
 
+  const isDm = user?.role === 'dm';
   const isPlayer = user?.role === 'player' && user.playerId !== null;
+  const activeTargetPid: PlayerId = isDm ? dmSelectedPlayerId : (user?.playerId ?? 1);
+  const targetLearnedList = learnedSpellsById[activeTargetPid] ?? [];
+  const existingRecord = targetLearnedList.find((r) => r.spellId === spell.id) ?? null;
+
+  const [castMode, setCastMode] = useState<SpellCastMode>(existingRecord?.castMode ?? 'slot');
+  const [castMaxUses, setCastMaxUses] = useState<number>(existingRecord?.castMaxUses ?? 1);
+  const [castNote, setCastNote] = useState<string>(existingRecord?.castNote ?? '');
+  const [castOptsOpen, setCastOptsOpen] = useState(false);
+
+  useEffect(() => {
+    setCastMode(existingRecord?.castMode ?? 'slot');
+    setCastMaxUses(existingRecord?.castMaxUses ?? 1);
+    setCastNote(existingRecord?.castNote ?? '');
+  }, [spell.id, activeTargetPid, existingRecord?.castMode, existingRecord?.castMaxUses, existingRecord?.castNote]);
+
   const hasUploadedCharacter = Boolean(
     playerProfile && playerProfile.characterName.trim() && playerProfile.charClass.trim()
   );
 
-  const classAllowed = hasUploadedCharacter
+  const nativeClassMatch = hasUploadedCharacter
     ? isSpellAllowedForCharacter(spell, playerProfile?.charClass, playerProfile?.subclass)
     : false;
+  const classAllowed = Boolean(playerProfile?.allowOffClassSpells) || nativeClassMatch;
   const slotsFull = playerProfile ? learnedCount >= playerProfile.maxSpells : false;
 
   const schoolMeta = getSchoolMeta(spell.school);
@@ -91,7 +132,12 @@ export const SpellCard: React.FC<SpellCardProps> = ({
         `/api/spells/${spell.id}/learn`,
         {
           method: 'POST',
-          body: JSON.stringify({ spell }),
+          body: JSON.stringify({
+            spell,
+            castMode,
+            castMaxUses,
+            castNote,
+          }),
         }
       );
       updateLearnedSpellsInStore(user.playerId, res.learnedSpells);
@@ -104,6 +150,97 @@ export const SpellCard: React.FC<SpellCardProps> = ({
       pushToast({
         title: 'Не удалось изучить',
         message: err instanceof Error ? err.message : 'Ошибка изучения заклинания',
+        variant: 'error',
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleSaveLearnMeta = async (targetPid: PlayerId) => {
+    setBusy(true);
+    try {
+      const res = await apiFetch<{ learnedSpells: LearnedSpellRecord[] }>(
+        `/api/spells/${spell.id}/learn-meta`,
+        {
+          method: 'PUT',
+          body: JSON.stringify({
+            playerId: targetPid,
+            castMode,
+            castMaxUses,
+            castNote,
+          }),
+        }
+      );
+      updateLearnedSpellsInStore(targetPid, res.learnedSpells);
+      pushToast({
+        title: 'Способ применения обновлён',
+        message: `Настройки «${spell.name}» сохранены.`,
+        variant: 'success',
+      });
+      setCastOptsOpen(false);
+    } catch (err) {
+      pushToast({
+        title: 'Ошибка сохранения опций',
+        message: err instanceof Error ? err.message : 'Не удалось обновить параметры',
+        variant: 'error',
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleDmGrant = async () => {
+    setBusy(true);
+    try {
+      const res = await apiFetch<{ learnedSpells: LearnedSpellRecord[] }>(
+        `/api/dm/players/${dmSelectedPlayerId}/spells/${spell.id}/learn`,
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            spell,
+            bypassLimit: true,
+            castMode,
+            castMaxUses,
+            castNote,
+          }),
+        }
+      );
+      updateLearnedSpellsInStore(dmSelectedPlayerId, res.learnedSpells);
+      const targetChar = charactersById[dmSelectedPlayerId]?.characterName || `Игрок #${dmSelectedPlayerId}`;
+      pushToast({
+        title: existingRecord ? 'Опции заклинания обновлены' : 'Заклинание выдано Мастером',
+        message: `«${spell.name}» доступно персонажу ${targetChar}.`,
+        variant: 'success',
+      });
+    } catch (err) {
+      pushToast({
+        title: 'Ошибка выдачи заклинания',
+        message: err instanceof Error ? err.message : 'Не удалось выдать заклинание',
+        variant: 'error',
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleDmRevoke = async () => {
+    setBusy(true);
+    try {
+      const res = await apiFetch<{ learnedSpells: LearnedSpellRecord[] }>(
+        `/api/dm/players/${dmSelectedPlayerId}/spells/${spell.id}/learn`,
+        { method: 'DELETE' }
+      );
+      updateLearnedSpellsInStore(dmSelectedPlayerId, res.learnedSpells);
+      pushToast({
+        title: 'Заклинание убрано Мастером',
+        message: `«${spell.name}» удалено у Игрока #${dmSelectedPlayerId}.`,
+        variant: 'info',
+      });
+    } catch (err) {
+      pushToast({
+        title: 'Ошибка',
+        message: err instanceof Error ? err.message : 'Не удалось удалить заклинание',
         variant: 'error',
       });
     } finally {
@@ -341,13 +478,13 @@ export const SpellCard: React.FC<SpellCardProps> = ({
               dangerouslySetInnerHTML={{ __html: spell.descriptionHtml }}
             />
           ) : (
-            <div className="dndsu-desc whitespace-pre-line">{spell.description}</div>
+            <FormattedText text={spell.description} className="dndsu-desc" />
           )}
         </div>
 
-        {/* Player Learn / Unlearn Controls */}
+        {/* Player Learn / Unlearn + Casting Mode Controls */}
         {isPlayer && (
-          <div className="pt-3 border-t border-border/75 flex flex-wrap items-center justify-between gap-2">
+          <div className="pt-3 border-t border-border/75 space-y-2.5">
             {!hasUploadedCharacter ? (
               <button
                 type="button"
@@ -358,25 +495,102 @@ export const SpellCard: React.FC<SpellCardProps> = ({
                 Загрузите чарник во вкладке «Персонаж», чтобы изучать заклинания
               </button>
             ) : isLearned ? (
-              <div className="flex items-center justify-between w-full gap-2">
-                <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-300">
-                  <BookMarked className="w-4 h-4" />
-                  Изучено вашим персонажем
-                </span>
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={handleUnlearn}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-rose-500/40 bg-rose-500/15 text-rose-200 hover:bg-rose-500/25 text-xs font-semibold transition-colors"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  Забыть
-                </button>
+              <div className="space-y-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-300">
+                      <BookMarked className="w-4 h-4" />
+                      Изучено вашим персонажем
+                    </span>
+                    {existingRecord && (() => {
+                      const b = formatSpellCastBadge(
+                        existingRecord.castMode,
+                        spell.level,
+                        existingRecord.castMaxUses,
+                        existingRecord.castNote
+                      );
+                      return (
+                        <span className={`px-2 py-0.5 rounded-lg border text-[11px] font-semibold ${b.className}`}>
+                          {b.text}
+                        </span>
+                      );
+                    })()}
+                    {existingRecord?.grantedByDm && (
+                      <span className="px-2 py-0.5 rounded-lg bg-amber-500/20 border border-amber-400/40 text-amber-200 text-[10px] font-bold">
+                        Дар Мастера
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setCastOptsOpen((v) => !v)}
+                      className="px-2.5 py-1.5 rounded-xl border border-primary/40 bg-primary/15 text-primary hover:bg-primary/25 text-xs font-semibold transition-colors"
+                    >
+                      Способ применения
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={handleUnlearn}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-rose-500/40 bg-rose-500/15 text-rose-200 hover:bg-rose-500/25 text-xs font-semibold transition-colors"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      Забыть
+                    </button>
+                  </div>
+                </div>
+
+                {castOptsOpen && user?.playerId && (
+                  <div className="p-3 rounded-2xl bg-bg/80 border border-primary/40 space-y-2 text-xs">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      <select
+                        value={castMode}
+                        onChange={(e) => setCastMode(e.target.value as SpellCastMode)}
+                        className="anime-input sm:col-span-2 py-1.5 px-2.5 text-xs"
+                      >
+                        {SPELL_CAST_MODE_OPTIONS.map((opt) => (
+                          <option key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </option>
+                        ))}
+                      </select>
+                      {SPELL_CAST_MODE_OPTIONS.find((o) => o.value === castMode)?.usesCounter && (
+                        <input
+                          type="number"
+                          min={1}
+                          max={99}
+                          value={castMaxUses}
+                          onChange={(e) => setCastMaxUses(Math.max(1, Number(e.target.value) || 1))}
+                          placeholder="Кол-во"
+                          className="anime-input py-1.5 px-2.5 text-xs"
+                        />
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <input
+                        value={castNote}
+                        onChange={(e) => setCastNote(e.target.value)}
+                        placeholder="Уточнение (напр.: Черта Поцелованный феей / Пси-очки / Посох)..."
+                        className="anime-input flex-1 py-1.5 px-2.5 text-xs"
+                      />
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => void handleSaveLearnMeta(user.playerId!)}
+                        className="anime-btn-primary px-3 py-1.5 text-xs"
+                      >
+                        Сохранить
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             ) : !classAllowed ? (
               <span className="inline-flex items-center gap-1.5 text-xs text-muted">
                 <Lock className="w-3.5 h-3.5 text-rose-400 shrink-0" />
-                Недоступно классу «{formatCharacterClassesRu(playerProfile!.charClass) || playerProfile!.charClass}»
+                Недоступно классу «{formatCharacterClassesRu(playerProfile!.charClass) || playerProfile!.charClass}» (Мастер может выдать вручную)
               </span>
             ) : slotsFull ? (
               <span className="inline-flex items-center gap-1.5 text-xs text-amber-300">
@@ -384,16 +598,162 @@ export const SpellCard: React.FC<SpellCardProps> = ({
                 Лимит заклинаний заполнен ({learnedCount}/{playerProfile!.maxSpells})
               </span>
             ) : (
-              <button
-                type="button"
-                disabled={busy}
-                onClick={handleLearn}
-                className="anime-btn-primary px-4 py-2 text-xs inline-flex items-center gap-1.5"
-              >
-                <Plus className="w-4 h-4" />
-                {busy ? 'Изучение...' : 'Изучить заклинание'}
-              </button>
+              <div className="space-y-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={handleLearn}
+                      className="anime-btn-primary px-4 py-2 text-xs inline-flex items-center gap-1.5"
+                    >
+                      <Plus className="w-4 h-4" />
+                      {busy ? 'Изучение...' : 'Изучить заклинание'}
+                    </button>
+                    {!nativeClassMatch && playerProfile?.allowOffClassSpells && (
+                      <span className="px-2 py-0.5 rounded-lg bg-purple-500/20 border border-purple-400/40 text-purple-200 text-[11px]">
+                        ✦ Изучение вне класса разрешено Мастером
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setCastOptsOpen((v) => !v)}
+                    className="text-xs text-accent hover:underline"
+                  >
+                    {castOptsOpen ? 'Скрыть опции применения' : '⚙ Не по ячейке? (1/дл. отдых, ∞ и т.д.)'}
+                  </button>
+                </div>
+
+                {castOptsOpen && (
+                  <div className="p-3 rounded-2xl bg-bg/80 border border-border grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+                    <select
+                      value={castMode}
+                      onChange={(e) => setCastMode(e.target.value as SpellCastMode)}
+                      className="anime-input sm:col-span-2 py-1.5 px-2.5 text-xs"
+                    >
+                      {SPELL_CAST_MODE_OPTIONS.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                    {SPELL_CAST_MODE_OPTIONS.find((o) => o.value === castMode)?.usesCounter && (
+                      <input
+                        type="number"
+                        min={1}
+                        max={99}
+                        value={castMaxUses}
+                        onChange={(e) => setCastMaxUses(Math.max(1, Number(e.target.value) || 1))}
+                        placeholder="Раз / зарядов"
+                        className="anime-input py-1.5 px-2.5 text-xs"
+                      />
+                    )}
+                    <input
+                      value={castNote}
+                      onChange={(e) => setCastNote(e.target.value)}
+                      placeholder="Источник / ресурс (напр.: Пси-очки, Расовое, Свиток)..."
+                      className="anime-input sm:col-span-3 py-1.5 px-2.5 text-xs"
+                    />
+                  </div>
+                )}
+              </div>
             )}
+          </div>
+        )}
+
+        {/* DM Spell Granting Controls (Any Class, Any Cast Mode!) */}
+        {isDm && (
+          <div className="pt-3.5 border-t border-border/75 space-y-2.5">
+            <div className="p-3 rounded-2xl bg-bg/75 border border-primary/40 space-y-2.5 text-xs">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="inline-flex items-center gap-1.5 font-anime font-bold text-primary">
+                  <Crown className="w-3.5 h-3.5 text-amber-400" />
+                  Выдать заклинание игроку (в т.ч. не своего класса)
+                </span>
+                {!nativeClassMatch && playerProfile?.charClass && (
+                  <span className="px-2 py-0.5 rounded-lg bg-purple-500/20 border border-purple-400/40 text-purple-200 text-[10px] font-semibold">
+                    Вне класса «{formatCharacterClassesRu(playerProfile.charClass) || playerProfile.charClass}»
+                  </span>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <select
+                  value={dmSelectedPlayerId}
+                  onChange={(e) => setDmSelectedPlayerId(Number(e.target.value) as PlayerId)}
+                  className="anime-input py-1.5 px-2.5 text-xs"
+                >
+                  {([1, 2, 3] as PlayerId[]).map((pid) => {
+                    const ch = charactersById[pid];
+                    const clsRu = ch?.charClass ? formatCharacterClassesRu(ch.charClass) : '';
+                    return (
+                      <option key={pid} value={pid}>
+                        Игрок #{pid}: {ch?.characterName || 'Без имени'}
+                        {clsRu ? ` (${clsRu})` : ''}
+                      </option>
+                    );
+                  })}
+                </select>
+
+                <select
+                  value={castMode}
+                  onChange={(e) => setCastMode(e.target.value as SpellCastMode)}
+                  className="anime-input sm:col-span-2 py-1.5 px-2.5 text-xs"
+                >
+                  {SPELL_CAST_MODE_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                {SPELL_CAST_MODE_OPTIONS.find((o) => o.value === castMode)?.usesCounter && (
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-muted text-[11px]">Зарядов / цена:</span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={99}
+                      value={castMaxUses}
+                      onChange={(e) => setCastMaxUses(Math.max(1, Number(e.target.value) || 1))}
+                      className="anime-input w-16 py-1 px-2 text-xs text-center"
+                    />
+                  </div>
+                )}
+
+                <input
+                  value={castNote}
+                  onChange={(e) => setCastNote(e.target.value)}
+                  placeholder="Пометка (напр.: Пси-заряды, 1/дл. отдых от черты, Артефакт)..."
+                  className="anime-input flex-1 min-w-[160px] py-1.5 px-2.5 text-xs"
+                />
+
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void handleDmGrant()}
+                  className="anime-btn-primary px-3.5 py-1.5 text-xs inline-flex items-center gap-1.5"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>{existingRecord ? 'Обновить у игрока' : 'Выдать игроку'}</span>
+                </button>
+
+                {existingRecord && (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void handleDmRevoke()}
+                    className="px-2.5 py-1.5 rounded-xl border border-rose-500/40 bg-rose-500/15 text-rose-200 hover:bg-rose-500/25 text-xs font-semibold inline-flex items-center gap-1"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Забрать</span>
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
         )}
       </div>

@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { BookText, Check, Eye, Save } from 'lucide-react';
+import { BookText, Check, Edit3, Eye, Save } from 'lucide-react';
 import { apiFetch } from '../../lib/api';
 import { useCampaignStore } from '../../lib/store';
 import type { JournalEntry, PlayerId } from '../../lib/types';
+import { FormattedText } from '../common/FormattedText';
 
 interface JournalEditorProps {
   playerId: PlayerId;
@@ -18,12 +19,17 @@ export const JournalEditor: React.FC<JournalEditorProps> = ({ playerId, journal,
   const [content, setContent] = useState(journal?.content ?? '');
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const [previewMode, setPreviewMode] = useState(readOnly);
 
   useEffect(() => {
     setTitle(journal?.title ?? 'Личный дневник');
     setContent(journal?.content ?? '');
     setDirty(false);
   }, [playerId, journal?.title, journal?.content]);
+
+  useEffect(() => {
+    if (readOnly) setPreviewMode(true);
+  }, [readOnly]);
 
   const handleSave = async () => {
     if (readOnly) return;
@@ -65,15 +71,29 @@ export const JournalEditor: React.FC<JournalEditorProps> = ({ playerId, journal,
             Просмотр Мастера (только чтение)
           </span>
         ) : (
-          <button
-            type="button"
-            disabled={saving || !dirty}
-            onClick={handleSave}
-            className="anime-btn-primary px-3.5 py-1.5 text-xs inline-flex items-center gap-1.5"
-          >
-            {dirty ? <Save className="w-3.5 h-3.5" /> : <Check className="w-3.5 h-3.5" />}
-            <span>{saving ? 'Сохранение...' : dirty ? 'Сохранить в D1' : 'Сохранено'}</span>
-          </button>
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => setPreviewMode((v) => !v)}
+              className={`px-2.5 py-1.5 rounded-xl text-xs font-semibold border inline-flex items-center gap-1.5 transition-colors ${
+                previewMode
+                  ? 'bg-accent/20 border-accent text-accent'
+                  : 'bg-bg/60 border-border text-muted hover:text-text'
+              }`}
+            >
+              {previewMode ? <Edit3 className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+              <span>{previewMode ? 'Редактор' : 'Чтение'}</span>
+            </button>
+            <button
+              type="button"
+              disabled={saving || !dirty}
+              onClick={handleSave}
+              className="anime-btn-primary px-3.5 py-1.5 text-xs inline-flex items-center gap-1.5"
+            >
+              {dirty ? <Save className="w-3.5 h-3.5" /> : <Check className="w-3.5 h-3.5" />}
+              <span>{saving ? 'Сохранение...' : dirty ? 'Сохранить в D1' : 'Сохранено'}</span>
+            </button>
+          </div>
         )}
       </div>
 
@@ -89,30 +109,51 @@ export const JournalEditor: React.FC<JournalEditorProps> = ({ playerId, journal,
         className="anime-input w-full text-sm font-semibold"
       />
 
-      <textarea
-        value={content}
-        readOnly={readOnly}
-        onChange={(e) => {
-          setContent(e.target.value);
-          setDirty(true);
-        }}
-        onKeyDown={(e) => {
-          if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
-            e.preventDefault();
-            void handleSave();
-          }
-        }}
-        rows={7}
-        placeholder={
-          readOnly
-            ? 'У этого героя пока нет записей в личном журнале...'
-            : 'Ведите заметки о тайнах кампании, уликах, NPC и планах (Ctrl+S для быстрого сохранения)...'
-        }
-        className="anime-input w-full text-sm leading-relaxed resize-y"
-      />
+      {previewMode ? (
+        <div
+          onClick={() => {
+            if (!readOnly) setPreviewMode(false);
+          }}
+          className={`min-h-[10rem] p-3.5 rounded-2xl bg-bg/60 border border-border text-sm ${
+            !readOnly ? 'cursor-text hover:border-primary/40' : ''
+          }`}
+        >
+          {content.trim() ? (
+            <FormattedText text={content} />
+          ) : (
+            <span className="text-muted text-xs">
+              {readOnly
+                ? 'У этого героя пока нет записей в личном журнале...'
+                : 'Нажмите, чтобы начать вести записи...'}
+            </span>
+          )}
+        </div>
+      ) : (
+        <textarea
+          value={content}
+          readOnly={readOnly}
+          onChange={(e) => {
+            setContent(e.target.value);
+            setDirty(true);
+          }}
+          onKeyDown={(e) => {
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+              e.preventDefault();
+              void handleSave();
+            }
+          }}
+          rows={7}
+          placeholder="Ведите заметки о тайнах кампании, уликах и NPC. Выделите любой фрагмент текста, чтобы сделать его жирным, курсивом, цветным или кликабельным броском кубиков!"
+          className="anime-input w-full text-sm leading-relaxed resize-y"
+        />
+      )}
 
-      <div className="text-[11px] text-muted flex items-center justify-between">
-        <span>Таблица D1: journal_entries</span>
+      <div className="text-[11px] text-muted flex flex-wrap items-center justify-between gap-2">
+        <span>
+          {!readOnly
+            ? 'Совет: выделите текст мышью/пальцем для всплывающей панели вёрстки (Ctrl+B / Ctrl+I)'
+            : 'Таблица D1: journal_entries'}
+        </span>
         {journal?.updatedAt && (
           <span>Обновлено: {new Date(journal.updatedAt).toLocaleString('ru-RU')}</span>
         )}

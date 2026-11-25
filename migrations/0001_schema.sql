@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS character_profiles (
   experience_current INTEGER NOT NULL DEFAULT 0,
   experience_max INTEGER NOT NULL DEFAULT 0,
   max_spells INTEGER NOT NULL DEFAULT 0,
+  allow_off_class_spells INTEGER NOT NULL DEFAULT 0,
   lss_embed_url TEXT NOT NULL DEFAULT 'https://longstoryshort.app/iframe/characters/list/',
   coins_cp INTEGER NOT NULL DEFAULT 0,
   coins_sp INTEGER NOT NULL DEFAULT 0,
@@ -125,6 +126,10 @@ CREATE TABLE IF NOT EXISTS learned_spells (
   player_id INTEGER NOT NULL CHECK (player_id IN (1, 2, 3)),
   spell_id INTEGER NOT NULL REFERENCES spells(id) ON DELETE CASCADE,
   learned_at TEXT NOT NULL DEFAULT (datetime('now')),
+  cast_mode TEXT NOT NULL DEFAULT 'slot',
+  cast_max_uses INTEGER NOT NULL DEFAULT 1,
+  cast_note TEXT NOT NULL DEFAULT '',
+  granted_by_dm INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (player_id, spell_id)
 );
 

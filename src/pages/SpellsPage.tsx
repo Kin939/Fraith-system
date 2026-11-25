@@ -13,6 +13,7 @@ import {
   SlidersHorizontal,
   Sparkles,
 } from 'lucide-react';
+import { PlayerSwitcher } from '../components/dm/PlayerSwitcher';
 import { DndsuMultiSelect } from '../components/spells/DndsuMultiSelect';
 import { SpellCard } from '../components/spells/SpellCard';
 import {
@@ -301,6 +302,8 @@ export const SpellsPage: React.FC = () => {
 
   return (
     <div className="space-y-4">
+      {user?.role === 'dm' && <PlayerSwitcher />}
+
       {/* Top dnd.su Header + Category Tabs (Официальные / Homebrew / Все / Изученные) */}
       <div className="relative z-30 glass-panel rounded-3xl p-4 sm:p-5 space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -419,7 +422,7 @@ export const SpellsPage: React.FC = () => {
               </span>
             </button>
 
-            {isPlayer && (
+            {(isPlayer || user?.role === 'dm') && (
               <button
                 type="button"
                 onClick={() => setCategory('learned')}
@@ -430,7 +433,7 @@ export const SpellsPage: React.FC = () => {
                 }`}
               >
                 <BookMarked className="w-3.5 h-3.5" />
-                <span>Изученные</span>
+                <span>{user?.role === 'dm' ? `Изученные (Игрок #${dmSelectedPlayerId})` : 'Изученные'}</span>
                 <span className="px-1.5 py-0.5 rounded-md bg-black/25 text-[11px] font-mono">
                   {learnedRecords.length}
                 </span>

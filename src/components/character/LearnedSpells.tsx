@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { ArrowUpRight, BookOpen, Sparkles } from 'lucide-react';
 import { getSchoolMeta, getSpellDisplayBadge } from '../../lib/dndsuSpells';
 import { MAGIC_SCHOOL_LABELS_RU } from '../../lib/lss';
+import { formatSpellCastBadge } from '../../lib/spellCasting';
 import { useCampaignStore } from '../../lib/store';
 import { SpellCard } from '../spells/SpellCard';
 import type { LearnedSpellRecord, Spell } from '../../lib/types';
@@ -40,9 +41,14 @@ export const LearnedSpells: React.FC<LearnedSpellsProps> = ({ learnedSpells, max
         </div>
       ) : (
         <div className="space-y-1.5 max-h-80 overflow-y-auto pr-1">
-          {learnedSpells.map(({ spell }) => {
+          {learnedSpells.map((rec) => {
+            const { spell } = rec;
             const school = getSchoolMeta(spell.school);
             const compBadge = getSpellDisplayBadge(spell);
+            const castBadge =
+              rec.castMode && rec.castMode !== 'slot'
+                ? formatSpellCastBadge(rec.castMode, spell.level, rec.castMaxUses, rec.castNote)
+                : null;
             return (
               <div
                 key={spell.id}
@@ -63,6 +69,11 @@ export const LearnedSpells: React.FC<LearnedSpellsProps> = ({ learnedSpells, max
                   <span className="text-xs sm:text-sm font-semibold truncate group-hover:text-primary transition-colors">
                     {spell.name}
                   </span>
+                  {castBadge && (
+                    <span className={`px-1.5 py-0.5 rounded border text-[10px] font-semibold shrink-0 ${castBadge.className}`}>
+                      {castBadge.text}
+                    </span>
+                  )}
                 </div>
 
                 <div className="flex items-center gap-1.5 shrink-0">

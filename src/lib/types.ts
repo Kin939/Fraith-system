@@ -31,6 +31,15 @@ export interface CharacterCoins {
   pp: number;
 }
 
+export type SpellCastMode =
+  | 'slot'
+  | 'at_will'
+  | 'long_rest'
+  | 'short_rest'
+  | 'resource'
+  | 'ritual_only'
+  | 'custom';
+
 export interface CharacterProfile {
   playerId: PlayerId;
   characterName: string;
@@ -41,6 +50,7 @@ export interface CharacterProfile {
   experienceCurrent: number;
   experienceMax: number;
   maxSpells: number;
+  allowOffClassSpells?: boolean;
   lssEmbedUrl: string;
   coins: CharacterCoins;
   hpCurrent: number;
@@ -183,6 +193,10 @@ export interface LearnedSpellRecord {
   playerId: PlayerId;
   spellId: number;
   learnedAt: string;
+  castMode?: SpellCastMode;
+  castMaxUses?: number;
+  castNote?: string;
+  grantedByDm?: boolean;
   spell: Spell;
 }
 
