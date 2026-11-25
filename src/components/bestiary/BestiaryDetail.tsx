@@ -2,6 +2,7 @@ import React from 'react';
 import { Heart, Shield, Skull, X } from 'lucide-react';
 import { resolveImageUrl } from '../../lib/artwork';
 import type { BestiaryCreature } from '../../lib/types';
+import { FormattedText } from '../common/FormattedText';
 
 interface BestiaryDetailProps {
   creature: BestiaryCreature | null;
@@ -75,9 +76,7 @@ export const BestiaryDetail: React.FC<BestiaryDetailProps> = ({ creature, onClos
             <div className="text-xs uppercase tracking-wider text-muted font-semibold">
               Записи бестиария
             </div>
-            <p className="text-sm text-text/95 leading-relaxed whitespace-pre-line">
-              {creature.description}
-            </p>
+            <FormattedText text={creature.description} className="text-sm text-text/95" />
           </div>
         </div>
       </div>

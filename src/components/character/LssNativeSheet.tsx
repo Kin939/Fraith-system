@@ -36,12 +36,14 @@ import {
 import {
   ABILITY_META,
   AbilityCode,
+  computeRecoveredResourceCurrent,
   createBlankLssStructures,
   DND_CONDITIONS_RU,
   ensureObj,
   formatSigned,
   getXpProgressInfo,
   LssManualSpellRow,
+  LssParsedResource,
   LssParsedSheet,
   LssParsedWeapon,
   LssRichParagraph,
@@ -54,8 +56,22 @@ import {
   rollDamageExpression,
   setLssField,
 } from '../../lib/lssSheetParser';
+import {
+  LSS_RESOURCE_PRESETS,
+  LssResourcePreset,
+  RESOURCE_COLOR_STYLES,
+  ResourceColorKey,
+  ResourceRecoverMode,
+} from '../../lib/lssResources';
+import { formatSpellCastBadge, SPELL_CAST_MODE_OPTIONS } from '../../lib/spellCasting';
 import { useCampaignStore } from '../../lib/store';
-import type { CharacterProfile, JournalEntry, LearnedSpellRecord } from '../../lib/types';
+import type {
+  CharacterProfile,
+  JournalEntry,
+  LearnedSpellRecord,
+  SpellCastMode,
+} from '../../lib/types';
+import { FormattedText } from '../common/FormattedText';
 import { JournalEditor } from './JournalEditor';
 
 interface LssNativeSheetProps {
@@ -191,13 +207,22 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
   const [wDmgType, setWDmgType] = useState('рубящий');
   const [wNotes, setWNotes] = useState('');
 
-  // Resource inline form
+  // LSS Unique Resource modal / preset picker state
   const [resFormOpen, setResFormOpen] = useState(false);
+  const [resPresetsOpen, setResPresetsOpen] = useState(false);
+  const [editingResId, setEditingResId] = useState<string | null>(null);
   const [rName, setRName] = useState('');
   const [rMax, setRMax] = useState(2);
+  const [rMaxExpr, setRMaxExpr] = useState('');
+  const [rDie, setRDie] = useState('');
+  const [rSpendLimit, setRSpendLimit] = useState(0);
   const [rRest, setRRest] = useState<'none' | 'short' | 'long'>('short');
+  const [rRecoverMode, setRRecoverMode] = useState<ResourceRecoverMode>('all');
+  const [rColor, setRColor] = useState<ResourceColorKey>('amber');
+  const [rGlyph, setRGlyph] = useState('⚡');
+  const [rNotes, setRNotes] = useState('');
 
-  // Spell slots & manual spell row form
+  // Spell slots, manual spell row form & non-slot cast config modal
   const [configureSlotsOpen, setConfigureSlotsOpen] = useState(false);
   const [manualSpellFormOpen, setManualSpellFormOpen] = useState(false);
   const [msLevel, setMsLevel] = useState(0);
@@ -208,6 +233,25 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
   const [msRitual, setMsRitual] = useState(false);
   const [msMat, setMsMat] = useState(false);
   const [msNotes, setMsNotes] = useState('');
+  const [msCastMode, setMsCastMode] = useState<SpellCastMode>('slot');
+  const [msCastMaxUses, setMsCastMaxUses] = useState(1);
+  const [msCastResourceId, setMsCastResourceId] = useState('');
+  const [msCastNote, setMsCastNote] = useState('');
+
+  const [editingSpellCast, setEditingSpellCast] = useState<{
+    configKey: string;
+    catalogSpellId: number | null;
+    manualSpellId: string | null;
+    spellName: string;
+    spellLevel: number;
+    mode: SpellCastMode;
+    maxUses: number;
+    used: number;
+    resourceId: string;
+    note: string;
+  } | null>(null);
+
+  const [richPreviewMode, setRichPreviewMode] = useState(false);
 
   // Coins manager & attunement
   const [coinManageOpen, setCoinManageOpen] = useState(false);
@@ -410,12 +454,16 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
     if (!canEdit || !sheet) return;
     commitMutation((s) => {
       const resObj = ensureObj(s, 'resources');
-      for (const val of Object.values(resObj)) {
+      for (const [k, val] of Object.entries(resObj)) {
         if (val && typeof val === 'object') {
           const rr = val as Record<string, unknown>;
           if (rr.isShortRest) {
-            const parsedRes = sheet.resources.find((r) => r.id === rr.id || r.name === rr.name);
-            if (parsedRes) rr.current = parsedRes.max;
+            const parsedRes = sheet.resources.find(
+              (r) => r.id === (rr.id ?? k) || r.name === rr.name
+            );
+            if (parsedRes) {
+              rr.current = computeRecoveredResourceCurrent(parsedRes);
+            }
           }
         }
       }
@@ -426,11 +474,25 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
           (entry as Record<string, unknown>).filled = 0;
         }
       }
+      // Reset short_rest non-slot spells!
+      const castCfgObj = ensureObj(s, 'spellCastConfigs');
+      for (const [cfgKey, rawCfg] of Object.entries(castCfgObj)) {
+        if (rawCfg && typeof rawCfg === 'object') {
+          const cr = rawCfg as Record<string, unknown>;
+          const matchingLearned = learnedSpells.find((lr) => `cat-${lr.spell.id}` === cfgKey);
+          const effectiveMode =
+            (typeof cr.mode === 'string' && cr.mode) || matchingLearned?.castMode || 'slot';
+          if (effectiveMode === 'short_rest') {
+            cr.used = 0;
+          }
+        }
+      }
     }, true);
 
     pushToast({
       title: 'Короткий отдых завершён',
-      message: 'Восстановлены умения короткого отдыха и ячейки Магии Пакта.',
+      message:
+        'Восстановлены ресурсы короткого отдыха, заклинания «1/кор. отдых» и ячейки Магии Пакта.',
       variant: 'info',
     });
   };
@@ -465,12 +527,32 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
       }
 
       const resObj = ensureObj(s, 'resources');
-      for (const val of Object.values(resObj)) {
+      for (const [k, val] of Object.entries(resObj)) {
         if (val && typeof val === 'object') {
           const rr = val as Record<string, unknown>;
           if (rr.isShortRest || rr.isLongRest) {
-            const parsedRes = sheet.resources.find((r) => r.id === rr.id || r.name === rr.name);
-            if (parsedRes) rr.current = parsedRes.max;
+            const parsedRes = sheet.resources.find(
+              (r) => r.id === (rr.id ?? k) || r.name === rr.name
+            );
+            if (parsedRes) {
+              rr.current = rr.isLongRest
+                ? computeRecoveredResourceCurrent(parsedRes)
+                : parsedRes.max;
+            }
+          }
+        }
+      }
+
+      // Reset both long_rest and short_rest non-slot spells!
+      const castCfgObj = ensureObj(s, 'spellCastConfigs');
+      for (const [cfgKey, rawCfg] of Object.entries(castCfgObj)) {
+        if (rawCfg && typeof rawCfg === 'object') {
+          const cr = rawCfg as Record<string, unknown>;
+          const matchingLearned = learnedSpells.find((lr) => `cat-${lr.spell.id}` === cfgKey);
+          const effectiveMode =
+            (typeof cr.mode === 'string' && cr.mode) || matchingLearned?.castMode || 'slot';
+          if (effectiveMode === 'long_rest' || effectiveMode === 'short_rest') {
+            cr.used = 0;
           }
         }
       }
@@ -478,7 +560,8 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
 
     pushToast({
       title: 'Длинный отдых завершён',
-      message: 'Хиты, ячейки заклинаний, кости хитов и ресурсы восстановлены!',
+      message:
+        'Хиты, ячейки, кости хитов, уникальные ресурсы и заклинания «раз в отдых» восстановлены!',
       variant: 'success',
     });
   };
@@ -591,31 +674,425 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
     }, true);
   };
 
-  const handleAddResource = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!rName.trim()) return;
+  const openResourceEditor = (res?: LssParsedResource) => {
+    if (res) {
+      setEditingResId(res.id);
+      setRName(res.name);
+      setRMax(res.max);
+      setRMaxExpr(res.maxExpr);
+      setRDie(res.die);
+      setRSpendLimit(res.spendLimit);
+      setRRest(res.isShortRest ? 'short' : res.isLongRest ? 'long' : 'none');
+      setRRecoverMode(res.recoverMode);
+      setRColor(res.color);
+      setRGlyph(res.glyph || '⚡');
+      setRNotes(res.notes);
+    } else {
+      setEditingResId(null);
+      setRName('');
+      setRMax(3);
+      setRMaxExpr('');
+      setRDie('');
+      setRSpendLimit(0);
+      setRRest('long');
+      setRRecoverMode('all');
+      setRColor('amber');
+      setRGlyph('⚡');
+      setRNotes('');
+    }
+    setResPresetsOpen(false);
+    setResFormOpen(true);
+  };
+
+  const handleApplyResourcePreset = (preset: LssResourcePreset) => {
+    if (!sheet || !canEdit) return;
+    const built = preset.build({
+      level: sheet.level,
+      prof: sheet.proficiencyBonus,
+    });
     const id = `res-${Date.now()}`;
     commitMutation((s) => {
       const resObj = ensureObj(s, 'resources');
       resObj[id] = {
         id,
-        name: rName.trim(),
-        current: rMax,
-        max: rMax,
-        isShortRest: rRest === 'short',
-        isLongRest: rRest === 'long',
+        name: built.name,
+        current: built.max,
+        max: built.max,
+        maxExpr: built.maxExpr,
+        die: built.die,
+        spendLimit: built.spendLimit,
+        recoverMode: built.recoverMode,
+        color: preset.color,
+        glyph: preset.glyph,
+        isShortRest: built.isShortRest,
+        isLongRest: built.isLongRest,
+        notes: built.notes,
       };
     }, true);
-    setRName('');
-    setRMax(2);
+    setResPresetsOpen(false);
+    pushToast({
+      title: `${preset.glyph} Добавлен ресурс: ${built.name}`,
+      message: built.die
+        ? `Пул: ${built.max}, кость: ${built.die}`
+        : `Зарядов: ${built.max}${built.spendLimit > 0 ? ` (лимит за раз: ${built.spendLimit})` : ''}`,
+      variant: 'success',
+    });
+  };
+
+  const handleSaveResource = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!rName.trim()) return;
+    const id = editingResId || `res-${Date.now()}`;
+    commitMutation((s) => {
+      const resObj = ensureObj(s, 'resources');
+      const prev =
+        editingResId && resObj[editingResId] && typeof resObj[editingResId] === 'object'
+          ? (resObj[editingResId] as Record<string, unknown>)
+          : null;
+      const safeMax = Math.max(1, rMax);
+      const nextCurrent = prev
+        ? Math.min(safeMax, Math.max(0, Number(prev.current ?? safeMax)))
+        : safeMax;
+      resObj[id] = {
+        ...(prev ?? {}),
+        id,
+        name: rName.trim(),
+        current: editingResId ? nextCurrent : safeMax,
+        max: safeMax,
+        maxExpr: rMaxExpr.trim(),
+        die: rDie.trim(),
+        spendLimit: Math.max(0, rSpendLimit),
+        recoverMode: rRecoverMode,
+        color: rColor,
+        glyph: rGlyph.trim() || '⚡',
+        isShortRest: rRest === 'short',
+        isLongRest: rRest === 'long',
+        notes: rNotes.trim(),
+      };
+    }, true);
+    setEditingResId(null);
     setResFormOpen(false);
+  };
+
+  const handleRollResourceDie = (res: LssParsedResource, spendCharge: boolean) => {
+    if (!res.dieResolved) return;
+    if (spendCharge) {
+      if (!canEdit) return;
+      if (res.current <= 0) {
+        pushToast({
+          title: 'Нет доступных костей/зарядов',
+          message: `Ресурс «${res.name}» исчерпан (0 / ${res.max}).`,
+          variant: 'warning',
+        });
+        return;
+      }
+      commitMutation((s) => {
+        const ro = ensureObj(s, 'resources');
+        const t = ensureObj(ro, res.id);
+        t.current = Math.max(0, res.current - 1);
+      }, true);
+    }
+    handleDamageRoll(
+      `${res.glyph} ${res.name}${spendCharge ? ' (-1 заряд)' : ''}`,
+      res.dieResolved
+    );
+  };
+
+  const handleSpendResourceAmount = (res: LssParsedResource, delta: number) => {
+    if (!canEdit) return;
+    const abs = Math.abs(delta);
+    if (delta < 0 && res.spendLimit > 0 && abs > res.spendLimit) {
+      pushToast({
+        title: 'Превышен лимит траты (Пси-лимит)',
+        message: `За один раз нельзя потратить больше ${res.spendLimit} ед. ресурса «${res.name}».`,
+        variant: 'warning',
+      });
+      return;
+    }
+    if (delta < 0 && res.current < abs) {
+      pushToast({
+        title: 'Недостаточно зарядов',
+        message: `В «${res.name}» осталось ${res.current} из ${abs} требуемых.`,
+        variant: 'warning',
+      });
+      return;
+    }
+    const nextVal = Math.min(res.max, Math.max(0, res.current + delta));
+    commitMutation((s) => {
+      const ro = ensureObj(s, 'resources');
+      const t = ensureObj(ro, res.id);
+      t.current = nextVal;
+    }, true);
+  };
+
+  const resolveEffectiveSpellCast = (params: {
+    configKey: string;
+    spellLevel: number;
+    defaultMode?: SpellCastMode;
+    defaultMaxUses?: number;
+    defaultResourceId?: string;
+    defaultNote?: string;
+  }) => {
+    const localCfg = sheet?.spellcasting.castConfigs[params.configKey];
+    const mode: SpellCastMode =
+      params.spellLevel === 0 && (!localCfg || localCfg.mode === 'slot') && (!params.defaultMode || params.defaultMode === 'slot')
+        ? 'at_will'
+        : (localCfg?.mode ?? params.defaultMode ?? 'slot');
+    const maxUses = Math.max(1, localCfg?.maxUses ?? params.defaultMaxUses ?? 1);
+    const used = Math.min(maxUses, Math.max(0, localCfg?.used ?? 0));
+    const resourceId = localCfg?.resourceId || params.defaultResourceId || '';
+    const note = localCfg?.note ?? params.defaultNote ?? '';
+    return { mode, maxUses, used, resourceId, note };
+  };
+
+  const handleCastSpellRow = (params: {
+    configKey: string;
+    spellName: string;
+    spellLevel: number;
+    mode: SpellCastMode;
+    maxUses: number;
+    used: number;
+    resourceId: string;
+    note: string;
+  }) => {
+    if (!sheet) return;
+    const heroName = sheet.name || profile.characterName || `Игрок ${profile.playerId}`;
+
+    if (params.mode === 'at_will' || params.spellLevel === 0) {
+      pushToast({
+        title: `✦ ${heroName} творит «${params.spellName}»`,
+        message: 'Неограниченное применение (ячейка не тратится).',
+        variant: 'info',
+      });
+      return;
+    }
+
+    if (params.mode === 'ritual_only') {
+      pushToast({
+        title: `🕯 ${heroName} проводит ритуал «${params.spellName}»`,
+        message: '+10 минут к сотворению, ячейка заклинаний не тратится.',
+        variant: 'info',
+      });
+      return;
+    }
+
+    if (!canEdit) return;
+
+    if (
+      params.mode === 'long_rest' ||
+      params.mode === 'short_rest' ||
+      params.mode === 'custom'
+    ) {
+      const remaining = Math.max(0, params.maxUses - params.used);
+      if (remaining <= 0) {
+        pushToast({
+          title: `Заряды «${params.spellName}» исчерпаны`,
+          message:
+            params.mode === 'short_rest'
+              ? 'Восстановится после короткого или длинного отдыха.'
+              : params.mode === 'long_rest'
+                ? 'Восстановится после продолжительного отдыха.'
+                : 'Свободных зарядов не осталось.',
+          variant: 'warning',
+        });
+        return;
+      }
+      const nextUsed = Math.min(params.maxUses, params.used + 1);
+      commitMutation((s) => {
+        const cfgObj = ensureObj(s, 'spellCastConfigs');
+        cfgObj[params.configKey] = {
+          mode: params.mode,
+          maxUses: params.maxUses,
+          used: nextUsed,
+          resourceId: params.resourceId,
+          note: params.note,
+        };
+      }, true);
+      pushToast({
+        title: `✦ ${heroName} применяет «${params.spellName}»`,
+        message: `Осталось применений: ${params.maxUses - nextUsed} / ${params.maxUses}${
+          params.note ? ` (${params.note})` : ''
+        }`,
+        variant: 'success',
+      });
+      return;
+    }
+
+    if (params.mode === 'resource') {
+      const targetRes =
+        sheet.resources.find((r) => r.id === params.resourceId) ??
+        sheet.resources.find(
+          (r) => params.note && r.name.toLowerCase().includes(params.note.toLowerCase())
+        );
+      if (!targetRes) {
+        pushToast({
+          title: 'Не выбран уникальный ресурс',
+          message: `Нажмите ⚙ у заклинания «${params.spellName}» и привяжите ресурс (напр. Пси-заряды).`,
+          variant: 'warning',
+        });
+        return;
+      }
+      const cost = Math.max(1, params.maxUses);
+      if (targetRes.spendLimit > 0 && cost > targetRes.spendLimit) {
+        pushToast({
+          title: 'Превышен Пси-лимит / лимит траты',
+          message: `Стоимость (${cost}) выше лимита «${targetRes.name}» (${targetRes.spendLimit}).`,
+          variant: 'warning',
+        });
+        return;
+      }
+      if (targetRes.current < cost) {
+        pushToast({
+          title: `Недостаточно ресурса «${targetRes.name}»`,
+          message: `Нужно ${cost}, доступно ${targetRes.current} / ${targetRes.max}.`,
+          variant: 'warning',
+        });
+        return;
+      }
+      commitMutation((s) => {
+        const ro = ensureObj(s, 'resources');
+        const t = ensureObj(ro, targetRes.id);
+        t.current = Math.max(0, targetRes.current - cost);
+      }, true);
+      pushToast({
+        title: `✦ ${heroName} применяет «${params.spellName}»`,
+        message: `Потрачено ${cost} из «${targetRes.name}» (осталось ${targetRes.current - cost}/${targetRes.max}).`,
+        variant: 'success',
+      });
+      return;
+    }
+
+    // Standard slot casting: find lowest available slot >= spellLevel (or Pact slot >= spellLevel)
+    let chosenSlotLevel: number | null = null;
+    for (let lvl = Math.max(1, params.spellLevel); lvl <= 9; lvl++) {
+      const info = sheet.spellcasting.slotsByLevel[lvl];
+      if (info && info.total - info.expended > 0) {
+        chosenSlotLevel = lvl;
+        break;
+      }
+    }
+    const pact = sheet.spellcasting.pactSlots;
+    const pactAvail = pact.total - pact.expended > 0 && pact.level >= params.spellLevel;
+
+    if (chosenSlotLevel === null && !pactAvail) {
+      pushToast({
+        title: `Нет свободных ячеек ≥ ${params.spellLevel} круга`,
+        message:
+          'Настройте максимум ячеек выше или переключите заклинание на «1/дл. отдых» / «Неограниченно» через ⚙.',
+        variant: 'warning',
+      });
+      return;
+    }
+
+    if (
+      pactAvail &&
+      (chosenSlotLevel === null || pact.level <= chosenSlotLevel)
+    ) {
+      commitMutation((s) => {
+        const pObj = ensureObj(s, 'spellsPact');
+        const cur = ensureObj(pObj, `slots-${pact.level}`);
+        cur.value = pact.total;
+        cur.filled = Math.min(pact.total, pact.expended + 1);
+      }, true);
+      pushToast({
+        title: `✦ ${heroName} сотворяет «${params.spellName}»`,
+        message: `Потрачена ячейка Магии Пакта (${pact.level}-й круг).`,
+        variant: 'success',
+      });
+    } else if (chosenSlotLevel !== null) {
+      const slotInfo = sheet.spellcasting.slotsByLevel[chosenSlotLevel];
+      commitMutation((s) => {
+        const sp = ensureObj(s, 'spells');
+        const cur = ensureObj(sp, `slots-${chosenSlotLevel}`);
+        cur.value = slotInfo.total;
+        cur.filled = Math.min(slotInfo.total, slotInfo.expended + 1);
+      }, true);
+      pushToast({
+        title: `✦ ${heroName} сотворяет «${params.spellName}»`,
+        message: `Потрачена ячейка ${chosenSlotLevel}-го круга.`,
+        variant: 'success',
+      });
+    }
+  };
+
+  const handleSaveSpellCastConfigModal = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingSpellCast || !canEdit) return;
+    const {
+      configKey,
+      catalogSpellId,
+      manualSpellId,
+      mode,
+      maxUses,
+      used,
+      resourceId,
+      note,
+    } = editingSpellCast;
+    const safeMax = Math.max(1, maxUses);
+    const safeUsed = Math.min(safeMax, Math.max(0, used));
+
+    commitMutation((s) => {
+      const cfgObj = ensureObj(s, 'spellCastConfigs');
+      cfgObj[configKey] = {
+        mode,
+        maxUses: safeMax,
+        used: safeUsed,
+        resourceId,
+        note: note.trim(),
+      };
+      if (manualSpellId && Array.isArray(s.manualSpells)) {
+        s.manualSpells = s.manualSpells.map((it) => {
+          if (!it || typeof it !== 'object') return it;
+          const r = it as Record<string, unknown>;
+          if (r.id === manualSpellId) {
+            return {
+              ...r,
+              castMode: mode,
+              castMaxUses: safeMax,
+              castResourceId: resourceId,
+              castNote: note.trim(),
+            };
+          }
+          return it;
+        });
+      }
+    }, true);
+
+    if (catalogSpellId !== null) {
+      try {
+        const res = await apiFetch<{ learnedSpells: LearnedSpellRecord[] }>(
+          `/api/spells/${catalogSpellId}/learn-meta`,
+          {
+            method: 'PUT',
+            body: JSON.stringify({
+              playerId: profile.playerId,
+              castMode: mode,
+              castMaxUses: safeMax,
+              castNote: note.trim(),
+            }),
+          }
+        );
+        updateLearnedSpellsInStore(profile.playerId, res.learnedSpells);
+      } catch {
+        // Sheet config already saved locally & synced via raw_lss_json
+      }
+    }
+
+    setEditingSpellCast(null);
+    pushToast({
+      title: 'Способ применения сохранён',
+      message: `Параметры «${editingSpellCast.spellName}» обновлены.`,
+      variant: 'success',
+    });
   };
 
   const handleAddManualSpell = (e: React.FormEvent) => {
     e.preventDefault();
     if (!msName.trim()) return;
+    const id = `msp-${Date.now()}`;
+    const effectiveMode: SpellCastMode = msLevel === 0 && msCastMode === 'slot' ? 'at_will' : msCastMode;
     const entry: LssManualSpellRow = {
-      id: `msp-${Date.now()}`,
+      id,
       level: msLevel,
       name: msName.trim(),
       castingTime: msTime.trim() || '1 д.',
@@ -624,23 +1101,43 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
       ritual: msRitual,
       material: msMat,
       notes: msNotes.trim(),
+      castMode: effectiveMode,
+      castMaxUses: Math.max(1, msCastMaxUses),
+      castResourceId: msCastResourceId,
+      castNote: msCastNote.trim(),
     };
     commitMutation((s) => {
       const list = Array.isArray(s.manualSpells) ? [...s.manualSpells] : [];
       list.push(entry);
       s.manualSpells = list;
+      if (effectiveMode !== 'slot') {
+        const cfgObj = ensureObj(s, 'spellCastConfigs');
+        cfgObj[id] = {
+          mode: effectiveMode,
+          maxUses: Math.max(1, msCastMaxUses),
+          used: 0,
+          resourceId: msCastResourceId,
+          note: msCastNote.trim(),
+        };
+      }
     }, true);
     setMsName('');
     setMsNotes('');
+    setMsCastMode('slot');
+    setMsCastMaxUses(1);
+    setMsCastResourceId('');
+    setMsCastNote('');
     setManualSpellFormOpen(false);
   };
 
   const handleUnlearnCatalogSpell = async (spellId: number, spellName: string) => {
     try {
-      const res = await apiFetch<{ learnedSpells: LearnedSpellRecord[] }>(
-        `/api/spells/${spellId}/learn`,
-        { method: 'DELETE' }
-      );
+      const endpoint = isDm
+        ? `/api/dm/players/${profile.playerId}/spells/${spellId}/learn`
+        : `/api/spells/${spellId}/learn`;
+      const res = await apiFetch<{ learnedSpells: LearnedSpellRecord[] }>(endpoint, {
+        method: 'DELETE',
+      });
       updateLearnedSpellsInStore(profile.playerId, res.learnedSpells);
       pushToast({
         title: 'Заклинание убрано из списка',
@@ -2183,54 +2680,231 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                 </div>
               </div>
 
-              {/* Class Resources & Dice Pools (just like Fighter Maneuver Dice inside Page 1!) */}
+              {/* LSS-Style Unique Resources, Rogue Dice & Mystic Psi Pools */}
               <div className="sheet-frame overflow-hidden">
                 <div className="sheet-frame__header">
-                  <span>Классовые ресурсы и заряды</span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                    <span>Уникальные ресурсы, кости и пси-заряды (LSS)</span>
+                  </span>
                   {canEdit && (
-                    <button
-                      type="button"
-                      onClick={() => setResFormOpen((v) => !v)}
-                      className="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 text-[10px] inline-flex items-center gap-1"
-                    >
-                      <Plus className="w-3 h-3" />
-                      <span>Ресурс</span>
-                    </button>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setResFormOpen(false);
+                          setResPresetsOpen((v) => !v);
+                        }}
+                        className="px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-200 hover:bg-cyan-500/30 border border-cyan-400/35 text-[10px] font-bold inline-flex items-center gap-1"
+                        title="Быстро добавить готовый шаблон: Кости плута, Пси-заряды мистика, Кости превосходства, Ци, Магус..."
+                      >
+                        <Sparkles className="w-3 h-3" />
+                        <span>Шаблоны LSS</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (resFormOpen && !editingResId) {
+                            setResFormOpen(false);
+                          } else {
+                            openResourceEditor();
+                          }
+                        }}
+                        className="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 border border-amber-400/35 text-[10px] font-bold inline-flex items-center gap-1"
+                      >
+                        <Plus className="w-3 h-3" />
+                        <span>Свой ресурс</span>
+                      </button>
+                    </div>
                   )}
                 </div>
 
+                {/* Preset Gallery (Rogue Dice, Mystic Psi Charges, Classic & Homebrew) */}
+                {resPresetsOpen && canEdit && (
+                  <div className="p-3 bg-surface/95 border-b border-border space-y-2.5 text-xs">
+                    <div className="flex items-center justify-between">
+                      <span className="font-anime font-bold text-[11px] uppercase tracking-wider text-cyan-300">
+                        Выберите готовый шаблон уникального ресурса (авторасчёт под {sheet.level} ур.):
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setResPresetsOpen(false)}
+                        className="text-muted hover:text-text"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 max-h-64 overflow-y-auto pr-1">
+                      {LSS_RESOURCE_PRESETS.map((preset) => (
+                        <button
+                          key={preset.key}
+                          type="button"
+                          onClick={() => handleApplyResourcePreset(preset)}
+                          className="p-2 rounded-xl bg-bg/80 hover:bg-primary/15 border border-border hover:border-primary/50 text-left flex items-start gap-2 transition-colors"
+                        >
+                          <span className="text-base leading-none mt-0.5 shrink-0">
+                            {preset.glyph}
+                          </span>
+                          <div className="min-w-0">
+                            <div className="font-bold text-xs text-text truncate">
+                              {preset.title}
+                            </div>
+                            <div className="text-[10px] text-muted leading-snug">
+                              {preset.subtitle}
+                            </div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Custom / Edit LSS Unique Resource Form */}
                 {resFormOpen && canEdit && (
                   <form
-                    onSubmit={handleAddResource}
-                    className="p-3 bg-surface/95 border-b border-border grid grid-cols-1 sm:grid-cols-4 gap-2 items-end"
+                    onSubmit={handleSaveResource}
+                    className="p-3 bg-surface/95 border-b border-border space-y-2.5 text-xs"
                   >
-                    <input
-                      required
-                      value={rName}
-                      onChange={(e) => setRName(e.target.value)}
-                      placeholder="Кости приёмов / Ярость / Ци"
-                      className="anime-input sm:col-span-2 py-1.5 px-2.5 text-xs"
-                    />
-                    <input
-                      type="number"
-                      min={1}
-                      max={99}
-                      value={rMax}
-                      onChange={(e) => setRMax(Math.max(1, Number(e.target.value)))}
-                      className="anime-input py-1.5 px-2 text-xs"
-                    />
-                    <div className="flex gap-1">
+                    <div className="flex items-center justify-between">
+                      <span className="font-anime font-bold text-xs text-amber-300">
+                        {editingResId
+                          ? 'Настройка уникального ресурса'
+                          : 'Новый уникальный ресурс / пул костей'}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setResFormOpen(false);
+                          setEditingResId(null);
+                        }}
+                        className="text-muted hover:text-text"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-12 gap-2">
+                      <input
+                        value={rGlyph}
+                        onChange={(e) => setRGlyph(e.target.value)}
+                        placeholder="⚡"
+                        title="Значок"
+                        className="anime-input sm:col-span-2 py-1.5 px-2 text-center text-xs"
+                      />
+                      <input
+                        required
+                        value={rName}
+                        onChange={(e) => setRName(e.target.value)}
+                        placeholder="Название (напр. Кости Скрытой атаки / Пси-заряды)"
+                        className="anime-input sm:col-span-6 py-1.5 px-2.5 text-xs"
+                      />
+                      <select
+                        value={rColor}
+                        onChange={(e) => setRColor(e.target.value as ResourceColorKey)}
+                        className="anime-input sm:col-span-4 py-1.5 px-2 text-xs"
+                      >
+                        <option value="amber">Золотой / Янтарь</option>
+                        <option value="cyan">Пси-голубой</option>
+                        <option value="violet">Мистический фиолетовый</option>
+                        <option value="crimson">Кроваво-алый</option>
+                        <option value="emerald">Алхимический изумруд</option>
+                      </select>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                      <div>
+                        <label className="block text-[10px] text-muted mb-0.5">Макс. зарядов</label>
+                        <input
+                          type="number"
+                          min={1}
+                          max={200}
+                          value={rMax}
+                          onChange={(e) => setRMax(Math.max(1, Number(e.target.value) || 1))}
+                          className="anime-input w-full py-1 px-2 text-xs"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] text-muted mb-0.5">
+                          Авто-формула макс.
+                        </label>
+                        <input
+                          value={rMaxExpr}
+                          onChange={(e) => setRMaxExpr(e.target.value)}
+                          placeholder="2*[PROF] / [LVL]"
+                          className="anime-input w-full py-1 px-2 text-xs font-mono"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] text-muted mb-0.5">
+                          Кость ресурса (опц.)
+                        </label>
+                        <input
+                          value={rDie}
+                          onChange={(e) => setRDie(e.target.value)}
+                          placeholder="1к6 / 3к6 / 1к8"
+                          className="anime-input w-full py-1 px-2 text-xs font-mono"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] text-muted mb-0.5">
+                          Лимит за раз (Пси)
+                        </label>
+                        <input
+                          type="number"
+                          min={0}
+                          max={50}
+                          value={rSpendLimit}
+                          onChange={(e) => setRSpendLimit(Math.max(0, Number(e.target.value) || 0))}
+                          placeholder="0 = нет"
+                          className="anime-input w-full py-1 px-2 text-xs"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                       <select
                         value={rRest}
                         onChange={(e) => setRRest(e.target.value as 'none' | 'short' | 'long')}
-                        className="anime-input flex-1 py-1.5 px-1.5 text-xs"
+                        className="anime-input py-1.5 px-2 text-xs"
                       >
-                        <option value="short">Кор. отд.</option>
-                        <option value="long">Дл. отд.</option>
-                        <option value="none">Вручную</option>
+                        <option value="short">Восст.: Короткий отдых</option>
+                        <option value="long">Восст.: Длинный отдых</option>
+                        <option value="none">Восст.: Вручную</option>
                       </select>
-                      <button type="submit" className="anime-btn-primary px-2.5 py-1.5 text-xs">
-                        +
+
+                      <select
+                        value={rRecoverMode}
+                        onChange={(e) => setRRecoverMode(e.target.value as ResourceRecoverMode)}
+                        disabled={rRest === 'none'}
+                        className="anime-input py-1.5 px-2 text-xs"
+                      >
+                        <option value="all">Восстанавливать все</option>
+                        <option value="half_up">Половину (округл. вверх ½↑)</option>
+                        <option value="half_down">Половину (округл. вниз ½↓)</option>
+                        <option value="one">+1 заряд за отдых</option>
+                      </select>
+
+                      <input
+                        value={rNotes}
+                        onChange={(e) => setRNotes(e.target.value)}
+                        placeholder="Краткая памятка / правило..."
+                        className="anime-input py-1.5 px-2 text-xs"
+                      />
+                    </div>
+
+                    <div className="flex justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setResFormOpen(false);
+                          setEditingResId(null);
+                        }}
+                        className="px-3 py-1 rounded-lg border border-border text-muted"
+                      >
+                        Отмена
+                      </button>
+                      <button type="submit" className="anime-btn-primary px-4 py-1 text-xs">
+                        {editingResId ? 'Сохранить изменения' : 'Добавить ресурс'}
                       </button>
                     </div>
                   </form>
@@ -2238,73 +2912,194 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
 
                 <div className="p-2.5">
                   {sheet.resources.length === 0 ? (
-                    <div className="text-[11px] text-muted text-center py-1.5">
-                      Нет активных счётчиков ресурсов.
+                    <div className="text-[11px] text-muted text-center py-2.5">
+                      Нет уникальных ресурсов. Нажмите «Шаблоны LSS», чтобы в 1 клик добавить Кости
+                      плута, Пси-заряды мистика, Кости воина, Ци и др.
                     </div>
                   ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      {sheet.resources.map((r) => (
-                        <div
-                          key={r.id}
-                          className="px-3 py-2 rounded-xl bg-surface/75 border border-border flex items-center justify-between gap-2"
-                        >
-                          <div className="min-w-0">
-                            <div className="text-xs font-bold text-text truncate">{r.name}</div>
-                            {r.restLabel && (
-                              <div className="text-[10px] text-muted">{r.restLabel}</div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      {sheet.resources.map((r) => {
+                        const style = RESOURCE_COLOR_STYLES[r.color] ?? RESOURCE_COLOR_STYLES.amber;
+                        const pct = Math.min(
+                          100,
+                          Math.max(0, Math.round((r.current / Math.max(1, r.max)) * 100))
+                        );
+                        const psiQuickSteps =
+                          r.spendLimit > 0
+                            ? [1, 2, 3, 5, 6, 7].filter((n) => n <= r.spendLimit)
+                            : [];
+
+                        return (
+                          <div
+                            key={r.id}
+                            className="p-3 rounded-xl bg-surface/80 border border-border space-y-2 flex flex-col justify-between"
+                          >
+                            {/* Top Row: Title + Meta + Counter + Edit/Delete */}
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span className="text-sm leading-none">{r.glyph}</span>
+                                  <span className="text-xs font-extrabold text-text truncate">
+                                    {r.name}
+                                  </span>
+                                  {r.spendLimit > 0 && (
+                                    <span className="px-1.5 py-0.5 rounded bg-cyan-500/15 border border-cyan-400/35 text-[9px] font-bold text-cyan-200">
+                                      Лимит: {r.spendLimit}
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="text-[10px] text-muted flex items-center gap-1.5 flex-wrap mt-0.5">
+                                  {r.restLabel && <span>↻ {r.restLabel}</span>}
+                                  {r.maxExpr && (
+                                    <span className="font-mono opacity-70">({r.maxExpr})</span>
+                                  )}
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-1 shrink-0">
+                                {canEdit && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleSpendResourceAmount(r, -1)}
+                                    className="w-5 h-5 rounded bg-bg border border-border text-xs font-bold hover:border-primary"
+                                    title="Потратить 1"
+                                  >
+                                    -
+                                  </button>
+                                )}
+                                <span
+                                  className={`font-mono font-bold text-xs px-2 py-0.5 rounded border ${style.badge}`}
+                                >
+                                  {r.current} / {r.max}
+                                </span>
+                                {canEdit && (
+                                  <>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleSpendResourceAmount(r, 1)}
+                                      className="w-5 h-5 rounded bg-bg border border-border text-xs font-bold hover:border-primary"
+                                      title="Восстановить 1"
+                                    >
+                                      +
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => openResourceEditor(r)}
+                                      className="p-0.5 text-muted hover:text-accent"
+                                      title="Настроить ресурс"
+                                    >
+                                      <Pencil className="w-3 h-3" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        commitMutation((s) => {
+                                          const ro = ensureObj(s, 'resources');
+                                          delete ro[r.id];
+                                        }, true)
+                                      }
+                                      className="p-0.5 text-muted hover:text-rose-400"
+                                      title="Удалить ресурс"
+                                    >
+                                      <X className="w-3 h-3" />
+                                    </button>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Interactive LSS Pips (max <= 10) OR Psi/Energy Progress Bar (max > 10) */}
+                            {r.max <= 10 ? (
+                              <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+                                {Array.from({ length: r.max }).map((_, idx) => {
+                                  const filled = idx < r.current;
+                                  return (
+                                    <button
+                                      key={idx}
+                                      type="button"
+                                      disabled={!canEdit}
+                                      onClick={() => {
+                                        const nextCur = filled ? idx : idx + 1;
+                                        commitMutation((s) => {
+                                          const ro = ensureObj(s, 'resources');
+                                          const t = ensureObj(ro, r.id);
+                                          t.current = nextCur;
+                                        }, true);
+                                      }}
+                                      className={`w-3.5 h-3.5 rotate-45 border transition-all ${
+                                        filled ? style.pipFilled : style.pipEmpty
+                                      }`}
+                                      title={`Заряд ${idx + 1} из ${r.max}`}
+                                    />
+                                  );
+                                })}
+                              </div>
+                            ) : (
+                              <div className="space-y-1.5">
+                                <div className="w-full h-2 rounded-full bg-bg border border-border/80 overflow-hidden">
+                                  <div
+                                    className={`h-full transition-all duration-300 ${style.bar}`}
+                                    style={{ width: `${pct}%` }}
+                                  />
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Mystic Psi-Limit Quick-Spend Strip & Resource Die Rollers */}
+                            {(psiQuickSteps.length > 0 || r.dieResolved) && (
+                              <div className="flex items-center justify-between gap-1.5 flex-wrap pt-0.5">
+                                {psiQuickSteps.length > 0 && canEdit && (
+                                  <div className="flex items-center gap-1 flex-wrap">
+                                    <span className="text-[9px] uppercase text-muted">Трата:</span>
+                                    {psiQuickSteps.map((step) => (
+                                      <button
+                                        key={step}
+                                        type="button"
+                                        disabled={r.current < step}
+                                        onClick={() => handleSpendResourceAmount(r, -step)}
+                                        className="px-1.5 py-0.5 rounded bg-cyan-500/15 hover:bg-cyan-500/25 disabled:opacity-35 border border-cyan-400/40 text-[10px] font-mono font-bold text-cyan-200"
+                                      >
+                                        -{step}
+                                      </button>
+                                    ))}
+                                  </div>
+                                )}
+
+                                {r.dieResolved && (
+                                  <div className="flex items-center gap-1 flex-wrap ml-auto">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleRollResourceDie(r, false)}
+                                      className={`px-2 py-0.5 rounded-lg border text-[10px] font-mono font-bold inline-flex items-center gap-1 transition-colors ${style.rollBtn}`}
+                                      title="Бросить кость ресурса без траты заряда (напр. Скрытая атака)"
+                                    >
+                                      <Dices className="w-3 h-3" />
+                                      <span>{r.dieResolved}</span>
+                                    </button>
+                                    {canEdit && r.max > 1 && (
+                                      <button
+                                        type="button"
+                                        disabled={r.current <= 0}
+                                        onClick={() => handleRollResourceDie(r, true)}
+                                        className="px-2 py-0.5 rounded-lg bg-primary/20 hover:bg-primary/30 disabled:opacity-35 border border-primary/45 text-[10px] font-bold text-primary"
+                                        title="Потратить 1 кость из пула и сразу бросить её в лог"
+                                      >
+                                        -1 и 🎲
+                                      </button>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+
+                            {r.notes && (
+                              <div className="text-[10px] text-muted border-t border-border/50 pt-1">
+                                <FormattedText text={r.notes} characterName={sheet.name} />
+                              </div>
                             )}
                           </div>
-                          <div className="flex items-center gap-1 shrink-0">
-                            {canEdit && (
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  commitMutation((s) => {
-                                    const ro = ensureObj(s, 'resources');
-                                    const t = ensureObj(ro, r.id);
-                                    t.current = Math.max(0, r.current - 1);
-                                  }, true)
-                                }
-                                className="w-5 h-5 rounded bg-bg border border-border text-xs font-bold hover:border-amber-400"
-                              >
-                                -
-                              </button>
-                            )}
-                            <span className="font-mono font-bold text-xs text-amber-300 px-2 py-0.5 rounded bg-amber-500/15 border border-amber-500/30">
-                              {r.current} / {r.max}
-                            </span>
-                            {canEdit && (
-                              <>
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    commitMutation((s) => {
-                                      const ro = ensureObj(s, 'resources');
-                                      const t = ensureObj(ro, r.id);
-                                      t.current = Math.min(r.max, r.current + 1);
-                                    }, true)
-                                  }
-                                  className="w-5 h-5 rounded bg-bg border border-border text-xs font-bold hover:border-amber-400"
-                                >
-                                  +
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    commitMutation((s) => {
-                                      const ro = ensureObj(s, 'resources');
-                                      delete ro[r.id];
-                                    }, true)
-                                  }
-                                  className="p-0.5 text-muted hover:text-rose-400"
-                                >
-                                  <X className="w-3 h-3" />
-                                </button>
-                              </>
-                            )}
-                          </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </div>
@@ -2904,6 +3699,71 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                       className="anime-input py-1 px-2 text-xs"
                     />
                   </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1 border-t border-border/50">
+                    <select
+                      value={msCastMode}
+                      onChange={(e) => setMsCastMode(e.target.value as SpellCastMode)}
+                      className="anime-input py-1 px-2 text-xs"
+                    >
+                      {SPELL_CAST_MODE_OPTIONS.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+
+                    {msCastMode === 'resource' ? (
+                      <div className="flex items-center gap-1.5">
+                        <select
+                          value={msCastResourceId}
+                          onChange={(e) => setMsCastResourceId(e.target.value)}
+                          className="anime-input flex-1 py-1 px-2 text-xs"
+                        >
+                          <option value="">Привязать ресурс...</option>
+                          {sheet.resources.map((r) => (
+                            <option key={r.id} value={r.id}>
+                              {r.glyph} {r.name} ({r.current}/{r.max})
+                            </option>
+                          ))}
+                        </select>
+                        <input
+                          type="number"
+                          min={1}
+                          max={50}
+                          value={msCastMaxUses}
+                          onChange={(e) =>
+                            setMsCastMaxUses(Math.max(1, Number(e.target.value) || 1))
+                          }
+                          title="Стоимость в зарядах"
+                          className="anime-input w-14 py-1 px-1.5 text-center text-xs"
+                        />
+                      </div>
+                    ) : SPELL_CAST_MODE_OPTIONS.find((o) => o.value === msCastMode)?.usesCounter ? (
+                      <input
+                        type="number"
+                        min={1}
+                        max={99}
+                        value={msCastMaxUses}
+                        onChange={(e) =>
+                          setMsCastMaxUses(Math.max(1, Number(e.target.value) || 1))
+                        }
+                        placeholder="Кол-во раз"
+                        className="anime-input py-1 px-2 text-xs"
+                      />
+                    ) : (
+                      <div className="text-[11px] text-muted self-center px-1">
+                        Без траты ячеек
+                      </div>
+                    )}
+
+                    <input
+                      value={msCastNote}
+                      onChange={(e) => setMsCastNote(e.target.value)}
+                      placeholder="Источник (напр. Расовое / Черта / Артефакт)"
+                      className="anime-input py-1 px-2 text-xs"
+                    />
+                  </div>
+
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="flex items-center gap-3">
                       <label className="inline-flex items-center gap-1 cursor-pointer">
@@ -2960,11 +3820,11 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                       <tr className="text-[10px] uppercase tracking-wider text-muted border-b border-border/80">
                         <th className="text-left py-1.5 px-1.5 w-10">Ур.</th>
                         <th className="text-left py-1.5 px-1.5">Название</th>
-                        <th className="text-left py-1.5 px-1.5">Время</th>
-                        <th className="text-left py-1.5 px-1.5">Дистанция</th>
-                        <th className="text-center py-1.5 px-1.5">К • Р • М</th>
+                        <th className="text-left py-1.5 px-1.5">Применение / Заряды</th>
+                        <th className="text-left py-1.5 px-1.5">Время / Дист.</th>
+                        <th className="text-center py-1.5 px-1.5">К•Р•М</th>
                         <th className="text-left py-1.5 px-1.5">Школа / Заметки</th>
-                        <th className="w-14" />
+                        <th className="w-20 text-right py-1.5 px-1.5">Действ.</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border/40">
@@ -2974,24 +3834,107 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                         .map((rec) => {
                           const sp = rec.spell;
                           const hasMat = Boolean(sp.components?.includes('М'));
+                          const cfgKey = `cat-${sp.id}`;
+                          const eff = resolveEffectiveSpellCast({
+                            configKey: cfgKey,
+                            spellLevel: sp.level,
+                            defaultMode: rec.castMode,
+                            defaultMaxUses: rec.castMaxUses,
+                            defaultNote: rec.castNote,
+                          });
+                          const linkedRes =
+                            eff.mode === 'resource'
+                              ? sheet.resources.find((r) => r.id === eff.resourceId)
+                              : undefined;
+                          const badge = formatSpellCastBadge(
+                            eff.mode,
+                            sp.level,
+                            eff.maxUses,
+                            linkedRes ? `${linkedRes.name}` : eff.note
+                          );
+                          const usesPips =
+                            eff.mode === 'long_rest' ||
+                            eff.mode === 'short_rest' ||
+                            eff.mode === 'custom';
+                          const remainingUses = Math.max(0, eff.maxUses - eff.used);
+
                           return (
-                            <tr key={`cat-${sp.id}`} className="hover:bg-surface/60">
+                            <tr key={cfgKey} className="hover:bg-surface/60">
                               <td className="py-1.5 px-1.5 font-mono font-bold text-primary">
                                 {sp.level === 0 ? 'Заг.' : sp.level}
                               </td>
                               <td className="py-1.5 px-1.5 font-semibold text-text">
-                                <button
-                                  type="button"
-                                  onClick={() => jumpToSpellInCatalog(sp.id)}
-                                  className="hover:text-accent text-left inline-flex items-center gap-1"
-                                  title="Открыть полное описание заклинания в справочнике"
-                                >
-                                  <span>{sp.name}</span>
-                                  <ExternalLink className="w-3 h-3 text-accent shrink-0" />
-                                </button>
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <button
+                                    type="button"
+                                    onClick={() => jumpToSpellInCatalog(sp.id)}
+                                    className="hover:text-accent text-left inline-flex items-center gap-1"
+                                    title="Открыть полное описание заклинания в справочнике"
+                                  >
+                                    <span>{sp.name}</span>
+                                    <ExternalLink className="w-3 h-3 text-accent shrink-0" />
+                                  </button>
+                                  {rec.grantedByDm && (
+                                    <span className="px-1.5 py-0.2 rounded bg-amber-500/20 border border-amber-400/40 text-amber-200 text-[9px] font-bold">
+                                      DM
+                                    </span>
+                                  )}
+                                </div>
                               </td>
-                              <td className="py-1.5 px-1.5 text-muted">{sp.castingTime}</td>
-                              <td className="py-1.5 px-1.5 text-muted">{sp.spellRange}</td>
+                              <td className="py-1.5 px-1.5">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span
+                                    className={`px-1.5 py-0.5 rounded border text-[10px] font-semibold ${badge.className}`}
+                                  >
+                                    {badge.text}
+                                  </span>
+                                  {usesPips && eff.maxUses <= 6 && (
+                                    <div className="inline-flex items-center gap-1">
+                                      {Array.from({ length: eff.maxUses }).map((_, idx) => {
+                                        const free = idx < remainingUses;
+                                        return (
+                                          <button
+                                            key={idx}
+                                            type="button"
+                                            disabled={!canEdit}
+                                            onClick={() => {
+                                              const nextRem = free ? idx : idx + 1;
+                                              const nextUsed = Math.max(
+                                                0,
+                                                eff.maxUses - nextRem
+                                              );
+                                              commitMutation((s) => {
+                                                const cfgObj = ensureObj(s, 'spellCastConfigs');
+                                                cfgObj[cfgKey] = {
+                                                  mode: eff.mode,
+                                                  maxUses: eff.maxUses,
+                                                  used: nextUsed,
+                                                  resourceId: eff.resourceId,
+                                                  note: eff.note,
+                                                };
+                                              }, true);
+                                            }}
+                                            className={`w-3 h-3 rotate-45 border transition-colors ${
+                                              free
+                                                ? 'bg-emerald-400 border-emerald-100'
+                                                : 'bg-bg border-border'
+                                            }`}
+                                          />
+                                        );
+                                      })}
+                                    </div>
+                                  )}
+                                  {usesPips && eff.maxUses > 6 && (
+                                    <span className="font-mono text-[10px] text-emerald-300">
+                                      {remainingUses}/{eff.maxUses}
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="py-1.5 px-1.5 text-[11px] text-muted">
+                                <div>{sp.castingTime}</div>
+                                <div className="text-[10px] opacity-75">{sp.spellRange}</div>
+                              </td>
                               <td className="py-1.5 px-1.5 text-center font-mono text-[10px]">
                                 <span
                                   className={
@@ -3014,18 +3957,57 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                                 </span>
                               </td>
                               <td className="py-1.5 px-1.5 text-[11px] text-muted">
-                                {MAGIC_SCHOOL_LABELS_RU[sp.school] || sp.school}
+                                <div>{MAGIC_SCHOOL_LABELS_RU[sp.school] || sp.school}</div>
+                                {eff.note && (
+                                  <div className="text-[10px] text-accent truncate max-w-[160px]">
+                                    {eff.note}
+                                  </div>
+                                )}
                               </td>
-                              <td className="py-1.5 px-1 text-right">
-                                {!isDm && canEdit && (
-                                  <button
-                                    type="button"
-                                    onClick={() => void handleUnlearnCatalogSpell(sp.id, sp.name)}
-                                    className="p-1 text-muted hover:text-rose-400"
-                                    title="Забыть заклинание"
-                                  >
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                  </button>
+                              <td className="py-1.5 px-1 text-right whitespace-nowrap">
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    handleCastSpellRow({
+                                      configKey: cfgKey,
+                                      spellName: sp.name,
+                                      spellLevel: sp.level,
+                                      ...eff,
+                                    })
+                                  }
+                                  className="px-2 py-0.5 rounded-md bg-primary/20 hover:bg-primary/30 border border-primary/40 text-[10px] font-bold text-primary mr-1"
+                                  title="Применить заклинание (с учётом ячеек / зарядов отдыха / ресурса / ∞)"
+                                >
+                                  ✦ Каст
+                                </button>
+                                {canEdit && (
+                                  <>
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setEditingSpellCast({
+                                          configKey: cfgKey,
+                                          catalogSpellId: sp.id,
+                                          manualSpellId: null,
+                                          spellName: sp.name,
+                                          spellLevel: sp.level,
+                                          ...eff,
+                                        })
+                                      }
+                                      className="p-1 text-muted hover:text-accent"
+                                      title="Изменить способ применения (1/дл. отдых, за ресурс, неограниченно...)"
+                                    >
+                                      <Settings2 className="w-3.5 h-3.5" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => void handleUnlearnCatalogSpell(sp.id, sp.name)}
+                                      className="p-1 text-muted hover:text-rose-400"
+                                      title="Убрать заклинание"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  </>
                                 )}
                               </td>
                             </tr>
@@ -3033,51 +4015,162 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                         })}
 
                       {/* Manual Spell Rows */}
-                      {sheet.spellcasting.manualSpells.map((ms) => (
-                        <tr key={ms.id} className="hover:bg-surface/60">
-                          <td className="py-1.5 px-1.5 font-mono font-bold text-accent">
-                            {ms.level === 0 ? 'Заг.' : ms.level}
-                          </td>
-                          <td className="py-1.5 px-1.5 font-semibold text-text">{ms.name}</td>
-                          <td className="py-1.5 px-1.5 text-muted">{ms.castingTime}</td>
-                          <td className="py-1.5 px-1.5 text-muted">{ms.range}</td>
-                          <td className="py-1.5 px-1.5 text-center font-mono text-[10px]">
-                            <span className={ms.concentration ? 'text-amber-300 font-bold' : 'text-muted/35'}>
-                              {ms.concentration ? '◆К' : '◇К'}
-                            </span>{' '}
-                            <span className={ms.ritual ? 'text-cyan-300 font-bold' : 'text-muted/35'}>
-                              {ms.ritual ? '◆Р' : '◇Р'}
-                            </span>{' '}
-                            <span className={ms.material ? 'text-primary font-bold' : 'text-muted/35'}>
-                              {ms.material ? '◆М' : '◇М'}
-                            </span>
-                          </td>
-                          <td className="py-1.5 px-1.5 text-[11px] text-muted">{ms.notes}</td>
-                          <td className="py-1.5 px-1 text-right">
-                            {canEdit && (
+                      {sheet.spellcasting.manualSpells.map((ms) => {
+                        const eff = resolveEffectiveSpellCast({
+                          configKey: ms.id,
+                          spellLevel: ms.level,
+                          defaultMode: ms.castMode,
+                          defaultMaxUses: ms.castMaxUses,
+                          defaultResourceId: ms.castResourceId,
+                          defaultNote: ms.castNote,
+                        });
+                        const linkedRes =
+                          eff.mode === 'resource'
+                            ? sheet.resources.find((r) => r.id === eff.resourceId)
+                            : undefined;
+                        const badge = formatSpellCastBadge(
+                          eff.mode,
+                          ms.level,
+                          eff.maxUses,
+                          linkedRes ? linkedRes.name : eff.note
+                        );
+                        const usesPips =
+                          eff.mode === 'long_rest' ||
+                          eff.mode === 'short_rest' ||
+                          eff.mode === 'custom';
+                        const remainingUses = Math.max(0, eff.maxUses - eff.used);
+
+                        return (
+                          <tr key={ms.id} className="hover:bg-surface/60">
+                            <td className="py-1.5 px-1.5 font-mono font-bold text-accent">
+                              {ms.level === 0 ? 'Заг.' : ms.level}
+                            </td>
+                            <td className="py-1.5 px-1.5 font-semibold text-text">{ms.name}</td>
+                            <td className="py-1.5 px-1.5">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span
+                                  className={`px-1.5 py-0.5 rounded border text-[10px] font-semibold ${badge.className}`}
+                                >
+                                  {badge.text}
+                                </span>
+                                {usesPips && eff.maxUses <= 6 && (
+                                  <div className="inline-flex items-center gap-1">
+                                    {Array.from({ length: eff.maxUses }).map((_, idx) => {
+                                      const free = idx < remainingUses;
+                                      return (
+                                        <button
+                                          key={idx}
+                                          type="button"
+                                          disabled={!canEdit}
+                                          onClick={() => {
+                                            const nextRem = free ? idx : idx + 1;
+                                            const nextUsed = Math.max(
+                                              0,
+                                              eff.maxUses - nextRem
+                                            );
+                                            commitMutation((s) => {
+                                              const cfgObj = ensureObj(s, 'spellCastConfigs');
+                                              cfgObj[ms.id] = {
+                                                mode: eff.mode,
+                                                maxUses: eff.maxUses,
+                                                used: nextUsed,
+                                                resourceId: eff.resourceId,
+                                                note: eff.note,
+                                              };
+                                            }, true);
+                                          }}
+                                          className={`w-3 h-3 rotate-45 border transition-colors ${
+                                            free
+                                              ? 'bg-emerald-400 border-emerald-100'
+                                              : 'bg-bg border-border'
+                                          }`}
+                                        />
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                              </div>
+                            </td>
+                            <td className="py-1.5 px-1.5 text-[11px] text-muted">
+                              <div>{ms.castingTime}</div>
+                              <div className="text-[10px] opacity-75">{ms.range}</div>
+                            </td>
+                            <td className="py-1.5 px-1.5 text-center font-mono text-[10px]">
+                              <span className={ms.concentration ? 'text-amber-300 font-bold' : 'text-muted/35'}>
+                                {ms.concentration ? '◆К' : '◇К'}
+                              </span>{' '}
+                              <span className={ms.ritual ? 'text-cyan-300 font-bold' : 'text-muted/35'}>
+                                {ms.ritual ? '◆Р' : '◇Р'}
+                              </span>{' '}
+                              <span className={ms.material ? 'text-primary font-bold' : 'text-muted/35'}>
+                                {ms.material ? '◆М' : '◇М'}
+                              </span>
+                            </td>
+                            <td className="py-1.5 px-1.5 text-[11px] text-muted">
+                              <FormattedText text={ms.notes} characterName={sheet.name} />
+                              {eff.note && (
+                                <div className="text-[10px] text-accent">{eff.note}</div>
+                              )}
+                            </td>
+                            <td className="py-1.5 px-1 text-right whitespace-nowrap">
                               <button
                                 type="button"
                                 onClick={() =>
-                                  commitMutation((s) => {
-                                    const list = Array.isArray(s.manualSpells)
-                                      ? s.manualSpells
-                                      : [];
-                                    s.manualSpells = list.filter(
-                                      (it) =>
-                                        it &&
-                                        typeof it === 'object' &&
-                                        (it as Record<string, unknown>).id !== ms.id
-                                    );
-                                  }, true)
+                                  handleCastSpellRow({
+                                    configKey: ms.id,
+                                    spellName: ms.name,
+                                    spellLevel: ms.level,
+                                    ...eff,
+                                  })
                                 }
-                                className="p-1 text-muted hover:text-rose-400"
+                                className="px-2 py-0.5 rounded-md bg-primary/20 hover:bg-primary/30 border border-primary/40 text-[10px] font-bold text-primary mr-1"
                               >
-                                <Trash2 className="w-3.5 h-3.5" />
+                                ✦ Каст
                               </button>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
+                              {canEdit && (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setEditingSpellCast({
+                                        configKey: ms.id,
+                                        catalogSpellId: null,
+                                        manualSpellId: ms.id,
+                                        spellName: ms.name,
+                                        spellLevel: ms.level,
+                                        ...eff,
+                                      })
+                                    }
+                                    className="p-1 text-muted hover:text-accent"
+                                    title="Изменить способ применения"
+                                  >
+                                    <Settings2 className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      commitMutation((s) => {
+                                        const list = Array.isArray(s.manualSpells)
+                                          ? s.manualSpells
+                                          : [];
+                                        s.manualSpells = list.filter(
+                                          (it) =>
+                                            it &&
+                                            typeof it === 'object' &&
+                                            (it as Record<string, unknown>).id !== ms.id
+                                        );
+                                      }, true)
+                                    }
+                                    className="p-1 text-muted hover:text-rose-400"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 )}
@@ -3137,8 +4230,11 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                 </div>
 
                 {sheet.textByKey.appearance?.plainText && (
-                  <div className="sheet-grid-paper rounded-lg p-2.5 text-xs text-text/90 whitespace-pre-line">
-                    {sheet.textByKey.appearance.plainText}
+                  <div className="sheet-grid-paper rounded-lg p-2.5 text-xs text-text/90">
+                    <FormattedText
+                      text={sheet.textByKey.appearance.plainText}
+                      characterName={sheet.name}
+                    />
                   </div>
                 )}
               </div>
@@ -3174,7 +4270,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                               {entry.label}:
                             </span>
                           )}
-                          <p className="whitespace-pre-line text-text/90">{entry.plainText}</p>
+                          <FormattedText text={entry.plainText} characterName={sheet.name} />
                         </div>
                       );
                     }
@@ -3454,41 +4550,82 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
         </div>
       )}
 
-      {/* Rich Text Block Editor Modal */}
+      {/* Rich Text Block Editor Modal (with SelectionFormatToolbar + Live Preview!) */}
       {editingBlock && canEdit && (
         <div
-          onClick={() => setEditingBlock(null)}
+          onClick={() => {
+            setEditingBlock(null);
+            setRichPreviewMode(false);
+          }}
           className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4"
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="glass-panel neon-border rounded-3xl max-w-xl w-full p-6 space-y-4"
+            className="glass-panel neon-border rounded-3xl max-w-2xl w-full p-6 space-y-4"
           >
-            <div className="flex items-center justify-between">
-              <h3 className="font-anime font-extrabold text-base uppercase tracking-wide text-primary">
-                {editingBlock.title}
-              </h3>
-              <button
-                type="button"
-                onClick={() => setEditingBlock(null)}
-                className="p-1.5 rounded-xl border border-border text-muted hover:text-text"
-              >
-                <X className="w-4 h-4" />
-              </button>
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <h3 className="font-anime font-extrabold text-base uppercase tracking-wide text-primary">
+                  {editingBlock.title}
+                </h3>
+                <p className="text-[11px] text-muted mt-0.5">
+                  Выделите фрагмент текста для появления панели вёрстки (жирный, курсив, списки, цвет, броски кубиков)
+                </p>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setRichPreviewMode((v) => !v)}
+                  className={`px-3 py-1 rounded-xl border text-xs font-semibold transition-colors ${
+                    richPreviewMode
+                      ? 'bg-accent/20 border-accent/50 text-accent'
+                      : 'border-border text-muted hover:text-text'
+                  }`}
+                >
+                  {richPreviewMode ? 'Редактор' : 'Предпросмотр'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingBlock(null);
+                    setRichPreviewMode(false);
+                  }}
+                  className="p-1.5 rounded-xl border border-border text-muted hover:text-text"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
             </div>
 
-            <textarea
-              rows={10}
-              value={editingBlock.text}
-              onChange={(e) => setEditingBlock({ ...editingBlock, text: e.target.value })}
-              placeholder="Введите текст раздела (разделяйте блоки пустой строкой или --- для горизонтальной линии)..."
-              className="anime-input w-full text-xs leading-relaxed"
-            />
+            {richPreviewMode ? (
+              <div className="sheet-grid-paper rounded-2xl p-4 min-h-[220px] max-h-[380px] overflow-y-auto border border-border">
+                {editingBlock.text.trim() ? (
+                  <FormattedText
+                    text={editingBlock.text}
+                    characterName={sheet.name}
+                    className="text-xs"
+                  />
+                ) : (
+                  <span className="text-xs text-muted">Пусто...</span>
+                )}
+              </div>
+            ) : (
+              <textarea
+                rows={11}
+                value={editingBlock.text}
+                onChange={(e) => setEditingBlock({ ...editingBlock, text: e.target.value })}
+                placeholder="Выделите текст для жирного **шрифта**, *курсива*, __подчёркивания__, заголовков ###, списков • или бросков [🎲 2к6+3]..."
+                className="anime-input w-full text-xs leading-relaxed"
+              />
+            )}
 
             <div className="flex justify-end gap-2">
               <button
                 type="button"
-                onClick={() => setEditingBlock(null)}
+                onClick={() => {
+                  setEditingBlock(null);
+                  setRichPreviewMode(false);
+                }}
                 className="px-4 py-2 rounded-xl border border-border text-xs text-muted"
               >
                 Отмена
@@ -3503,6 +4640,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                     block.value = plainTextToLssDoc(text);
                   }, true);
                   setEditingBlock(null);
+                  setRichPreviewMode(false);
                 }}
                 className="anime-btn-primary px-5 py-2 text-xs inline-flex items-center gap-1.5"
               >
@@ -3511,6 +4649,172 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Non-Slot / Innate / Resource-Powered / At-Will Spell Configuration Modal */}
+      {editingSpellCast && canEdit && (
+        <div
+          onClick={() => setEditingSpellCast(null)}
+          className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4"
+        >
+          <form
+            onClick={(e) => e.stopPropagation()}
+            onSubmit={(e) => void handleSaveSpellCastConfigModal(e)}
+            className="glass-panel neon-border rounded-3xl max-w-md w-full p-6 space-y-4 text-xs"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <h3 className="font-anime font-extrabold text-base text-primary">
+                  Способ применения заклинания
+                </h3>
+                <p className="text-xs text-accent font-semibold mt-0.5">
+                  «{editingSpellCast.spellName}» ({editingSpellCast.spellLevel === 0 ? 'Заговор' : `${editingSpellCast.spellLevel} ур.`})
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingSpellCast(null)}
+                className="p-1.5 rounded-xl border border-border text-muted hover:text-text"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="block text-muted mb-1">Как расходуется заклинание</label>
+                <select
+                  value={editingSpellCast.mode}
+                  onChange={(e) =>
+                    setEditingSpellCast({
+                      ...editingSpellCast,
+                      mode: e.target.value as SpellCastMode,
+                    })
+                  }
+                  className="anime-input w-full py-2 px-3 text-xs"
+                >
+                  {SPELL_CAST_MODE_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {editingSpellCast.mode === 'resource' && (
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="col-span-2">
+                    <label className="block text-muted mb-1">Уникальный ресурс (LSS)</label>
+                    <select
+                      value={editingSpellCast.resourceId}
+                      onChange={(e) =>
+                        setEditingSpellCast({
+                          ...editingSpellCast,
+                          resourceId: e.target.value,
+                        })
+                      }
+                      className="anime-input w-full py-1.5 px-2 text-xs"
+                    >
+                      <option value="">Выберите ресурс из листа...</option>
+                      {sheet.resources.map((r) => (
+                        <option key={r.id} value={r.id}>
+                          {r.glyph} {r.name} ({r.current}/{r.max})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-muted mb-1">Цена (ед.)</label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={50}
+                      value={editingSpellCast.maxUses}
+                      onChange={(e) =>
+                        setEditingSpellCast({
+                          ...editingSpellCast,
+                          maxUses: Math.max(1, Number(e.target.value) || 1),
+                        })
+                      }
+                      className="anime-input w-full py-1.5 px-2 text-xs text-center"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {(editingSpellCast.mode === 'long_rest' ||
+                editingSpellCast.mode === 'short_rest' ||
+                editingSpellCast.mode === 'custom') && (
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-muted mb-1">Макс. применений</label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={99}
+                      value={editingSpellCast.maxUses}
+                      onChange={(e) => {
+                        const m = Math.max(1, Number(e.target.value) || 1);
+                        setEditingSpellCast({
+                          ...editingSpellCast,
+                          maxUses: m,
+                          used: Math.min(m, editingSpellCast.used),
+                        });
+                      }}
+                      className="anime-input w-full py-1.5 px-2 text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-muted mb-1">Уже потрачено</label>
+                    <input
+                      type="number"
+                      min={0}
+                      max={editingSpellCast.maxUses}
+                      value={editingSpellCast.used}
+                      onChange={(e) =>
+                        setEditingSpellCast({
+                          ...editingSpellCast,
+                          used: Math.min(
+                            editingSpellCast.maxUses,
+                            Math.max(0, Number(e.target.value) || 0)
+                          ),
+                        })
+                      }
+                      className="anime-input w-full py-1.5 px-2 text-xs"
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-muted mb-1">
+                  Источник / опция (черта, раса, мистическое воззвание, предмет)
+                </label>
+                <input
+                  value={editingSpellCast.note}
+                  onChange={(e) =>
+                    setEditingSpellCast({ ...editingSpellCast, note: e.target.value })
+                  }
+                  placeholder="Напр.: Поцелованный феей / Тифлинг / Доспех теней (∞)..."
+                  className="anime-input w-full py-1.5 px-2.5 text-xs"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setEditingSpellCast(null)}
+                className="px-4 py-2 rounded-xl border border-border text-muted"
+              >
+                Отмена
+              </button>
+              <button type="submit" className="anime-btn-primary px-5 py-2 text-xs">
+                Сохранить
+              </button>
+            </div>
+          </form>
         </div>
       )}
 
@@ -3538,7 +4842,10 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
   );
 };
 
-const RichNodesView: React.FC<{ nodes: LssRichParagraph[] }> = ({ nodes }) => (
+const RichNodesView: React.FC<{ nodes: LssRichParagraph[]; characterName?: string }> = ({
+  nodes,
+  characterName,
+}) => (
   <div className="space-y-2 text-xs text-text/90 leading-relaxed">
     {nodes.map((node, idx) => {
       if (node.kind === 'divider') {
@@ -3546,10 +4853,10 @@ const RichNodesView: React.FC<{ nodes: LssRichParagraph[] }> = ({ nodes }) => (
       }
       if (node.kind === 'bullet') {
         return (
-          <ul key={idx} className="list-disc pl-4 space-y-1">
+          <ul key={idx} className="list-disc pl-4 space-y-1 marker:text-primary">
             {node.items?.map((it, i) => (
-              <li key={i} className="whitespace-pre-line">
-                {it}
+              <li key={i}>
+                <FormattedText text={it} characterName={characterName} />
               </li>
             ))}
           </ul>
@@ -3557,10 +4864,10 @@ const RichNodesView: React.FC<{ nodes: LssRichParagraph[] }> = ({ nodes }) => (
       }
       if (node.kind === 'ordered') {
         return (
-          <ol key={idx} className="list-decimal pl-4 space-y-1">
+          <ol key={idx} className="list-decimal pl-4 space-y-1 marker:text-accent">
             {node.items?.map((it, i) => (
-              <li key={i} className="whitespace-pre-line">
-                {it}
+              <li key={i}>
+                <FormattedText text={it} characterName={characterName} />
               </li>
             ))}
           </ol>
@@ -3575,15 +4882,13 @@ const RichNodesView: React.FC<{ nodes: LssRichParagraph[] }> = ({ nodes }) => (
             <summary className="cursor-pointer font-semibold text-accent">
               {node.title}
             </summary>
-            <div className="mt-1.5 whitespace-pre-line text-text/90">{node.text}</div>
+            <div className="mt-1.5 text-text/90">
+              <FormattedText text={node.text} characterName={characterName} />
+            </div>
           </details>
         );
       }
-      return (
-        <p key={idx} className="whitespace-pre-line">
-          {node.text}
-        </p>
-      );
+      return <FormattedText key={idx} text={node.text} characterName={characterName} />;
     })}
   </div>
 );

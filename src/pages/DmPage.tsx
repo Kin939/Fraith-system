@@ -268,6 +268,23 @@ const CharacterRosterCard: React.FC<{
         })()}
       </div>
 
+      <label className="flex items-start gap-2.5 p-2.5 rounded-2xl bg-bg/60 border border-border cursor-pointer hover:border-primary/50 transition-colors">
+        <input
+          type="checkbox"
+          checked={Boolean(draft.allowOffClassSpells)}
+          onChange={(e) => setDraft({ ...draft, allowOffClassSpells: e.target.checked })}
+          className="mt-0.5 accent-primary"
+        />
+        <span className="text-xs leading-snug">
+          <span className="font-semibold text-text block">
+            Разрешить заклинания не своего класса
+          </span>
+          <span className="text-[11px] text-muted">
+            Позволяет игроку самостоятельно изучать заклинания любых классов (Тайные знания, черты, мультикласс и т.д.)
+          </span>
+        </span>
+      </label>
+
       <button
         type="button"
         disabled={saving}

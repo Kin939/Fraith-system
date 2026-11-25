@@ -306,6 +306,7 @@ export const LssSheetEmbed: React.FC<LssSheetEmbedProps> = ({
             </div>
 
             <textarea
+              data-no-format="true"
               value={jsonText}
               onChange={(e) => setJsonText(e.target.value)}
               rows={8}

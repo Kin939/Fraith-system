@@ -430,6 +430,7 @@ export const SpellEditor: React.FC = () => {
           объектов <code>{`[{ "name": "...", "level_int": 2, "school": "Illusion", "dnd_class": "Wizard, Bard", "desc": "..." }]`}</code>.
         </p>
         <textarea
+          data-no-format="true"
           rows={3}
           value={batchJson}
           onChange={(e) => setBatchJson(e.target.value)}

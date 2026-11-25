@@ -34,12 +34,20 @@ import {
   unlearnSpellForPlayer,
   unlockTalentForParty,
   updateAccountPassword,
+  updateLearnedSpellMeta,
   upsertUserTheme,
 } from '../../src/lib/db';
 import { parseLssCharacterPayload } from '../../src/lib/lss';
 import { getImageFromR2, uploadImageToR2 } from '../../src/lib/r2';
 import { parseThemeJson } from '../../src/lib/theme';
-import type { AuthUser, PlayerId, QuestStatus, Spell, ThemeVariables } from '../../src/lib/types';
+import type {
+  AuthUser,
+  PlayerId,
+  QuestStatus,
+  Spell,
+  SpellCastMode,
+  ThemeVariables,
+} from '../../src/lib/types';
 
 export interface Env {
   DB: D1Database;
@@ -924,7 +932,7 @@ app.post('/spells/:id/learn', async (c) => {
   const user = c.get('user');
   if (!user) return c.json({ error: 'Необходима авторизация' }, 401);
   if (user.role !== 'player' || !user.playerId) {
-    return c.json({ error: 'Только игрок может изучать заклинания для своего персонажа' }, 403);
+    return c.json({ error: 'Только игрок может изучать заклинания через эту кнопку (Мастер использует панель выдачи ниже)' }, 403);
   }
 
   const spellId = Number.parseInt(c.req.param('id'), 10);
@@ -932,17 +940,30 @@ app.post('/spells/:id/learn', async (c) => {
     return c.json({ error: 'Некорректный идентификатор заклинания' }, 400);
   }
 
+  const body = await c.req
+    .json<{
+      spell?: Spell;
+      castMode?: SpellCastMode;
+      castMaxUses?: number;
+      castNote?: string;
+    }>()
+    .catch((): {
+      spell?: Spell;
+      castMode?: SpellCastMode;
+      castMaxUses?: number;
+      castNote?: string;
+    } => ({}));
+
   let catalogSpell = await resolveDndsuSpellFromAssets(c.env, c.req.url, spellId);
-  if (!catalogSpell) {
-    const body = await c.req
-      .json<{ spell?: Spell }>()
-      .catch((): { spell?: Spell } => ({}));
-    if (body.spell && body.spell.id === spellId && body.spell.name) {
-      catalogSpell = body.spell;
-    }
+  if (!catalogSpell && body.spell && body.spell.id === spellId && body.spell.name) {
+    catalogSpell = body.spell;
   }
 
-  const res = await learnSpellForPlayer(c.env.DB, user.playerId, spellId, catalogSpell);
+  const res = await learnSpellForPlayer(c.env.DB, user.playerId, spellId, catalogSpell, {
+    castMode: body.castMode,
+    castMaxUses: body.castMaxUses,
+    castNote: body.castNote,
+  });
   if (!res.ok) {
     return c.json({ error: res.error }, 400);
   }
@@ -952,6 +973,50 @@ app.post('/spells/:id/learn', async (c) => {
     c.env,
     'learned_spells:updated',
     { playerId: user.playerId, learnedSpells },
+    user.id
+  );
+  return c.json({ learnedSpells });
+});
+
+app.put('/spells/:id/learn-meta', async (c) => {
+  const user = c.get('user');
+  if (!user) return c.json({ error: 'Необходима авторизация' }, 401);
+
+  const spellId = Number.parseInt(c.req.param('id'), 10);
+  if (!Number.isFinite(spellId) || spellId <= 0) {
+    return c.json({ error: 'Некорректный идентификатор заклинания' }, 400);
+  }
+
+  const body = await c.req.json<{
+    playerId?: number;
+    castMode?: SpellCastMode;
+    castMaxUses?: number;
+    castNote?: string;
+  }>();
+
+  const targetPlayerId: PlayerId | null =
+    user.role === 'dm'
+      ? parseValidPlayerId(String(body.playerId ?? ''))
+      : user.playerId;
+
+  if (!targetPlayerId) {
+    return c.json({ error: 'Не указан корректный игрок (1, 2 или 3)' }, 400);
+  }
+
+  const updated = await updateLearnedSpellMeta(c.env.DB, targetPlayerId, spellId, {
+    castMode: body.castMode,
+    castMaxUses: body.castMaxUses,
+    castNote: body.castNote,
+  });
+  if (!updated) {
+    return c.json({ error: 'Заклинание ещё не изучено этим персонажем' }, 404);
+  }
+
+  const learnedSpells = await listLearnedSpellsForPlayer(c.env.DB, targetPlayerId);
+  await broadcastCampaignEvent(
+    c.env,
+    'learned_spells:updated',
+    { playerId: targetPlayerId, learnedSpells },
     user.id
   );
   return c.json({ learnedSpells });
@@ -973,6 +1038,77 @@ app.delete('/spells/:id/learn', async (c) => {
     'learned_spells:updated',
     { playerId: user.playerId, learnedSpells },
     user.id
+  );
+  return c.json({ learnedSpells });
+});
+
+app.post('/dm/players/:playerId/spells/:spellId/learn', async (c) => {
+  const dmUser = c.get('user')!;
+  const playerId = parseValidPlayerId(c.req.param('playerId'));
+  if (!playerId) return c.json({ error: 'Некорректный playerId (ожидается 1, 2 или 3)' }, 400);
+
+  const spellId = Number.parseInt(c.req.param('spellId'), 10);
+  if (!Number.isFinite(spellId) || spellId <= 0) {
+    return c.json({ error: 'Некорректный идентификатор заклинания' }, 400);
+  }
+
+  const body = await c.req
+    .json<{
+      spell?: Spell;
+      bypassLimit?: boolean;
+      castMode?: SpellCastMode;
+      castMaxUses?: number;
+      castNote?: string;
+    }>()
+    .catch((): {
+      spell?: Spell;
+      bypassLimit?: boolean;
+      castMode?: SpellCastMode;
+      castMaxUses?: number;
+      castNote?: string;
+    } => ({}));
+
+  let catalogSpell = await resolveDndsuSpellFromAssets(c.env, c.req.url, spellId);
+  if (!catalogSpell && body.spell && body.spell.id === spellId && body.spell.name) {
+    catalogSpell = body.spell;
+  }
+
+  const res = await learnSpellForPlayer(c.env.DB, playerId, spellId, catalogSpell, {
+    bypassClassCheck: true,
+    bypassLimitCheck: body.bypassLimit !== false,
+    castMode: body.castMode,
+    castMaxUses: body.castMaxUses,
+    castNote: body.castNote,
+    grantedByDm: true,
+  });
+  if (!res.ok) {
+    return c.json({ error: res.error }, 400);
+  }
+
+  const learnedSpells = await listLearnedSpellsForPlayer(c.env.DB, playerId);
+  await broadcastCampaignEvent(
+    c.env,
+    'learned_spells:updated',
+    { playerId, learnedSpells },
+    dmUser.id
+  );
+  return c.json({ learnedSpells });
+});
+
+app.delete('/dm/players/:playerId/spells/:spellId/learn', async (c) => {
+  const dmUser = c.get('user')!;
+  const playerId = parseValidPlayerId(c.req.param('playerId'));
+  if (!playerId) return c.json({ error: 'Некорректный playerId' }, 400);
+
+  const spellId = Number.parseInt(c.req.param('spellId'), 10);
+  await unlearnSpellForPlayer(c.env.DB, playerId, spellId);
+
+  const learnedSpells = await listLearnedSpellsForPlayer(c.env.DB, playerId);
+  await broadcastCampaignEvent(
+    c.env,
+    'learned_spells:updated',
+    { playerId, learnedSpells },
+    dmUser.id
   );
   return c.json({ learnedSpells });
 });
@@ -1508,6 +1644,7 @@ app.put('/dm/characters/:playerId', async (c) => {
     race?: string;
     level?: number;
     maxSpells?: number;
+    allowOffClassSpells?: boolean;
     lssEmbedUrl?: string;
   }>();
 
@@ -1523,6 +1660,7 @@ app.put('/dm/characters/:playerId', async (c) => {
            race = ?,
            level = ?,
            max_spells = ?,
+           allow_off_class_spells = COALESCE(?, allow_off_class_spells),
            lss_embed_url = COALESCE(?, lss_embed_url)
        WHERE player_id = ?`
     ).bind(
@@ -1532,6 +1670,7 @@ app.put('/dm/characters/:playerId', async (c) => {
       (body.race || '').trim(),
       trimmedName ? Math.max(1, Math.min(20, Math.trunc(body.level ?? 1))) : 0,
       Math.max(0, Math.trunc(body.maxSpells ?? 0)),
+      typeof body.allowOffClassSpells === 'boolean' ? (body.allowOffClassSpells ? 1 : 0) : null,
       body.lssEmbedUrl?.trim() || null,
       playerId
     ),

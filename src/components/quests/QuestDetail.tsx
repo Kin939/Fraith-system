@@ -2,6 +2,7 @@ import React from 'react';
 import { Award, Calendar, Edit3, MapPin, ShieldAlert, UserCheck } from 'lucide-react';
 import { resolveImageUrl } from '../../lib/artwork';
 import type { Quest } from '../../lib/types';
+import { FormattedText } from '../common/FormattedText';
 
 interface QuestDetailProps {
   quest: Quest | null;
@@ -82,9 +83,7 @@ export const QuestDetail: React.FC<QuestDetailProps> = ({ quest, isDm, onEditQue
           <h4 className="font-anime font-bold text-sm uppercase tracking-wider text-muted">
             Описание поручения
           </h4>
-          <p className="text-sm text-text/95 leading-relaxed whitespace-pre-line">
-            {quest.fullDesc}
-          </p>
+          <FormattedText text={quest.fullDesc} className="text-sm text-text/95" />
         </div>
 
         {/* Reward Box */}

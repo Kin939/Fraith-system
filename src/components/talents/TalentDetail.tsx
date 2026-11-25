@@ -4,6 +4,7 @@ import { apiFetch } from '../../lib/api';
 import { resolveImageUrl } from '../../lib/artwork';
 import { useCampaignStore } from '../../lib/store';
 import type { PurchasedTalent, TalentNode } from '../../lib/types';
+import { FormattedText } from '../common/FormattedText';
 
 interface TalentDetailProps {
   node: TalentNode | null;
@@ -125,9 +126,10 @@ export const TalentDetail: React.FC<TalentDetailProps> = ({
           </button>
         </div>
 
-        <p className="text-sm text-text/95 leading-relaxed whitespace-pre-line">
-          {node.description || 'Описание таланта не указано.'}
-        </p>
+        <FormattedText
+          text={node.description || 'Описание таланта не указано.'}
+          className="text-sm text-text/95"
+        />
 
         {parentNode && (
           <div className="p-3 rounded-2xl bg-bg/60 border border-border text-xs flex items-center justify-between">

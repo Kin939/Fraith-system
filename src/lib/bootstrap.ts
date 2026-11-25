@@ -73,6 +73,33 @@ async function ensureCharacterProfileColumns(db: D1Database): Promise<void> {
       )
       .run();
   }
+  if (!existingCols.has('allow_off_class_spells')) {
+    await db
+      .prepare(
+        `ALTER TABLE character_profiles ADD COLUMN allow_off_class_spells INTEGER NOT NULL DEFAULT 0`
+      )
+      .run();
+  }
+}
+
+async function ensureLearnedSpellsColumns(db: D1Database): Promise<void> {
+  const { results } = await db
+    .prepare(`PRAGMA table_info(learned_spells)`)
+    .all<{ name: string }>();
+  const existingCols = new Set(results.map((r) => r.name));
+
+  const extraColumns: Array<[string, string]> = [
+    ['cast_mode', `TEXT NOT NULL DEFAULT 'slot'`],
+    ['cast_max_uses', `INTEGER NOT NULL DEFAULT 1`],
+    ['cast_note', `TEXT NOT NULL DEFAULT ''`],
+    ['granted_by_dm', `INTEGER NOT NULL DEFAULT 0`],
+  ];
+
+  for (const [col, def] of extraColumns) {
+    if (!existingCols.has(col)) {
+      await db.prepare(`ALTER TABLE learned_spells ADD COLUMN ${col} ${def}`).run();
+    }
+  }
 }
 
 async function ensureSpellsDndsuColumns(db: D1Database): Promise<void> {
@@ -262,6 +289,7 @@ async function runBootstrap(db: D1Database): Promise<void> {
   await ensureTalentTreeColumns(db);
   await ensureCharacterProfileColumns(db);
   await ensureSpellsDndsuColumns(db);
+  await ensureLearnedSpellsColumns(db);
 
   const existingUser = await db
     .prepare(`SELECT id FROM users LIMIT 1`)

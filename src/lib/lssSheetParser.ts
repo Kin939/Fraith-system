@@ -1,5 +1,6 @@
 import { DND_CLASS_LABELS_RU, formatCharacterClassesRu } from './lss';
-import type { CharacterCoins } from './types';
+import type { ResourceColorKey, ResourceRecoverMode } from './lssResources';
+import type { CharacterCoins, SpellCastMode } from './types';
 
 export type AbilityCode = 'str' | 'dex' | 'con' | 'int' | 'wis' | 'cha';
 export type RollMode = 'normal' | 'advantage' | 'disadvantage';
@@ -185,10 +186,25 @@ export interface LssParsedResource {
   name: string;
   current: number;
   max: number;
+  maxExpr: string;
+  die: string;
+  dieResolved: string;
+  spendLimit: number;
+  recoverMode: ResourceRecoverMode;
+  color: ResourceColorKey;
+  glyph: string;
   isShortRest: boolean;
   isLongRest: boolean;
   restLabel: string;
   notes: string;
+}
+
+export interface LssSpellCastConfig {
+  mode: SpellCastMode;
+  maxUses: number;
+  used: number;
+  resourceId: string;
+  note: string;
 }
 
 export interface LssManualSpellRow {
@@ -201,6 +217,10 @@ export interface LssManualSpellRow {
   ritual: boolean;
   material: boolean;
   notes: string;
+  castMode: SpellCastMode;
+  castMaxUses: number;
+  castResourceId: string;
+  castNote: string;
 }
 
 export interface LssParsedSheet {
@@ -303,6 +323,7 @@ export interface LssParsedSheet {
     slots: Array<{ level: number; total: number; expended: number; isPact?: boolean }>;
     preparedSlugs: string[];
     manualSpells: LssManualSpellRow[];
+    castConfigs: Record<string, LssSpellCastConfig>;
   };
 
   textBlocks: Array<{
@@ -493,6 +514,26 @@ function applyBonusesToBase(base: number, bonuses: ActiveBonus[], targets: strin
   return result;
 }
 
+function applyProseMirrorMarks(rawText: string, marks: unknown): string {
+  if (!rawText || !Array.isArray(marks) || marks.length === 0) return rawText;
+  const types = new Set(
+    marks
+      .map((m) =>
+        m && typeof m === 'object' && typeof (m as Record<string, unknown>).type === 'string'
+          ? String((m as Record<string, unknown>).type).toLowerCase()
+          : ''
+      )
+      .filter(Boolean)
+  );
+  let out = rawText;
+  if (types.has('code')) out = `\`${out}\``;
+  if (types.has('strike') || types.has('strikethrough')) out = `~~${out}~~`;
+  if (types.has('underline')) out = `__${out}__`;
+  if (types.has('italic') || types.has('em')) out = `*${out}*`;
+  if (types.has('bold') || types.has('strong')) out = `**${out}**`;
+  return out;
+}
+
 function extractInlineText(
   node: unknown,
   resourcesMap: Record<string, LssParsedResource>
@@ -502,7 +543,8 @@ function extractInlineText(
   const type = typeof r.type === 'string' ? r.type : '';
 
   if (type === 'text') {
-    return typeof r.text === 'string' ? r.text : '';
+    const raw = typeof r.text === 'string' ? r.text : '';
+    return applyProseMirrorMarks(raw, r.marks);
   }
   if (type === 'hardBreak') {
     return '\n';
@@ -557,6 +599,31 @@ function parseRichDocNodes(
 
     if (bType === 'divider' || bType === 'horizontalRule') {
       out.push({ kind: 'divider', text: '' });
+      continue;
+    }
+
+    if (bType === 'heading') {
+      const attrs = (b.attrs && typeof b.attrs === 'object' ? b.attrs : {}) as Record<
+        string,
+        unknown
+      >;
+      const level = Math.min(3, Math.max(1, asNum(attrs.level) ?? 3));
+      const text = extractInlineText(b, resourcesMap).trim();
+      if (text) {
+        out.push({ kind: 'paragraph', text: `${'#'.repeat(level)} ${text}` });
+      }
+      continue;
+    }
+
+    if (bType === 'blockquote') {
+      const text = extractInlineText(b, resourcesMap).trim();
+      if (text) {
+        const quoted = text
+          .split('\n')
+          .map((l) => `> ${l}`)
+          .join('\n');
+        out.push({ kind: 'paragraph', text: quoted });
+      }
       continue;
     }
 
@@ -624,21 +691,159 @@ export function nodesToPlainText(nodes: LssRichParagraph[]): string {
     .join('\n\n');
 }
 
+function inlineLineToProseMirrorNodes(
+  line: string,
+  inheritedMarks: Array<{ type: string }> = []
+): Array<Record<string, unknown>> {
+  if (!line) return [];
+  const TOKEN_RE =
+    /(\*\*\*([^\n]+?)\*\*\*|\*\*([^\n]+?)\*\*|__([^\n]+?)__|~~([^\n]+?)~~|\*([^\n*]+?)\*|`([^\n`]+?)`|\[🎲\s*([^\]]+?)\])/g;
+
+  const out: Array<Record<string, unknown>> = [];
+  let lastIndex = 0;
+  let m: RegExpExecArray | null;
+
+  const pushText = (txt: string, marks: Array<{ type: string }>) => {
+    if (!txt) return;
+    if (marks.length > 0) {
+      out.push({ type: 'text', text: txt, marks });
+    } else {
+      out.push({ type: 'text', text: txt });
+    }
+  };
+
+  while ((m = TOKEN_RE.exec(line)) !== null) {
+    if (m.index > lastIndex) {
+      pushText(line.slice(lastIndex, m.index), inheritedMarks);
+    }
+
+    if (m[2] !== undefined) {
+      out.push(
+        ...inlineLineToProseMirrorNodes(m[2], [
+          ...inheritedMarks,
+          { type: 'bold' },
+          { type: 'italic' },
+        ])
+      );
+    } else if (m[3] !== undefined) {
+      out.push(...inlineLineToProseMirrorNodes(m[3], [...inheritedMarks, { type: 'bold' }]));
+    } else if (m[4] !== undefined) {
+      out.push(...inlineLineToProseMirrorNodes(m[4], [...inheritedMarks, { type: 'underline' }]));
+    } else if (m[5] !== undefined) {
+      out.push(...inlineLineToProseMirrorNodes(m[5], [...inheritedMarks, { type: 'strike' }]));
+    } else if (m[6] !== undefined) {
+      out.push(...inlineLineToProseMirrorNodes(m[6], [...inheritedMarks, { type: 'italic' }]));
+    } else if (m[7] !== undefined) {
+      pushText(m[7], [...inheritedMarks, { type: 'code' }]);
+    } else if (m[8] !== undefined) {
+      const f = m[8].trim();
+      out.push({ type: 'roller', attrs: { formula: f, label: f } });
+    }
+
+    lastIndex = m.index + m[0].length;
+  }
+
+  if (lastIndex < line.length) {
+    pushText(line.slice(lastIndex), inheritedMarks);
+  }
+
+  return out;
+}
+
 export function plainTextToLssDoc(text: string): Record<string, unknown> {
   const lines = text.replace(/\r\n/g, '\n').split('\n');
   const content: Array<Record<string, unknown>> = [];
 
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
-    if (trimmed === '---') {
-      content.push({ type: 'horizontalRule' });
-    } else {
-      content.push({
-        type: 'paragraph',
-        content: [{ type: 'text', text: line }],
-      });
+  let i = 0;
+  while (i < lines.length) {
+    const rawLine = lines[i];
+    const trimmed = rawLine.trim();
+    if (!trimmed) {
+      i += 1;
+      continue;
     }
+
+    if (/^(-{3,}|—{2,}|\*{3,})$/.test(trimmed)) {
+      content.push({ type: 'horizontalRule' });
+      i += 1;
+      continue;
+    }
+
+    const headingMatch = trimmed.match(/^(#{1,3})\s+(.+)$/);
+    if (headingMatch) {
+      const level = headingMatch[1].length;
+      const inline = inlineLineToProseMirrorNodes(headingMatch[2]);
+      content.push({
+        type: 'heading',
+        attrs: { level },
+        content: inline.length > 0 ? inline : [{ type: 'text', text: headingMatch[2] }],
+      });
+      i += 1;
+      continue;
+    }
+
+    if (/^>\s?/.test(trimmed)) {
+      const quoteParagraphs: Array<Record<string, unknown>> = [];
+      while (i < lines.length && /^>\s?/.test(lines[i].trim())) {
+        const qLine = lines[i].trim().replace(/^>\s?/, '');
+        const inline = inlineLineToProseMirrorNodes(qLine);
+        if (inline.length > 0) {
+          quoteParagraphs.push({ type: 'paragraph', content: inline });
+        }
+        i += 1;
+      }
+      if (quoteParagraphs.length > 0) {
+        content.push({ type: 'blockquote', content: quoteParagraphs });
+      }
+      continue;
+    }
+
+    if (/^([•\-*])\s+/.test(trimmed)) {
+      const listItems: Array<Record<string, unknown>> = [];
+      while (i < lines.length && /^([•\-*])\s+/.test(lines[i].trim())) {
+        const liText = lines[i].trim().replace(/^([•\-*])\s+/, '');
+        const inline = inlineLineToProseMirrorNodes(liText);
+        listItems.push({
+          type: 'listItem',
+          content: [
+            {
+              type: 'paragraph',
+              content: inline.length > 0 ? inline : [{ type: 'text', text: liText }],
+            },
+          ],
+        });
+        i += 1;
+      }
+      content.push({ type: 'bulletList', content: listItems });
+      continue;
+    }
+
+    if (/^\d+[.)]\s+/.test(trimmed)) {
+      const listItems: Array<Record<string, unknown>> = [];
+      while (i < lines.length && /^\d+[.)]\s+/.test(lines[i].trim())) {
+        const liText = lines[i].trim().replace(/^\d+[.)]\s+/, '');
+        const inline = inlineLineToProseMirrorNodes(liText);
+        listItems.push({
+          type: 'listItem',
+          content: [
+            {
+              type: 'paragraph',
+              content: inline.length > 0 ? inline : [{ type: 'text', text: liText }],
+            },
+          ],
+        });
+        i += 1;
+      }
+      content.push({ type: 'orderedList', content: listItems });
+      continue;
+    }
+
+    const inline = inlineLineToProseMirrorNodes(rawLine);
+    content.push({
+      type: 'paragraph',
+      content: inline.length > 0 ? inline : [{ type: 'text', text: rawLine }],
+    });
+    i += 1;
   }
 
   return {
@@ -953,7 +1158,9 @@ export function parseFullLssSheet(rawJson: string | null | undefined): LssParsed
 
   const initialVars: FormulaVars = {
     LVL: level,
+    LEVEL: level,
     PROF: proficiencyBonus,
+    PB: proficiencyBonus,
     STR: Math.floor((baseScores.str - 10) / 2),
     DEX: Math.floor((baseScores.dex - 10) / 2),
     CON: Math.floor((baseScores.con - 10) / 2),
@@ -971,7 +1178,9 @@ export function parseFullLssSheet(rawJson: string | null | undefined): LssParsed
 
   const vars: FormulaVars = {
     LVL: level,
+    LEVEL: level,
     PROF: proficiencyBonus,
+    PB: proficiencyBonus,
     STR: Math.floor((finalScores.str - 10) / 2),
     DEX: Math.floor((finalScores.dex - 10) / 2),
     CON: Math.floor((finalScores.con - 10) / 2),
@@ -1210,7 +1419,21 @@ export function parseFullLssSheet(rawJson: string | null | undefined): LssParsed
     });
   }
 
-  // Resources
+  // Resources (LSS Unique Resources: pools, rogue dice, psi charges, presets, formulas)
+  const VALID_RES_COLORS = new Set<ResourceColorKey>([
+    'violet',
+    'cyan',
+    'amber',
+    'crimson',
+    'emerald',
+  ]);
+  const VALID_RECOVER_MODES = new Set<ResourceRecoverMode>([
+    'all',
+    'half_up',
+    'half_down',
+    'one',
+  ]);
+
   const resourcesObj = (
     sheet.resources && typeof sheet.resources === 'object' ? sheet.resources : {}
   ) as Record<string, unknown>;
@@ -1221,16 +1444,33 @@ export function parseFullLssSheet(rawJson: string | null | undefined): LssParsed
     if (rr.isDeleted === true || rr.orphanedAt) continue;
     const rName = asStr(rr.name);
     if (!rName) continue;
-    const current = Math.max(0, asNum(rr.current) ?? 0);
-    const maxFromExpr =
-      typeof rr.maxExpr === 'string' ? evalLssNumericFormula(rr.maxExpr, vars) : null;
-    const max = Math.max(1, maxFromExpr ?? asNum(rr.max) ?? Math.max(1, current));
+    const maxExpr = typeof rr.maxExpr === 'string' ? rr.maxExpr.trim() : '';
+    const maxFromExpr = maxExpr ? evalLssNumericFormula(maxExpr, vars) : null;
+    const currentRaw = Math.max(0, asNum(rr.current) ?? 0);
+    const max = Math.max(1, maxFromExpr ?? asNum(rr.max) ?? Math.max(1, currentRaw));
+    const current = Math.min(max, currentRaw);
+    const dieRaw = asStr(rr.die);
+    const dieResolved = dieRaw ? resolveWeaponDamageString(dieRaw, vars) : '';
+    const spendLimit = Math.max(0, asNum(rr.spendLimit) ?? 0);
+    const rawRec = asStr(rr.recoverMode) as ResourceRecoverMode;
+    const recoverMode: ResourceRecoverMode = VALID_RECOVER_MODES.has(rawRec) ? rawRec : 'all';
+    const rawColor = asStr(rr.color) as ResourceColorKey;
+    const color: ResourceColorKey = VALID_RES_COLORS.has(rawColor) ? rawColor : 'amber';
+    const glyph = asStr(rr.glyph) || (dieRaw ? '🎲' : spendLimit > 0 ? '🧠' : '⚡');
     const isShortRest = Boolean(rr.isShortRest);
     const isLongRest = Boolean(rr.isLongRest);
+    const recSuffix =
+      recoverMode === 'half_up'
+        ? ' (½↑)'
+        : recoverMode === 'half_down'
+          ? ' (½↓)'
+          : recoverMode === 'one'
+            ? ' (+1)'
+            : '';
     const restLabel = isShortRest
-      ? 'кор. отдых'
+      ? `кор. отдых${recSuffix}`
       : isLongRest
-        ? 'дл. отдых'
+        ? `дл. отдых${recSuffix}`
         : '';
     const rId = asStr(rr.id) || key;
     resourcesMap[rId] = {
@@ -1238,6 +1478,13 @@ export function parseFullLssSheet(rawJson: string | null | undefined): LssParsed
       name: rName,
       current,
       max,
+      maxExpr,
+      die: dieRaw,
+      dieResolved,
+      spendLimit,
+      recoverMode,
+      color,
+      glyph,
       isShortRest,
       isLongRest,
       restLabel,
@@ -1375,6 +1622,39 @@ export function parseFullLssSheet(rawJson: string | null | undefined): LssParsed
     ? topSpells.prepared.filter((s): s is string => typeof s === 'string')
     : [];
 
+  const VALID_SPELL_CAST_MODES = new Set<SpellCastMode>([
+    'slot',
+    'at_will',
+    'long_rest',
+    'short_rest',
+    'resource',
+    'ritual_only',
+    'custom',
+  ]);
+
+  // Per-spell cast configs stored in sheet.spellCastConfigs (keyed by "cat-<spellId>" or manual spell id)
+  const rawCastConfigs = (
+    sheet.spellCastConfigs && typeof sheet.spellCastConfigs === 'object'
+      ? sheet.spellCastConfigs
+      : {}
+  ) as Record<string, unknown>;
+  const castConfigs: Record<string, LssSpellCastConfig> = {};
+  for (const [key, val] of Object.entries(rawCastConfigs)) {
+    if (!val || typeof val !== 'object') continue;
+    const cr = val as Record<string, unknown>;
+    const rawMode = asStr(cr.mode) as SpellCastMode;
+    const mode: SpellCastMode = VALID_SPELL_CAST_MODES.has(rawMode) ? rawMode : 'slot';
+    const maxUses = Math.max(1, asNum(cr.maxUses) ?? 1);
+    const used = Math.min(maxUses, Math.max(0, asNum(cr.used) ?? 0));
+    castConfigs[key] = {
+      mode,
+      maxUses,
+      used,
+      resourceId: asStr(cr.resourceId),
+      note: asStr(cr.note),
+    };
+  }
+
   // Manual spell rows stored inside sheet.manualSpells
   const manualSpellsRaw = Array.isArray(sheet.manualSpells) ? sheet.manualSpells : [];
   const manualSpells: LssManualSpellRow[] = [];
@@ -1383,6 +1663,7 @@ export function parseFullLssSheet(rawJson: string | null | undefined): LssParsed
     const r = item as Record<string, unknown>;
     const spName = asStr(r.name);
     if (!spName) return;
+    const rawMode = asStr(r.castMode) as SpellCastMode;
     manualSpells.push({
       id: asStr(r.id) || `mspell-${idx}`,
       level: Math.min(9, Math.max(0, asNum(r.level) ?? 0)),
@@ -1393,6 +1674,10 @@ export function parseFullLssSheet(rawJson: string | null | undefined): LssParsed
       ritual: Boolean(r.ritual),
       material: Boolean(r.material),
       notes: asStr(r.notes),
+      castMode: VALID_SPELL_CAST_MODES.has(rawMode) ? rawMode : 'slot',
+      castMaxUses: Math.max(1, asNum(r.castMaxUses) ?? 1),
+      castResourceId: asStr(r.castResourceId),
+      castNote: asStr(r.castNote),
     });
   });
 
@@ -1546,10 +1831,24 @@ export function parseFullLssSheet(rawJson: string | null | undefined): LssParsed
       slots,
       preparedSlugs,
       manualSpells,
+      castConfigs,
     },
     textBlocks,
     textByKey,
   };
+}
+
+export function computeRecoveredResourceCurrent(res: LssParsedResource): number {
+  if (res.recoverMode === 'half_up') {
+    return Math.min(res.max, res.current + Math.max(1, Math.ceil(res.max / 2)));
+  }
+  if (res.recoverMode === 'half_down') {
+    return Math.min(res.max, res.current + Math.max(1, Math.floor(res.max / 2)));
+  }
+  if (res.recoverMode === 'one') {
+    return Math.min(res.max, res.current + 1);
+  }
+  return res.max;
 }
 
 function randomDie(sides: number): number {
