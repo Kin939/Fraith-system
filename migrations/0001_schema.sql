@@ -17,7 +17,14 @@ CREATE TABLE IF NOT EXISTS users (
   role TEXT NOT NULL CHECK (role IN ('dm', 'player')),
   player_id INTEGER UNIQUE CHECK (player_id IN (1, 2, 3) OR player_id IS NULL),
   avatar_key TEXT,
+  session_version INTEGER NOT NULL DEFAULT 2,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS player_credentials (
+  user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  plain_password TEXT NOT NULL,
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS user_themes (

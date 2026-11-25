@@ -36,7 +36,15 @@ import {
   MAGIC_SCHOOL_LABELS_RU,
 } from '../lib/lss';
 import { useCampaignStore } from '../lib/store';
-import type { DndsuCategoryFilters, DndsuFilterGroup, DndsuFiltersPayload, Spell } from '../lib/types';
+import type {
+  DndsuCategoryFilters,
+  DndsuFilterGroup,
+  DndsuFiltersPayload,
+  LearnedSpellRecord,
+  Spell,
+} from '../lib/types';
+
+const EMPTY_LEARNED_RECORDS: LearnedSpellRecord[] = [];
 
 function mergeFilterGroups(a: DndsuFilterGroup[] = [], b: DndsuFilterGroup[] = []): DndsuFilterGroup[] {
   const byTitle = new Map<string, Map<string, { title: string; value: number | string }>>();
@@ -82,10 +90,15 @@ export const SpellsPage: React.FC = () => {
   const [visibleLimit, setVisibleLimit] = useState<number>(600);
 
   const isPlayer = user?.role === 'player' && user.playerId !== null;
-  const playerProfile =
-    isPlayer && user?.playerId ? (charactersById[user.playerId] ?? null) : null;
-  const learnedRecords =
-    isPlayer && user?.playerId ? (learnedSpellsById[user.playerId] ?? []) : [];
+  const dmSelectedPlayerId = useCampaignStore((s) => s.dmSelectedPlayerId);
+  const inspectedPlayerId =
+    user?.role === 'dm' ? dmSelectedPlayerId : (user?.playerId ?? null);
+  const playerProfile = inspectedPlayerId
+    ? (charactersById[inspectedPlayerId] ?? null)
+    : null;
+  const learnedRecords = inspectedPlayerId
+    ? (learnedSpellsById[inspectedPlayerId] ?? EMPTY_LEARNED_RECORDS)
+    : EMPTY_LEARNED_RECORDS;
   const learnedIdsSet = useMemo(
     () => new Set(learnedRecords.map((r) => r.spellId)),
     [learnedRecords]

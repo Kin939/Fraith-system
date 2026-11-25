@@ -111,7 +111,7 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
 
   charactersById: {},
   journalsById: {},
-  learnedSpellsById: {},
+  learnedSpellsById: { 1: [], 2: [], 3: [] },
 
   quests: [],
   bestiary: [],
@@ -124,10 +124,21 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
 
   setUser: (user) => {
     applyThemeToDocument(user?.theme ?? DEFAULT_ANIME_THEME);
+    if (!user) {
+      set({
+        user: null,
+        activeTab: 'character',
+        dmSelectedPlayerId: 1,
+        charactersById: {},
+        journalsById: {},
+        learnedSpellsById: { 1: [], 2: [], 3: [] },
+      });
+      return;
+    }
     set((state) => ({
       user,
       activeTab:
-        user?.role !== 'dm' && state.activeTab === 'dm' ? 'character' : state.activeTab,
+        user.role !== 'dm' && state.activeTab === 'dm' ? 'character' : state.activeTab,
     }));
   },
   setAuthReady: (authReady) => set({ authReady }),
@@ -200,9 +211,10 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
     const user = get().user;
     if (!user) return;
 
-    const targetPlayerId: PlayerId = user.role === 'dm' ? get().dmSelectedPlayerId : (user.playerId ?? 1);
+    const playerIdsToLoad: PlayerId[] =
+      user.role === 'dm' ? [1, 2, 3] : [user.playerId ?? 1];
 
-    const [questsRes, bestiaryRes, spellsRes, talentsRes, rollsRes, charRes, allCharsRes] =
+    const [questsRes, bestiaryRes, spellsRes, talentsRes, rollsRes, allCharsRes, ...playerBundles] =
       await Promise.all([
         apiFetch<{ quests: Quest[] }>('/api/quests'),
         apiFetch<{ creatures: BestiaryCreature[] }>('/api/bestiary'),
@@ -213,21 +225,33 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
           purchases: PurchasedTalent[];
         }>('/api/talents'),
         apiFetch<{ rolls: RollLogEntry[] }>('/api/rolls'),
-        apiFetch<{
-          profile: CharacterProfile | null;
-          journal: JournalEntry;
-          learnedSpells: LearnedSpellRecord[];
-        }>(`/api/player/${targetPlayerId}`),
         apiFetch<{ characters: CharacterProfile[] }>('/api/characters'),
+        ...playerIdsToLoad.map((pid) =>
+          apiFetch<{
+            profile: CharacterProfile | null;
+            journal: JournalEntry;
+            learnedSpells: LearnedSpellRecord[];
+          }>(`/api/player/${pid}`)
+        ),
       ]);
 
     const charMap: Partial<Record<PlayerId, CharacterProfile>> = {};
     for (const c of allCharsRes.characters) {
       charMap[c.playerId] = c;
     }
-    if (charRes.profile) {
-      charMap[targetPlayerId] = charRes.profile;
-    }
+
+    const journalMap: Partial<Record<PlayerId, JournalEntry>> = {};
+    const learnedMap: Partial<Record<PlayerId, LearnedSpellRecord[]>> = {};
+
+    playerIdsToLoad.forEach((pid, idx) => {
+      const bundle = playerBundles[idx];
+      if (!bundle) return;
+      if (bundle.profile) {
+        charMap[pid] = bundle.profile;
+      }
+      journalMap[pid] = bundle.journal;
+      learnedMap[pid] = bundle.learnedSpells;
+    });
 
     set((s) => ({
       quests: questsRes.quests,
@@ -238,8 +262,8 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
       talentPurchases: talentsRes.purchases,
       rolls: rollsRes.rolls,
       charactersById: { ...s.charactersById, ...charMap },
-      journalsById: { ...s.journalsById, [targetPlayerId]: charRes.journal },
-      learnedSpellsById: { ...s.learnedSpellsById, [targetPlayerId]: charRes.learnedSpells },
+      journalsById: { ...s.journalsById, ...journalMap },
+      learnedSpellsById: { ...s.learnedSpellsById, ...learnedMap },
     }));
   },
 

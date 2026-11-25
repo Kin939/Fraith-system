@@ -1,16 +1,16 @@
 -- 0002_seed.sql
--- Clean initial accounts & empty player slots (no invented demo characters, quests, monsters, or spells).
--- Passwords (bcrypt cost 10):
---   dm      -> master123
---   player1 -> player123
---   player2 -> player123
---   player3 -> player123
+-- Clean initial accounts with distinct per-account password hashes & empty player slots.
 
-INSERT OR IGNORE INTO users (id, username, display_name, email, password_hash, role, player_id) VALUES
-  (1, 'dm', 'Мастер (DM)', 'dm@fraith.local', '$2a$10$lGOJrpCOxWRYIPlNwzbq/e1xVqjRiPD2qlg2Gun27308UyTRRYXMu', 'dm', NULL),
-  (2, 'player1', 'Игрок 1', 'player1@fraith.local', '$2a$10$aVa3OdzHko9ix4EJGhoX8.b53GmejM9VXjx7RUAf.H5Cacm2GmfMe', 'player', 1),
-  (3, 'player2', 'Игрок 2', 'player2@fraith.local', '$2a$10$.md.rhwfJG1p4n1/atQSyeuKv4S4xJKuenHgJ6TPFzGCUWPyzv7Cu', 'player', 2),
-  (4, 'player3', 'Игрок 3', 'player3@fraith.local', '$2a$10$6fcRLEFELtpfOtgr9U7kWucuRQOjI1FNbr1Bmw8Lkt4Cz5PW29wka', 'player', 3);
+INSERT OR IGNORE INTO users (id, username, display_name, email, password_hash, role, player_id, session_version) VALUES
+  (1, 'dm', 'Мастер (DM)', NULL, '$2a$10$5L8OD4oKlY29lH9fQL57becOxkeTF38Eaihn776peU0yB3hDe8Ewq', 'dm', NULL, 2),
+  (2, 'player1', 'Игрок 1', 'player1@fraith.local', '$2a$10$nZKTFNxwscpUSfv8AvkZCucixnxttT.mFdaimxIbK0xyDxHCbnLCC', 'player', 1, 2),
+  (3, 'player2', 'Игрок 2', 'player2@fraith.local', '$2a$10$GXbGJlaO2ZXAVYPEP9DI4OM7Jfa8dfgdfvvcC9HNVK12WWgHkaD1W', 'player', 2, 2),
+  (4, 'player3', 'Игрок 3', 'player3@fraith.local', '$2a$10$Nkr8Vh/6m6LcSmcEKyUjVuXLd1ZoPu12hEwgVb6RBguqv8Rj5gZou', 'player', 3, 2);
+
+INSERT OR REPLACE INTO player_credentials (user_id, plain_password, updated_at) VALUES
+  (2, 'Hero1-7394-Blade', datetime('now')),
+  (3, 'Hero2-5821-Runes', datetime('now')),
+  (4, 'Hero3-6149-Spark', datetime('now'));
 
 INSERT OR IGNORE INTO user_themes (user_id, theme_json) VALUES
   (1, '{"bg":"#0f0f1a","surface":"#1a1a2e","primary":"#a855f7","accent":"#22d3ee","text":"#f4f4fe","textMuted":"#94a3b8","border":"#2e2e4d","glow":"rgba(168, 85, 247, 0.42)"}'),
@@ -29,4 +29,6 @@ INSERT OR IGNORE INTO character_profiles (
 
 INSERT OR IGNORE INTO inspiration_pool (campaign_id, points) VALUES ('fraith-main-campaign', 0);
 
-INSERT OR IGNORE INTO schema_migrations (version) VALUES ('2026_11_25_clean_empty_campaign_and_dndsu_v1');
+INSERT OR IGNORE INTO schema_migrations (version) VALUES
+  ('2026_11_25_clean_empty_campaign_and_dndsu_v1'),
+  ('2026_11_25_unique_passwords_and_dm_lock_v1');

@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Crown, Flame, KeyRound, Shield, UserCheck } from 'lucide-react';
+import React, { useRef, useState } from 'react';
+import { Crown, Eye, EyeOff, Flame, KeyRound, Lock, User } from 'lucide-react';
 
 interface LoginPageProps {
   onLogin: (username: string, password: string) => Promise<boolean>;
@@ -7,44 +7,55 @@ interface LoginPageProps {
   error: string | null;
 }
 
-const DEMO_ACCOUNTS = [
+const ACCOUNT_SLOTS = [
   {
     username: 'dm',
-    password: 'master123',
     label: 'Мастер (DM)',
-    subtitle: 'Полный доступ + редактор тем',
+    subtitle: 'Защищённый вход Архитектора',
     badge: 'DM',
+    isDm: true,
   },
   {
     username: 'player1',
-    password: 'player123',
     label: 'Игрок 1',
-    subtitle: 'Слот игрока #1 (загрузка LSS)',
+    subtitle: 'Слот героя #1',
     badge: 'P1',
+    isDm: false,
   },
   {
     username: 'player2',
-    password: 'player123',
     label: 'Игрок 2',
-    subtitle: 'Слот игрока #2 (загрузка LSS)',
+    subtitle: 'Слот героя #2',
     badge: 'P2',
+    isDm: false,
   },
   {
     username: 'player3',
-    password: 'player123',
     label: 'Игрок 3',
-    subtitle: 'Слот игрока #3 (загрузка LSS)',
+    subtitle: 'Слот героя #3',
     badge: 'P3',
+    isDm: false,
   },
 ];
 
 export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, loading, error }) => {
-  const [username, setUsername] = useState('dm');
-  const [password, setPassword] = useState('master123');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const passwordInputRef = useRef<HTMLInputElement | null>(null);
+
+  const handleSelectAccount = (targetUsername: string) => {
+    setUsername(targetUsername);
+    setPassword('');
+    window.setTimeout(() => {
+      passwordInputRef.current?.focus();
+    }, 0);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    await onLogin(username, password);
+    if (!username.trim() || !password) return;
+    await onLogin(username.trim(), password);
   };
 
   return (
@@ -58,8 +69,47 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, loading, error })
             FRAITH<span className="text-primary">.SYSTEM</span>
           </h1>
           <p className="text-xs text-muted">
-            Портал D&amp;D-кампании на Cloudflare Pages, D1, R2 и Durable Objects
+            Портал D&amp;D-кампании • Вход только по индивидуальному паролю
           </p>
+        </div>
+
+        {/* Account login selector (fills username only — password is ALWAYS required) */}
+        <div className="space-y-2">
+          <div className="text-[11px] uppercase tracking-wider text-muted flex items-center gap-1.5">
+            <Lock className="w-3.5 h-3.5 text-accent" />
+            Выберите аккаунт и введите пароль:
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            {ACCOUNT_SLOTS.map((acc) => {
+              const selected = username.trim().toLowerCase() === acc.username;
+              return (
+                <button
+                  key={acc.username}
+                  type="button"
+                  onClick={() => handleSelectAccount(acc.username)}
+                  className={`p-2.5 rounded-2xl border text-left transition-all group ${
+                    selected
+                      ? 'bg-primary/18 border-primary shadow-neon'
+                      : 'bg-bg/70 hover:bg-primary/10 border-border hover:border-primary/50'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-1">
+                    <span className="text-xs font-bold text-text group-hover:text-primary transition-colors">
+                      {acc.label}
+                    </span>
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-primary/20 text-primary inline-flex items-center gap-1">
+                      {acc.isDm ? <Crown className="w-3 h-3" /> : <User className="w-3 h-3" />}
+                      {acc.badge}
+                    </span>
+                  </div>
+                  <div className="text-[11px] text-muted truncate mt-0.5 font-mono">
+                    {acc.username}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -68,22 +118,37 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, loading, error })
             <input
               type="text"
               required
+              autoComplete="username"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              placeholder="dm, player1, player2, player3"
+              placeholder="dm, player1, player2 или player3"
               className="anime-input w-full text-sm"
             />
           </div>
 
           <div>
-            <label className="block text-xs text-muted mb-1">Пароль</label>
-            <input
-              type="password"
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="anime-input w-full text-sm"
-            />
+            <label className="block text-xs text-muted mb-1">Индивидуальный пароль</label>
+            <div className="relative">
+              <input
+                ref={passwordInputRef}
+                type={showPassword ? 'text' : 'password'}
+                required
+                autoComplete="current-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Введите пароль аккаунта..."
+                className="anime-input w-full text-sm pr-10"
+              />
+              <button
+                type="button"
+                tabIndex={-1}
+                onClick={() => setShowPassword((v) => !v)}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-muted hover:text-text transition-colors"
+                title={showPassword ? 'Скрыть пароль' : 'Показать пароль'}
+              >
+                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
           </div>
 
           {error && (
@@ -94,47 +159,16 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, loading, error })
 
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || !username.trim() || !password}
             className="anime-btn-primary w-full py-3 text-sm flex items-center justify-center gap-2"
           >
             <KeyRound className="w-4 h-4" />
-            <span>{loading ? 'Вход в кампанию...' : 'Войти за стол'}</span>
+            <span>{loading ? 'Проверка пароля...' : 'Войти за стол'}</span>
           </button>
         </form>
 
-        <div className="pt-3 border-t border-border space-y-2.5">
-          <div className="text-[11px] uppercase tracking-wider text-muted flex items-center gap-1.5">
-            <Shield className="w-3.5 h-3.5 text-accent" />
-            Seed-аккаунты кампании (быстрый выбор):
-          </div>
-
-          <div className="grid grid-cols-2 gap-2">
-            {DEMO_ACCOUNTS.map((acc) => (
-              <button
-                key={acc.username}
-                type="button"
-                onClick={() => {
-                  setUsername(acc.username);
-                  setPassword(acc.password);
-                  void onLogin(acc.username, acc.password);
-                }}
-                className="p-2.5 rounded-2xl bg-bg/60 border border-border hover:border-primary text-left transition-all"
-              >
-                <div className="flex items-center justify-between gap-1">
-                  <span className="text-xs font-anime font-bold truncate">{acc.label}</span>
-                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-primary/20 text-primary">
-                    {acc.badge === 'DM' ? <Crown className="w-3 h-3 inline" /> : acc.badge}
-                  </span>
-                </div>
-                <div className="text-[10px] text-muted truncate mt-0.5">{acc.subtitle}</div>
-              </button>
-            ))}
-          </div>
-
-          <div className="text-[11px] text-muted/80 flex items-center gap-1.5 pt-1">
-            <UserCheck className="w-3.5 h-3.5 text-primary shrink-0" />
-            <span>Сессия защищена JWT в httpOnly cookie + поддержка Cloudflare Access.</span>
-          </div>
+        <div className="pt-2 border-t border-border text-[11px] text-muted text-center">
+          Пароли слотов игроков выдаются Мастером кампании.
         </div>
       </div>
     </div>

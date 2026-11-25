@@ -9,6 +9,7 @@ export interface JwtSessionPayload {
   username: string;
   role: UserRole;
   playerId: PlayerId | null;
+  ver: number;
   iat: number;
   exp: number;
 }
@@ -46,7 +47,13 @@ async function importHmacKey(secret: string): Promise<CryptoKey> {
 }
 
 export async function signSessionJwt(
-  user: { id: number; username: string; role: UserRole; playerId: PlayerId | null },
+  user: {
+    id: number;
+    username: string;
+    role: UserRole;
+    playerId: PlayerId | null;
+    sessionVersion: number;
+  },
   secret: string
 ): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
@@ -55,6 +62,7 @@ export async function signSessionJwt(
     username: user.username,
     role: user.role,
     playerId: user.playerId,
+    ver: user.sessionVersion,
     iat: now,
     exp: now + TOKEN_TTL_SECONDS,
   };
@@ -98,6 +106,7 @@ export async function verifySessionJwt(
     const payload = JSON.parse(payloadJson) as JwtSessionPayload;
     const now = Math.floor(Date.now() / 1000);
     if (!payload.exp || payload.exp < now) return null;
+    if (typeof payload.ver !== 'number') return null;
     return payload;
   } catch {
     return null;

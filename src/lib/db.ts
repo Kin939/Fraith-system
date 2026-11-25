@@ -4,6 +4,7 @@ import type {
   AuthUser,
   BestiaryCreature,
   CharacterProfile,
+  DmManagedAccountInfo,
   JournalEntry,
   LearnedSpellRecord,
   PlayerId,
@@ -42,6 +43,7 @@ export interface DbUserRow {
   role: UserRole;
   player_id: PlayerId | null;
   avatar_key: string | null;
+  session_version?: number;
   theme_json: string | null;
 }
 
@@ -104,6 +106,82 @@ export async function listAllUsersWithThemes(db: D1Database): Promise<AuthUser[]
     )
     .all<DbUserRow>();
   return results.map(mapUserRowToAuthUser);
+}
+
+export async function listDmManagedAccounts(db: D1Database): Promise<DmManagedAccountInfo[]> {
+  const { results } = await db
+    .prepare(
+      `SELECT
+         u.id,
+         u.username,
+         u.display_name,
+         u.role,
+         u.player_id,
+         CASE WHEN u.role = 'player' THEN pc.plain_password ELSE NULL END AS plain_password,
+         CASE WHEN u.role = 'player' THEN pc.updated_at ELSE NULL END AS updated_at
+       FROM users u
+       LEFT JOIN player_credentials pc ON pc.user_id = u.id
+       ORDER BY CASE WHEN u.role = 'dm' THEN 0 ELSE 1 END, u.player_id ASC`
+    )
+    .all<{
+      id: number;
+      username: string;
+      display_name: string;
+      role: UserRole;
+      player_id: PlayerId | null;
+      plain_password: string | null;
+      updated_at: string | null;
+    }>();
+
+  return results.map((r) => ({
+    id: r.id,
+    username: r.username,
+    displayName: r.display_name,
+    role: r.role,
+    playerId: r.player_id,
+    plainPassword: r.role === 'player' ? r.plain_password : null,
+    updatedAt: r.role === 'player' ? r.updated_at : null,
+  }));
+}
+
+export async function updateAccountPassword(
+  db: D1Database,
+  userId: number,
+  role: UserRole,
+  newPasswordHash: string,
+  plainPasswordForPlayer: string | null
+): Promise<DbUserRow | null> {
+  const statements: D1PreparedStatement[] = [
+    db
+      .prepare(
+        `UPDATE users
+         SET password_hash = ?,
+             session_version = COALESCE(session_version, 2) + 1
+         WHERE id = ?`
+      )
+      .bind(newPasswordHash, userId),
+  ];
+
+  if (role === 'player' && plainPasswordForPlayer) {
+    statements.push(
+      db
+        .prepare(
+          `INSERT INTO player_credentials (user_id, plain_password, updated_at)
+           VALUES (?, ?, datetime('now'))
+           ON CONFLICT(user_id) DO UPDATE SET
+             plain_password = excluded.plain_password,
+             updated_at = datetime('now')`
+        )
+        .bind(userId, plainPasswordForPlayer)
+    );
+  } else {
+    statements.push(
+      db.prepare(`DELETE FROM player_credentials WHERE user_id = ?`).bind(userId)
+    );
+  }
+
+  await db.batch(statements);
+  return getUserById(db, userId);
 }
 
 export async function upsertUserTheme(

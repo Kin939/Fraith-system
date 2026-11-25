@@ -1,5 +1,5 @@
 import React from 'react';
-import { X } from 'lucide-react';
+import { AlertTriangle, RotateCcw, X } from 'lucide-react';
 import { Sidebar } from './components/layout/Sidebar';
 import { TabBar } from './components/layout/TabBar';
 import { useAuth } from './hooks/useAuth';
@@ -13,9 +13,50 @@ import { QuestsPage } from './pages/QuestsPage';
 import { SpellsPage } from './pages/SpellsPage';
 import { TalentsPage } from './pages/TalentsPage';
 
+class PageErrorBoundary extends React.Component<
+  { resetKey: string; children: React.ReactNode },
+  { error: Error | null }
+> {
+  state: { error: Error | null } = { error: null };
+
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+
+  componentDidUpdate(prevProps: { resetKey: string }) {
+    if (prevProps.resetKey !== this.props.resetKey && this.state.error) {
+      this.setState({ error: null });
+    }
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="glass-panel rounded-3xl p-8 text-center space-y-3 border border-rose-500/40 max-w-xl mx-auto my-8">
+          <AlertTriangle className="w-8 h-8 text-rose-400 mx-auto" />
+          <div className="font-anime font-bold text-base">
+            Ошибка отображения раздела
+          </div>
+          <p className="text-xs text-muted">{this.state.error.message}</p>
+          <button
+            type="button"
+            onClick={() => this.setState({ error: null })}
+            className="anime-btn-primary px-4 py-2 text-xs inline-flex items-center gap-1.5"
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+            <span>Обновить панель</span>
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 export const App: React.FC = () => {
   const { user, authReady, loading, authError, login, logout } = useAuth();
   const activeTab = useCampaignStore((s) => s.activeTab);
+  const dmSelectedPlayerId = useCampaignStore((s) => s.dmSelectedPlayerId);
   const toasts = useCampaignStore((s) => s.toasts);
   const dismissToast = useCampaignStore((s) => s.dismissToast);
 
@@ -45,12 +86,14 @@ export const App: React.FC = () => {
       <TabBar onLogout={logout} />
 
       <main className="flex-1 min-w-0 p-4 sm:p-6 lg:p-8 max-w-[1600px] w-full mx-auto">
-        {activeTab === 'character' && <CharacterPage />}
-        {activeTab === 'quests' && <QuestsPage />}
-        {activeTab === 'bestiary' && <BestiaryPage />}
-        {activeTab === 'spells' && <SpellsPage />}
-        {activeTab === 'talents' && <TalentsPage />}
-        {activeTab === 'dm' && <DmPage />}
+        <PageErrorBoundary resetKey={`${activeTab}-${dmSelectedPlayerId}`}>
+          {activeTab === 'character' && <CharacterPage />}
+          {activeTab === 'quests' && <QuestsPage />}
+          {activeTab === 'bestiary' && <BestiaryPage />}
+          {activeTab === 'spells' && <SpellsPage />}
+          {activeTab === 'talents' && <TalentsPage />}
+          {activeTab === 'dm' && <DmPage />}
+        </PageErrorBoundary>
       </main>
 
       {/* Real-time Toast Notifications */}

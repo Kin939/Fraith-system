@@ -3,6 +3,7 @@ import { handle } from 'hono/cloudflare-pages';
 import {
   buildLogoutSetCookie,
   buildSessionSetCookie,
+  hashPassword,
   parseCookieHeader,
   SESSION_COOKIE_NAME,
   signSessionJwt,
@@ -21,6 +22,7 @@ import {
   listAllUsersWithThemes,
   listBestiary,
   listCharacterProfiles,
+  listDmManagedAccounts,
   listLearnedSpellsForPlayer,
   listQuests,
   listRecentRolls,
@@ -31,6 +33,7 @@ import {
   purchaseTalentForPlayer,
   saveJournalEntry,
   unlearnSpellForPlayer,
+  updateAccountPassword,
   upsertUserTheme,
 } from '../../src/lib/db';
 import { parseLssCharacterPayload } from '../../src/lib/lss';
@@ -94,25 +97,31 @@ app.use('*', async (c, next) => {
   await ensureDatabaseInitialized(c.env.DB);
   let resolvedUser: AuthUser | null = null;
 
-  // 1. Optional Cloudflare Access (Zero Trust) identity header
+  // 1. Optional Cloudflare Access (Zero Trust) identity header — NEVER allowed to bypass DM password
   if (c.env.CF_ACCESS_ENABLED === 'true') {
     const cfEmail = c.req.header('Cf-Access-Authenticated-User-Email');
     if (cfEmail) {
       const row = await getUserByEmail(c.env.DB, cfEmail);
-      if (row) {
+      if (row && row.role !== 'dm') {
         resolvedUser = mapUserRowToAuthUser(row);
       }
     }
   }
 
-  // 2. JWT httpOnly session cookie
+  // 2. JWT httpOnly session cookie (strictly matched against current session_version)
   if (!resolvedUser) {
     const token = parseCookieHeader(c.req.header('Cookie'), SESSION_COOKIE_NAME);
     if (token) {
       const payload = await verifySessionJwt(token, getJwtSecret(c.env));
       if (payload) {
         const row = await getUserById(c.env.DB, payload.sub);
-        if (row) {
+        const expectedVersion = row?.session_version ?? 2;
+        if (
+          row &&
+          payload.ver === expectedVersion &&
+          payload.role === row.role &&
+          payload.username === row.username
+        ) {
           resolvedUser = mapUserRowToAuthUser(row);
         }
       }
@@ -183,6 +192,7 @@ app.post('/auth/login', async (c) => {
       username: authUser.username,
       role: authUser.role,
       playerId: authUser.playerId,
+      sessionVersion: row.session_version ?? 2,
     },
     getJwtSecret(c.env)
   );
@@ -1326,6 +1336,74 @@ app.get('/dm/users', async (c) => {
   const users = await listAllUsersWithThemes(c.env.DB);
   const characters = await listCharacterProfiles(c.env.DB);
   return c.json({ users, characters });
+});
+
+app.get('/dm/accounts', async (c) => {
+  const accounts = await listDmManagedAccounts(c.env.DB);
+  return c.json({ accounts });
+});
+
+app.put('/dm/accounts/:userId/password', async (c) => {
+  const dmUser = c.get('user')!;
+  const targetUserId = Number.parseInt(c.req.param('userId'), 10);
+  if (!Number.isFinite(targetUserId) || targetUserId <= 0) {
+    return c.json({ error: 'Некорректный userId' }, 400);
+  }
+
+  const targetRow = await getUserById(c.env.DB, targetUserId);
+  if (!targetRow) {
+    return c.json({ error: 'Аккаунт не найден' }, 404);
+  }
+
+  const body = await c.req
+    .json<{ newPassword?: string; currentPassword?: string }>()
+    .catch((): { newPassword?: string; currentPassword?: string } => ({}));
+  const newPassword = (body.newPassword || '').trim();
+
+  if (newPassword.length < 6 || newPassword.length > 128) {
+    return c.json(
+      { error: 'Пароль должен содержать от 6 до 128 символов' },
+      400
+    );
+  }
+
+  if (targetRow.role === 'dm') {
+    const currentPassword = body.currentPassword || '';
+    if (!currentPassword || !verifyPassword(currentPassword, targetRow.password_hash)) {
+      return c.json(
+        { error: 'Для смены пароля Мастера укажите верный текущий пароль DM' },
+        403
+      );
+    }
+  }
+
+  const newHash = hashPassword(newPassword);
+  const updatedRow = await updateAccountPassword(
+    c.env.DB,
+    targetRow.id,
+    targetRow.role,
+    newHash,
+    targetRow.role === 'player' ? newPassword : null
+  );
+
+  // If DM changed their own password, keep their active session alive with a rotated token
+  if (updatedRow && updatedRow.id === dmUser.id) {
+    const jwt = await signSessionJwt(
+      {
+        id: updatedRow.id,
+        username: updatedRow.username,
+        role: updatedRow.role,
+        playerId: updatedRow.player_id,
+        sessionVersion: updatedRow.session_version ?? 2,
+      },
+      getJwtSecret(c.env)
+    );
+    const isSecure = new URL(c.req.url).protocol === 'https:';
+    c.header('Set-Cookie', buildSessionSetCookie(jwt, isSecure));
+  }
+
+  const accounts = await listDmManagedAccounts(c.env.DB);
+  return c.json({ accounts, ok: true });
 });
 
 app.put('/dm/themes/:userId', async (c) => {
