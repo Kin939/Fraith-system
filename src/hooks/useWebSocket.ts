@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { OnlineMember, useCampaignStore } from '../lib/store';
+import { isJournalLocallyBusy, isSheetLocallyBusy } from '../lib/syncTracker';
 import type {
   CampaignWsMessage,
   CharacterProfile,
@@ -113,6 +114,9 @@ export function useWebSocket() {
           case 'journal:updated': {
             const p = msg.payload as { playerId?: PlayerId; journal?: JournalEntry };
             if (p?.playerId && p.journal) {
+              // Never clobber the author's own active typing with a delayed WS self-echo
+              if (msg.senderId && msg.senderId === store.user?.id) break;
+              if (isJournalLocallyBusy(p.playerId)) break;
               store.updateJournalInStore(p.playerId, p.journal);
             }
             break;
@@ -120,7 +124,13 @@ export function useWebSocket() {
           case 'character:updated': {
             const p = msg.payload as { playerId?: PlayerId; profile?: CharacterProfile };
             if (p?.playerId && p.profile) {
-              store.updateCharacterProfileInStore(p.playerId, p.profile);
+              // Ignore our own echo so rapid HP/resource/text edits never snap back
+              if (msg.senderId && msg.senderId === store.user?.id) break;
+              if (isSheetLocallyBusy(p.playerId)) {
+                store.mergeCharacterMetadataInStore(p.playerId, p.profile);
+              } else {
+                store.updateCharacterProfileInStore(p.playerId, p.profile);
+              }
             }
             break;
           }

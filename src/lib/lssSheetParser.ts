@@ -536,7 +536,8 @@ function applyProseMirrorMarks(rawText: string, marks: unknown): string {
 
 function extractInlineText(
   node: unknown,
-  resourcesMap: Record<string, LssParsedResource>
+  resourcesMap: Record<string, LssParsedResource>,
+  onResourceRef?: () => void
 ): string {
   if (!node || typeof node !== 'object') return '';
   const r = node as Record<string, unknown>;
@@ -558,6 +559,7 @@ function extractInlineText(
     return label ? `[🎲 ${label}]` : '';
   }
   if (type === 'resource') {
+    onResourceRef?.();
     const attrs = (r.attrs && typeof r.attrs === 'object' ? r.attrs : {}) as Record<
       string,
       unknown
@@ -571,14 +573,15 @@ function extractInlineText(
   }
 
   if (Array.isArray(r.content)) {
-    return r.content.map((c) => extractInlineText(c, resourcesMap)).join('');
+    return r.content.map((c) => extractInlineText(c, resourcesMap, onResourceRef)).join('');
   }
   return '';
 }
 
 function parseRichDocNodes(
   docNode: unknown,
-  resourcesMap: Record<string, LssParsedResource>
+  resourcesMap: Record<string, LssParsedResource>,
+  onResourceRef?: () => void
 ): LssRichParagraph[] {
   if (typeof docNode === 'string' && docNode.trim()) {
     return docNode
@@ -608,7 +611,7 @@ function parseRichDocNodes(
         unknown
       >;
       const level = Math.min(3, Math.max(1, asNum(attrs.level) ?? 3));
-      const text = extractInlineText(b, resourcesMap).trim();
+      const text = extractInlineText(b, resourcesMap, onResourceRef).trim();
       if (text) {
         out.push({ kind: 'paragraph', text: `${'#'.repeat(level)} ${text}` });
       }
@@ -616,7 +619,7 @@ function parseRichDocNodes(
     }
 
     if (bType === 'blockquote') {
-      const text = extractInlineText(b, resourcesMap).trim();
+      const text = extractInlineText(b, resourcesMap, onResourceRef).trim();
       if (text) {
         const quoted = text
           .split('\n')
@@ -631,7 +634,7 @@ function parseRichDocNodes(
       const itemsRaw = Array.isArray(b.content) ? b.content : [];
       const items: string[] = [];
       for (const li of itemsRaw) {
-        const text = extractInlineText(li, resourcesMap).trim();
+        const text = extractInlineText(li, resourcesMap, onResourceRef).trim();
         if (text) items.push(text);
       }
       if (items.length > 0) {
@@ -652,9 +655,9 @@ function parseRichDocNodes(
         if (!ch || typeof ch !== 'object') continue;
         const cr = ch as Record<string, unknown>;
         if (cr.type === 'spoilerSummary') {
-          summary = extractInlineText(cr, resourcesMap).trim() || summary;
+          summary = extractInlineText(cr, resourcesMap, onResourceRef).trim() || summary;
         } else {
-          const t = extractInlineText(cr, resourcesMap).trim();
+          const t = extractInlineText(cr, resourcesMap, onResourceRef).trim();
           if (t) bodyParts.push(t);
         }
       }
@@ -668,7 +671,7 @@ function parseRichDocNodes(
       continue;
     }
 
-    const text = extractInlineText(b, resourcesMap).trim();
+    const text = extractInlineText(b, resourcesMap, onResourceRef).trim();
     if (text) {
       out.push({ kind: 'paragraph', text });
     }
@@ -854,15 +857,22 @@ export function plainTextToLssDoc(text: string): Record<string, unknown> {
   };
 }
 
-/**
- * Unwraps a raw LSS JSON string into `{ root, sheet, wasStringData }` so mutations
- * preserve 100% of original LSS metadata (`bonuses`, `effects`, `spells`, `avatar`, etc.).
- */
-export function unwrapLssJsonMutable(rawJson: string | null | undefined): {
+export interface LssMutableBundle {
   root: Record<string, unknown>;
   sheet: Record<string, unknown>;
   mode: 'data-string' | 'data-object' | 'flat';
-} {
+}
+
+const richBlockMemo = new WeakMap<
+  object,
+  { resSig: string | null; plainText: string; nodes: LssRichParagraph[] }
+>();
+
+/**
+ * Unwraps a raw LSS JSON string into `{ root, sheet, mode }` so mutations
+ * preserve 100% of original LSS metadata (`bonuses`, `effects`, `spells`, `avatar`, etc.).
+ */
+export function unwrapLssJsonMutable(rawJson: string | null | undefined): LssMutableBundle {
   if (!rawJson) {
     return createBlankLssStructures();
   }
@@ -871,7 +881,7 @@ export function unwrapLssJsonMutable(rawJson: string | null | undefined): {
     if (!parsed || typeof parsed !== 'object') {
       return createBlankLssStructures();
     }
-    const root = structuredClone(parsed as Record<string, unknown>);
+    const root = parsed as Record<string, unknown>;
     if (typeof root.data === 'string') {
       try {
         const sheet = JSON.parse(root.data) as Record<string, unknown>;
@@ -886,6 +896,14 @@ export function unwrapLssJsonMutable(rawJson: string | null | undefined): {
         sheet: root.data as Record<string, unknown>,
         mode: 'data-object',
       };
+    }
+    if (typeof root.json === 'string') {
+      try {
+        const sheet = JSON.parse(root.json) as Record<string, unknown>;
+        return { root, sheet, mode: 'data-string' };
+      } catch {
+        return { root, sheet: root, mode: 'flat' };
+      }
     }
     return { root, sheet: root, mode: 'flat' };
   } catch {
@@ -1093,6 +1111,17 @@ export function parseFullLssSheet(rawJson: string | null | undefined): LssParsed
     }
   }
 
+  return parseLssSheetFromObjects(sheet, root);
+}
+
+/**
+ * Ultra-fast zero-serialization parser that derives `LssParsedSheet` directly from
+ * in-memory `(sheet, root)` objects (<0.1ms per call — no JSON.parse/stringify!).
+ */
+export function parseLssSheetFromObjects(
+  sheet: Record<string, unknown>,
+  root: Record<string, unknown>
+): LssParsedSheet {
   const edition = asStr(root.edition) || asStr(sheet.edition) || '2014';
   const info = (sheet.info && typeof sheet.info === 'object' ? sheet.info : {}) as Record<
     string,
@@ -1681,7 +1710,10 @@ export function parseFullLssSheet(rawJson: string | null | undefined): LssParsed
     });
   });
 
-  // Rich text blocks
+  // Rich text blocks (memoized by valObj identity + resource summary so HP/stat/slot edits skip ProseMirror walks!)
+  const resourceSig = Object.values(resourcesMap)
+    .map((r) => `${r.id}:${r.current}/${r.max}`)
+    .join('|');
   const textObj = (sheet.text && typeof sheet.text === 'object' ? sheet.text : {}) as Record<
     string,
     unknown
@@ -1694,18 +1726,37 @@ export function parseFullLssSheet(rawJson: string | null | undefined): LssParsed
     if (br.isHidden === true) continue;
     const valObj = br.value;
     let nodes: LssRichParagraph[] = [];
-    if (typeof valObj === 'string') {
+    let plainText = '';
+
+    if (valObj && typeof valObj === 'object') {
+      const cached = richBlockMemo.get(valObj);
+      if (cached && (cached.resSig === null || cached.resSig === resourceSig)) {
+        nodes = cached.nodes;
+        plainText = cached.plainText;
+      } else {
+        const vo = valObj as Record<string, unknown>;
+        let usedRes = false;
+        nodes = parseRichDocNodes(vo.data ?? vo, resourcesMap, () => {
+          usedRes = true;
+        });
+        plainText = nodesToPlainText(nodes);
+        richBlockMemo.set(valObj, {
+          resSig: usedRes ? resourceSig : null,
+          plainText,
+          nodes,
+        });
+      }
+    } else if (typeof valObj === 'string') {
       nodes = parseRichDocNodes(valObj, resourcesMap);
-    } else if (valObj && typeof valObj === 'object') {
-      const vo = valObj as Record<string, unknown>;
-      nodes = parseRichDocNodes(vo.data ?? vo, resourcesMap);
+      plainText = nodesToPlainText(nodes);
     }
+
     const label =
       asStr(br.customLabel) || TEXT_BLOCK_LABELS_RU[key] || `Раздел (${key})`;
     const parsedEntry = {
       key,
       label,
-      plainText: nodesToPlainText(nodes),
+      plainText,
       nodes,
     };
     textByKey[key] = parsedEntry;

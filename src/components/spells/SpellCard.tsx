@@ -43,7 +43,7 @@ interface SpellCardProps {
   onClose?: () => void;
 }
 
-export const SpellCard: React.FC<SpellCardProps> = ({
+export const SpellCard: React.FC<SpellCardProps> = React.memo(({
   spell,
   highlighted,
   playerProfile,
@@ -759,4 +759,4 @@ export const SpellCard: React.FC<SpellCardProps> = ({
       </div>
     </article>
   );
-};
+});

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react';
 import {
   BookMarked,
   BookOpen,
@@ -84,12 +84,13 @@ export const SpellsPage: React.FC = () => {
 
   const [category, setCategory] = useState<SpellCategoryMode>('official');
   const [filters, setFilters] = useState<DndsuActiveFilters>(INITIAL_DNDSU_FILTERS);
+  const deferredFilters = useDeferredValue(filters);
   const [moreFiltersOpen, setMoreFiltersOpen] = useState(false);
   const [legendOpen, setLegendOpen] = useState(false);
   const [viewMode, setViewMode] = useState<'split' | 'grid'>('split');
   const [selectedSpellId, setSelectedSpellId] = useState<number | null>(null);
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
-  const [visibleLimit, setVisibleLimit] = useState<number>(600);
+  const [visibleLimit, setVisibleLimit] = useState<number>(240);
 
   const isPlayer = user?.role === 'player' && user.playerId !== null;
   const dmSelectedPlayerId = useCampaignStore((s) => s.dmSelectedPlayerId);
@@ -142,8 +143,8 @@ export const SpellsPage: React.FC = () => {
 
   // Reset pagination cap when switching category or filters
   useEffect(() => {
-    setVisibleLimit(category === 'official' ? 600 : 500);
-  }, [category, filters]);
+    setVisibleLimit(240);
+  }, [category, deferredFilters]);
 
   const allSpellsMap = useMemo(() => {
     const map = new Map<number, Spell>();
@@ -217,8 +218,8 @@ export const SpellsPage: React.FC = () => {
   }, [category, officialCombined, homebrewCombined, learnedRecords, allSpellsMap]);
 
   const filteredSpells = useMemo(
-    () => filterAndSortDndsuSpells(baseSpells, filters),
-    [baseSpells, filters]
+    () => filterAndSortDndsuSpells(baseSpells, deferredFilters),
+    [baseSpells, deferredFilters]
   );
 
   const displayedSpells = useMemo(

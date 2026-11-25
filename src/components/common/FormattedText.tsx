@@ -168,7 +168,7 @@ export function renderInlineFormatted(
  * strikethrough (~~), code (`), headings (###), bullet/ordered lists, quotes (>),
  * dividers (---), colored highlights ({gold:...}), and clickable dice rolls ([🎲 2к6+3]).
  */
-export const FormattedText: React.FC<FormattedTextProps> = ({
+export const FormattedText: React.FC<FormattedTextProps> = React.memo(({
   text,
   className = '',
   characterName,
@@ -293,4 +293,4 @@ export const FormattedText: React.FC<FormattedTextProps> = ({
   }
 
   return <div className={`space-y-2 leading-relaxed ${className}`}>{blocks}</div>;
-};
+});

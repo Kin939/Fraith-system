@@ -43,18 +43,19 @@ import {
   formatSigned,
   getXpProgressInfo,
   LssManualSpellRow,
+  LssMutableBundle,
   LssParsedResource,
   LssParsedSheet,
   LssParsedWeapon,
   LssRichParagraph,
-  mutateLssRawJson,
   packLssStructures,
-  parseFullLssSheet,
+  parseLssSheetFromObjects,
   plainTextToLssDoc,
   RollMode,
   rollD20WithModifier,
   rollDamageExpression,
   setLssField,
+  unwrapLssJsonMutable,
 } from '../../lib/lssSheetParser';
 import {
   LSS_RESOURCE_PRESETS,
@@ -65,6 +66,11 @@ import {
 } from '../../lib/lssResources';
 import { formatSpellCastBadge, SPELL_CAST_MODE_OPTIONS } from '../../lib/spellCasting';
 import { useCampaignStore } from '../../lib/store';
+import {
+  beginSheetNetworkSync,
+  endSheetNetworkSync,
+  markSheetLocalEdit,
+} from '../../lib/syncTracker';
 import type {
   CharacterProfile,
   JournalEntry,
@@ -131,52 +137,198 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
   const pushToast = useCampaignStore((s) => s.pushToast);
   const jumpToSpellInCatalog = useCampaignStore((s) => s.jumpToSpellInCatalog);
   const updateLearnedSpellsInStore = useCampaignStore((s) => s.updateLearnedSpellsInStore);
+  const updateCharacterProfileInStore = useCampaignStore((s) => s.updateCharacterProfileInStore);
+  const mergeCharacterMetadataInStore = useCampaignStore((s) => s.mergeCharacterMetadataInStore);
 
-  const [localRawJson, setLocalRawJson] = useState<string | null>(profile.rawLssJson ?? null);
+  // Zero-lag in-memory bundle + monotonic mutation sequence + single-flight coalesced sync queue
+  const initialParsed = useMemo(() => {
+    if (!profile.rawLssJson) return { bundle: null, parsed: null };
+    const bundle = unwrapLssJsonMutable(profile.rawLssJson);
+    const parsed = parseLssSheetFromObjects(bundle.sheet, bundle.root);
+    return { bundle, parsed };
+    // Only evaluated on initial mount; external updates go through the guarded effect below
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const bundleRef = useRef<LssMutableBundle | null>(initialParsed.bundle);
+  const liveSheetRef = useRef<LssParsedSheet | null>(initialParsed.parsed);
+  const [sheet, setSheet] = useState<LssParsedSheet | null>(initialParsed.parsed);
   const [dirtySaving, setDirtySaving] = useState(false);
+
+  const activePlayerIdRef = useRef(profile.playerId);
+  const lastAdoptedRawJsonRef = useRef<string | null>(profile.rawLssJson ?? null);
+  const mutationSeqRef = useRef(0);
+  const syncedSeqRef = useRef(0);
+  const syncInFlightRef = useRef(false);
   const debounceTimerRef = useRef<number | null>(null);
-  const latestJsonObjRef = useRef<unknown>(null);
 
-  useEffect(() => {
-    setLocalRawJson(profile.rawLssJson ?? null);
-  }, [profile.playerId, profile.rawLssJson]);
+  const adoptExternalRawJson = (nextRawJson: string | null) => {
+    lastAdoptedRawJsonRef.current = nextRawJson;
+    if (!nextRawJson) {
+      bundleRef.current = null;
+      liveSheetRef.current = null;
+      setSheet(null);
+      return;
+    }
+    const nextBundle = unwrapLssJsonMutable(nextRawJson);
+    const nextParsed = parseLssSheetFromObjects(nextBundle.sheet, nextBundle.root);
+    bundleRef.current = nextBundle;
+    liveSheetRef.current = nextParsed;
+    setSheet(nextParsed);
+  };
 
+  const flushSyncQueueRef = useRef<((keepaliveOnly?: boolean) => void) | null>(null);
+
+  flushSyncQueueRef.current = (keepaliveOnly = false) => {
+    const pid = activePlayerIdRef.current;
+    const bundle = bundleRef.current;
+    if (!bundle || mutationSeqRef.current <= syncedSeqRef.current) {
+      setDirtySaving(false);
+      return;
+    }
+
+    if (keepaliveOnly) {
+      try {
+        const packed = packLssStructures(bundle);
+        void fetch(`/api/player/${pid}/sync-lss`, {
+          method: 'POST',
+          credentials: 'include',
+          keepalive: true,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ lssJson: packed }),
+        });
+      } catch {
+        // Best-effort unload flush
+      }
+      return;
+    }
+
+    if (syncInFlightRef.current) {
+      // Single-flight: the currently running request will immediately re-flush in its `finally` block!
+      return;
+    }
+
+    syncInFlightRef.current = true;
+    const targetSeq = mutationSeqRef.current;
+    const packed = packLssStructures(bundle);
+    const serialized = JSON.stringify(packed);
+    lastAdoptedRawJsonRef.current = serialized;
+    beginSheetNetworkSync(pid, serialized);
+
+    void apiFetch<{ profile: CharacterProfile }>(`/api/player/${pid}/sync-lss`, {
+      method: 'POST',
+      body: JSON.stringify({ lssJson: packed }),
+    })
+      .then((res) => {
+        if (targetSeq > syncedSeqRef.current) {
+          syncedSeqRef.current = targetSeq;
+        }
+        const caughtUp = mutationSeqRef.current === targetSeq;
+        if (caughtUp) {
+          // Record the exact server rawLssJson BEFORE updating store so our prop effect skips re-parsing!
+          lastAdoptedRawJsonRef.current = res.profile.rawLssJson ?? serialized;
+          updateCharacterProfileInStore(pid, res.profile);
+        } else {
+          // User clicked/typed again while this save was in flight: keep live bundle untouched!
+          mergeCharacterMetadataInStore(pid, res.profile);
+        }
+      })
+      .catch(() => {
+        // Keep unsynced sequence so next interaction or manual refresh retries cleanly
+      })
+      .finally(() => {
+        syncInFlightRef.current = false;
+        const allCaughtUp = mutationSeqRef.current <= syncedSeqRef.current;
+        endSheetNetworkSync(pid, allCaughtUp);
+        if (!allCaughtUp) {
+          // Coalesce any additional spam clicks that arrived during flight into ONE single follow-up request
+          if (debounceTimerRef.current) window.clearTimeout(debounceTimerRef.current);
+          debounceTimerRef.current = window.setTimeout(() => {
+            debounceTimerRef.current = null;
+            flushSyncQueueRef.current?.(false);
+          }, 120);
+        } else {
+          setDirtySaving(false);
+        }
+      });
+  };
+
+  // Adopt external profile changes ONLY when switching players or when idle (never revert active edits!)
   useEffect(() => {
-    return () => {
+    const incomingRaw = profile.rawLssJson ?? null;
+
+    if (profile.playerId !== activePlayerIdRef.current) {
+      // Flush previous player's pending changes before switching slots
       if (debounceTimerRef.current) {
         window.clearTimeout(debounceTimerRef.current);
+        debounceTimerRef.current = null;
       }
+      flushSyncQueueRef.current?.(false);
+
+      activePlayerIdRef.current = profile.playerId;
+      mutationSeqRef.current = 0;
+      syncedSeqRef.current = 0;
+      syncInFlightRef.current = false;
+      setDirtySaving(false);
+      adoptExternalRawJson(incomingRaw);
+      return;
+    }
+
+    // Same player slot: skip if identical to our own latest save OR if local edits are pending/in-flight!
+    if (incomingRaw === lastAdoptedRawJsonRef.current) return;
+    if (mutationSeqRef.current > syncedSeqRef.current || syncInFlightRef.current) return;
+
+    adoptExternalRawJson(incomingRaw);
+  }, [profile.playerId, profile.rawLssJson]);
+
+  // Flush pending mutations on unmount (tab switch) or browser close (`pagehide`)
+  useEffect(() => {
+    const onPageHide = () => {
+      flushSyncQueueRef.current?.(true);
+    };
+    window.addEventListener('pagehide', onPageHide);
+    return () => {
+      window.removeEventListener('pagehide', onPageHide);
+      if (debounceTimerRef.current) {
+        window.clearTimeout(debounceTimerRef.current);
+        debounceTimerRef.current = null;
+      }
+      flushSyncQueueRef.current?.(false);
     };
   }, []);
 
-  const sheet = useMemo(() => parseFullLssSheet(localRawJson), [localRawJson]);
-
   const commitMutation = (
     mutator: (sheetObj: Record<string, unknown>, rootObj: Record<string, unknown>) => void,
-    immediate = false
+    quickFlush = false
   ) => {
     if (!canEdit) return;
-    const nextPacked = mutateLssRawJson(localRawJson, mutator);
-    const serialized = JSON.stringify(nextPacked);
-    setLocalRawJson(serialized);
-    latestJsonObjRef.current = nextPacked;
+    let bundle = bundleRef.current;
+    if (!bundle) {
+      bundle = unwrapLssJsonMutable(null);
+      bundleRef.current = bundle;
+    }
+
+    // 1. Mutate live in-memory object directly (<0.05ms, zero JSON.stringify/parse!)
+    mutator(bundle.sheet, bundle.root);
+
+    // 2. Recompute derived view state synchronously so even 200Hz rapid clicks never miss a delta
+    const nextParsed = parseLssSheetFromObjects(bundle.sheet, bundle.root);
+    liveSheetRef.current = nextParsed;
+    setSheet(nextParsed);
+
+    // 3. Mark dirty & schedule coalesced single-flight save (240ms for clicks, 420ms for typing)
+    mutationSeqRef.current += 1;
+    markSheetLocalEdit(profile.playerId);
     setDirtySaving(true);
 
     if (debounceTimerRef.current) {
       window.clearTimeout(debounceTimerRef.current);
+    }
+    const delayMs = quickFlush ? 240 : 420;
+    debounceTimerRef.current = window.setTimeout(() => {
       debounceTimerRef.current = null;
-    }
-
-    if (immediate) {
-      void onSyncJson(nextPacked).finally(() => setDirtySaving(false));
-    } else {
-      debounceTimerRef.current = window.setTimeout(() => {
-        const payload = latestJsonObjRef.current;
-        if (payload) {
-          void onSyncJson(payload).finally(() => setDirtySaving(false));
-        }
-      }, 480);
-    }
+      flushSyncQueueRef.current?.(false);
+    }, delayMs);
   };
 
   // Classic 3-page navigation & controls
@@ -347,11 +499,17 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
 
   const handleCreateBlankSheet = async () => {
     if (!canEdit) return;
-    const blank = packLssStructures(createBlankLssStructures('Новый герой'));
-    setLocalRawJson(JSON.stringify(blank));
+    const blankBundle = createBlankLssStructures('Новый герой');
+    const blankPacked = packLssStructures(blankBundle);
+    const serialized = JSON.stringify(blankPacked);
+    lastAdoptedRawJsonRef.current = serialized;
+    bundleRef.current = blankBundle;
+    const nextParsed = parseLssSheetFromObjects(blankBundle.sheet, blankBundle.root);
+    liveSheetRef.current = nextParsed;
+    setSheet(nextParsed);
     setEditUnlocked(true);
     setHeroModalOpen(true);
-    await onSyncJson(blank);
+    await onSyncJson(blankPacked);
     pushToast({
       title: 'Создан классический лист персонажа',
       message: 'Заполните имя, класс, характеристики и снаряжение прямо в листе.',
@@ -359,7 +517,55 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
     });
   };
 
-  // DM-only Experience Point handler
+  // Optimistic coalesced DM-only Experience Point handler (spamming +50/+100 is instant & never reverts!)
+  const [optimisticXp, setOptimisticXp] = useState<number | null>(null);
+  const pendingXpDeltaRef = useRef(0);
+  const xpFlushTimerRef = useRef<number | null>(null);
+  const xpInFlightRef = useRef(false);
+
+  useEffect(() => {
+    setOptimisticXp(null);
+    pendingXpDeltaRef.current = 0;
+  }, [profile.playerId]);
+
+  const flushPendingXpDelta = useRef<(() => void) | null>(null);
+  flushPendingXpDelta.current = () => {
+    if (xpInFlightRef.current || pendingXpDeltaRef.current === 0) return;
+    const deltaToSend = pendingXpDeltaRef.current;
+    pendingXpDeltaRef.current = 0;
+    xpInFlightRef.current = true;
+    const pid = profile.playerId;
+
+    void apiFetch<{ profile: CharacterProfile }>(`/api/dm/characters/${pid}/xp`, {
+      method: 'POST',
+      body: JSON.stringify({ delta: deltaToSend }),
+    })
+      .then((res) => {
+        if (pendingXpDeltaRef.current === 0) {
+          setOptimisticXp(null);
+          mergeCharacterMetadataInStore(pid, res.profile);
+          if (bundleRef.current) {
+            const infoObj = ensureObj(bundleRef.current.sheet, 'info');
+            setLssField(infoObj, 'experience', res.profile.experienceCurrent);
+          }
+        }
+      })
+      .catch((err) => {
+        setOptimisticXp(null);
+        pushToast({
+          title: 'Ошибка изменения опыта',
+          message: err instanceof Error ? err.message : 'Доступно только Мастеру',
+          variant: 'error',
+        });
+      })
+      .finally(() => {
+        xpInFlightRef.current = false;
+        if (pendingXpDeltaRef.current !== 0) {
+          flushPendingXpDelta.current?.();
+        }
+      });
+  };
+
   const handleDmUpdateXp = async (payload: {
     delta?: number;
     setXp?: number;
@@ -367,6 +573,26 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
     levelUp?: boolean;
   }) => {
     if (!isDm) return;
+
+    // Fast optimistic path for rapid +XP / -XP button clicks!
+    if (
+      typeof payload.delta === 'number' &&
+      payload.setXp === undefined &&
+      payload.setMaxXp === undefined &&
+      !payload.levelUp
+    ) {
+      const baseCur = optimisticXp ?? profile.experienceCurrent ?? liveSheetRef.current?.experience ?? 0;
+      const nextCur = Math.max(0, Math.trunc(baseCur + payload.delta));
+      setOptimisticXp(nextCur);
+      pendingXpDeltaRef.current += payload.delta;
+      if (xpFlushTimerRef.current) window.clearTimeout(xpFlushTimerRef.current);
+      xpFlushTimerRef.current = window.setTimeout(() => {
+        xpFlushTimerRef.current = null;
+        flushPendingXpDelta.current?.();
+      }, 240);
+      return;
+    }
+
     setXpSaving(true);
     try {
       const res = await apiFetch<{ profile: CharacterProfile }>(
@@ -376,6 +602,21 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
           body: JSON.stringify(payload),
         }
       );
+      setOptimisticXp(null);
+      mergeCharacterMetadataInStore(profile.playerId, res.profile);
+      if (bundleRef.current) {
+        const infoObj = ensureObj(bundleRef.current.sheet, 'info');
+        setLssField(infoObj, 'experience', res.profile.experienceCurrent);
+        if (payload.levelUp) {
+          setLssField(infoObj, 'level', res.profile.level);
+          const nextParsed = parseLssSheetFromObjects(
+            bundleRef.current.sheet,
+            bundleRef.current.root
+          );
+          liveSheetRef.current = nextParsed;
+          setSheet(nextParsed);
+        }
+      }
       onProfileUpdated?.(res.profile);
       if (payload.levelUp) {
         pushToast({
@@ -396,10 +637,11 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
   };
 
   const adjustHp = (delta: number) => {
-    if (!canEdit || !sheet) return;
-    const maxHp = sheet.combat.hpMaxComputed;
-    let nextTemp = sheet.combat.hpTemp;
-    let nextCur = sheet.combat.hpCurrent;
+    const curSheet = liveSheetRef.current;
+    if (!canEdit || !curSheet) return;
+    const maxHp = curSheet.combat.hpMaxComputed;
+    let nextTemp = curSheet.combat.hpTemp;
+    let nextCur = curSheet.combat.hpCurrent;
 
     if (delta < 0) {
       let dmg = Math.abs(delta);
@@ -424,15 +666,16 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
   };
 
   const handleSpendHitDie = () => {
-    if (!canEdit || !sheet || sheet.combat.hitDiceCurrent <= 0) return;
-    const dieFormula = sheet.combat.hitDie.replace(/^(\d*)/, '1');
-    const conMod = sheet.abilities.con.mod;
+    const curSheet = liveSheetRef.current;
+    if (!canEdit || !curSheet || curSheet.combat.hitDiceCurrent <= 0) return;
+    const dieFormula = curSheet.combat.hitDie.replace(/^(\d*)/, '1');
+    const conMod = curSheet.abilities.con.mod;
     const expr =
       conMod === 0 ? dieFormula : conMod > 0 ? `${dieFormula}+${conMod}` : `${dieFormula}${conMod}`;
     const rolled = rollDamageExpression(expr);
     const healed = Math.max(1, rolled.numericTotal);
-    const nextHp = Math.min(sheet.combat.hpMaxComputed, sheet.combat.hpCurrent + healed);
-    const nextDice = Math.max(0, sheet.combat.hitDiceCurrent - 1);
+    const nextHp = Math.min(curSheet.combat.hpMaxComputed, curSheet.combat.hpCurrent + healed);
+    const nextDice = Math.max(0, curSheet.combat.hitDiceCurrent - 1);
 
     commitMutation((s) => {
       const vit = ensureObj(s, 'vitality');
@@ -580,9 +823,10 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
 
     if (!canEdit) return;
     commitMutation((s) => {
+      const live = liveSheetRef.current ?? sheet;
       const vit = ensureObj(s, 'vitality');
-      let succ = sheet.deathSaves.success;
-      let fail = sheet.deathSaves.fail;
+      let succ = live.deathSaves.success;
+      let fail = live.deathSaves.fail;
 
       if (res.rawD20 === 20) {
         setLssField(vit, 'hp-current', 1);
@@ -775,52 +1019,54 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
   };
 
   const handleRollResourceDie = (res: LssParsedResource, spendCharge: boolean) => {
-    if (!res.dieResolved) return;
+    const liveRes = liveSheetRef.current?.resources.find((x) => x.id === res.id) ?? res;
+    if (!liveRes.dieResolved) return;
     if (spendCharge) {
       if (!canEdit) return;
-      if (res.current <= 0) {
+      if (liveRes.current <= 0) {
         pushToast({
           title: 'Нет доступных костей/зарядов',
-          message: `Ресурс «${res.name}» исчерпан (0 / ${res.max}).`,
+          message: `Ресурс «${liveRes.name}» исчерпан (0 / ${liveRes.max}).`,
           variant: 'warning',
         });
         return;
       }
       commitMutation((s) => {
         const ro = ensureObj(s, 'resources');
-        const t = ensureObj(ro, res.id);
-        t.current = Math.max(0, res.current - 1);
+        const t = ensureObj(ro, liveRes.id);
+        t.current = Math.max(0, liveRes.current - 1);
       }, true);
     }
     handleDamageRoll(
-      `${res.glyph} ${res.name}${spendCharge ? ' (-1 заряд)' : ''}`,
-      res.dieResolved
+      `${liveRes.glyph} ${liveRes.name}${spendCharge ? ' (-1 заряд)' : ''}`,
+      liveRes.dieResolved
     );
   };
 
   const handleSpendResourceAmount = (res: LssParsedResource, delta: number) => {
     if (!canEdit) return;
+    const liveRes = liveSheetRef.current?.resources.find((x) => x.id === res.id) ?? res;
     const abs = Math.abs(delta);
-    if (delta < 0 && res.spendLimit > 0 && abs > res.spendLimit) {
+    if (delta < 0 && liveRes.spendLimit > 0 && abs > liveRes.spendLimit) {
       pushToast({
         title: 'Превышен лимит траты (Пси-лимит)',
-        message: `За один раз нельзя потратить больше ${res.spendLimit} ед. ресурса «${res.name}».`,
+        message: `За один раз нельзя потратить больше ${liveRes.spendLimit} ед. ресурса «${liveRes.name}».`,
         variant: 'warning',
       });
       return;
     }
-    if (delta < 0 && res.current < abs) {
+    if (delta < 0 && liveRes.current < abs) {
       pushToast({
         title: 'Недостаточно зарядов',
-        message: `В «${res.name}» осталось ${res.current} из ${abs} требуемых.`,
+        message: `В «${liveRes.name}» осталось ${liveRes.current} из ${abs} требуемых.`,
         variant: 'warning',
       });
       return;
     }
-    const nextVal = Math.min(res.max, Math.max(0, res.current + delta));
+    const nextVal = Math.min(liveRes.max, Math.max(0, liveRes.current + delta));
     commitMutation((s) => {
       const ro = ensureObj(s, 'resources');
-      const t = ensureObj(ro, res.id);
+      const t = ensureObj(ro, liveRes.id);
       t.current = nextVal;
     }, true);
   };
@@ -855,8 +1101,9 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
     resourceId: string;
     note: string;
   }) => {
-    if (!sheet) return;
-    const heroName = sheet.name || profile.characterName || `Игрок ${profile.playerId}`;
+    const liveSheet = liveSheetRef.current;
+    if (!liveSheet) return;
+    const heroName = liveSheet.name || profile.characterName || `Игрок ${profile.playerId}`;
 
     if (params.mode === 'at_will' || params.spellLevel === 0) {
       pushToast({
@@ -883,7 +1130,9 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
       params.mode === 'short_rest' ||
       params.mode === 'custom'
     ) {
-      const remaining = Math.max(0, params.maxUses - params.used);
+      const liveCfg = liveSheet.spellcasting.castConfigs[params.configKey];
+      const liveUsed = liveCfg ? liveCfg.used : params.used;
+      const remaining = Math.max(0, params.maxUses - liveUsed);
       if (remaining <= 0) {
         pushToast({
           title: `Заряды «${params.spellName}» исчерпаны`,
@@ -897,7 +1146,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
         });
         return;
       }
-      const nextUsed = Math.min(params.maxUses, params.used + 1);
+      const nextUsed = Math.min(params.maxUses, liveUsed + 1);
       commitMutation((s) => {
         const cfgObj = ensureObj(s, 'spellCastConfigs');
         cfgObj[params.configKey] = {
@@ -920,8 +1169,8 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
 
     if (params.mode === 'resource') {
       const targetRes =
-        sheet.resources.find((r) => r.id === params.resourceId) ??
-        sheet.resources.find(
+        liveSheet.resources.find((r) => r.id === params.resourceId) ??
+        liveSheet.resources.find(
           (r) => params.note && r.name.toLowerCase().includes(params.note.toLowerCase())
         );
       if (!targetRes) {
@@ -949,14 +1198,15 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
         });
         return;
       }
+      const nextCurrent = Math.max(0, targetRes.current - cost);
       commitMutation((s) => {
         const ro = ensureObj(s, 'resources');
         const t = ensureObj(ro, targetRes.id);
-        t.current = Math.max(0, targetRes.current - cost);
+        t.current = nextCurrent;
       }, true);
       pushToast({
         title: `✦ ${heroName} применяет «${params.spellName}»`,
-        message: `Потрачено ${cost} из «${targetRes.name}» (осталось ${targetRes.current - cost}/${targetRes.max}).`,
+        message: `Потрачено ${cost} из «${targetRes.name}» (осталось ${nextCurrent}/${targetRes.max}).`,
         variant: 'success',
       });
       return;
@@ -965,13 +1215,13 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
     // Standard slot casting: find lowest available slot >= spellLevel (or Pact slot >= spellLevel)
     let chosenSlotLevel: number | null = null;
     for (let lvl = Math.max(1, params.spellLevel); lvl <= 9; lvl++) {
-      const info = sheet.spellcasting.slotsByLevel[lvl];
+      const info = liveSheet.spellcasting.slotsByLevel[lvl];
       if (info && info.total - info.expended > 0) {
         chosenSlotLevel = lvl;
         break;
       }
     }
-    const pact = sheet.spellcasting.pactSlots;
+    const pact = liveSheet.spellcasting.pactSlots;
     const pactAvail = pact.total - pact.expended > 0 && pact.level >= params.spellLevel;
 
     if (chosenSlotLevel === null && !pactAvail) {
@@ -1000,7 +1250,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
         variant: 'success',
       });
     } else if (chosenSlotLevel !== null) {
-      const slotInfo = sheet.spellcasting.slotsByLevel[chosenSlotLevel];
+      const slotInfo = liveSheet.spellcasting.slotsByLevel[chosenSlotLevel];
       commitMutation((s) => {
         const sp = ensureObj(s, 'spells');
         const cur = ensureObj(sp, `slots-${chosenSlotLevel}`);
@@ -1274,7 +1524,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
     );
   }
 
-  const effectiveXp = profile.experienceCurrent ?? sheet.experience ?? 0;
+  const effectiveXp = optimisticXp ?? profile.experienceCurrent ?? sheet.experience ?? 0;
   const xpInfo = getXpProgressInfo(sheet.level, effectiveXp, profile.experienceMax ?? 0);
   const hpRatio = Math.min(
     100,
@@ -1331,11 +1581,12 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                     type="button"
                     onClick={() =>
                       commitMutation((s) => {
+                        const curBase = liveSheetRef.current?.abilities[code].baseScore ?? ab.baseScore;
                         const st = ensureObj(s, 'stats');
                         const cur = ensureObj(st, code);
                         cur.name = code;
-                        cur.score = Math.max(1, ab.baseScore - 1);
-                      })
+                        cur.score = Math.max(1, curBase - 1);
+                      }, true)
                     }
                     className="w-5 h-6 rounded bg-surface border border-border text-xs font-bold hover:border-primary"
                   >
@@ -1360,11 +1611,12 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                     type="button"
                     onClick={() =>
                       commitMutation((s) => {
+                        const curBase = liveSheetRef.current?.abilities[code].baseScore ?? ab.baseScore;
                         const st = ensureObj(s, 'stats');
                         const cur = ensureObj(st, code);
                         cur.name = code;
-                        cur.score = Math.min(30, ab.baseScore + 1);
-                      })
+                        cur.score = Math.min(30, curBase + 1);
+                      }, true)
                     }
                     className="w-5 h-6 rounded bg-surface border border-border text-xs font-bold hover:border-primary"
                   >
@@ -2047,7 +2299,6 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                     <button
                       key={delta}
                       type="button"
-                      disabled={xpSaving}
                       onClick={() => void handleDmUpdateXp({ delta })}
                       className={`px-2 py-0.5 rounded-lg text-[11px] font-bold border transition-colors ${
                         delta < 0
@@ -4512,8 +4763,9 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                             const n = Math.abs(Number(coinDelta));
                             if (!n) return;
                             commitMutation((s) => {
+                              const curCoin = liveSheetRef.current?.coins[coinType] ?? sheet.coins[coinType];
                               const cObj = ensureObj(s, 'coins');
-                              setLssField(cObj, coinType, sheet.coins[coinType] + n);
+                              setLssField(cObj, coinType, curCoin + n);
                             }, true);
                             setCoinDelta('');
                           }}
@@ -4527,11 +4779,12 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                             const n = Math.abs(Number(coinDelta));
                             if (!n) return;
                             commitMutation((s) => {
+                              const curCoin = liveSheetRef.current?.coins[coinType] ?? sheet.coins[coinType];
                               const cObj = ensureObj(s, 'coins');
                               setLssField(
                                 cObj,
                                 coinType,
-                                Math.max(0, sheet.coins[coinType] - n)
+                                Math.max(0, curCoin - n)
                               );
                             }, true);
                             setCoinDelta('');
@@ -4842,55 +5095,54 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
   );
 };
 
-const RichNodesView: React.FC<{ nodes: LssRichParagraph[]; characterName?: string }> = ({
-  nodes,
-  characterName,
-}) => (
-  <div className="space-y-2 text-xs text-text/90 leading-relaxed">
-    {nodes.map((node, idx) => {
-      if (node.kind === 'divider') {
-        return <hr key={idx} className="border-border/70 my-2" />;
-      }
-      if (node.kind === 'bullet') {
-        return (
-          <ul key={idx} className="list-disc pl-4 space-y-1 marker:text-primary">
-            {node.items?.map((it, i) => (
-              <li key={i}>
-                <FormattedText text={it} characterName={characterName} />
-              </li>
-            ))}
-          </ul>
-        );
-      }
-      if (node.kind === 'ordered') {
-        return (
-          <ol key={idx} className="list-decimal pl-4 space-y-1 marker:text-accent">
-            {node.items?.map((it, i) => (
-              <li key={i}>
-                <FormattedText text={it} characterName={characterName} />
-              </li>
-            ))}
-          </ol>
-        );
-      }
-      if (node.kind === 'spoiler') {
-        return (
-          <details
-            key={idx}
-            className="rounded-xl bg-surface/80 border border-border px-3 py-2"
-          >
-            <summary className="cursor-pointer font-semibold text-accent">
-              {node.title}
-            </summary>
-            <div className="mt-1.5 text-text/90">
-              <FormattedText text={node.text} characterName={characterName} />
-            </div>
-          </details>
-        );
-      }
-      return <FormattedText key={idx} text={node.text} characterName={characterName} />;
-    })}
-  </div>
+const RichNodesView: React.FC<{ nodes: LssRichParagraph[]; characterName?: string }> = React.memo(
+  ({ nodes, characterName }) => (
+    <div className="space-y-2 text-xs text-text/90 leading-relaxed">
+      {nodes.map((node, idx) => {
+        if (node.kind === 'divider') {
+          return <hr key={idx} className="border-border/70 my-2" />;
+        }
+        if (node.kind === 'bullet') {
+          return (
+            <ul key={idx} className="list-disc pl-4 space-y-1 marker:text-primary">
+              {node.items?.map((it, i) => (
+                <li key={i}>
+                  <FormattedText text={it} characterName={characterName} />
+                </li>
+              ))}
+            </ul>
+          );
+        }
+        if (node.kind === 'ordered') {
+          return (
+            <ol key={idx} className="list-decimal pl-4 space-y-1 marker:text-accent">
+              {node.items?.map((it, i) => (
+                <li key={i}>
+                  <FormattedText text={it} characterName={characterName} />
+                </li>
+              ))}
+            </ol>
+          );
+        }
+        if (node.kind === 'spoiler') {
+          return (
+            <details
+              key={idx}
+              className="rounded-xl bg-surface/80 border border-border px-3 py-2"
+            >
+              <summary className="cursor-pointer font-semibold text-accent">
+                {node.title}
+              </summary>
+              <div className="mt-1.5 text-text/90">
+                <FormattedText text={node.text} characterName={characterName} />
+              </div>
+            </details>
+          );
+        }
+        return <FormattedText key={idx} text={node.text} characterName={characterName} />;
+      })}
+    </div>
+  )
 );
 
 interface ClassicTextBoxProps {
@@ -4910,7 +5162,11 @@ const ClassicTextBox: React.FC<ClassicTextBoxProps> = ({
   onEdit,
   minHeight = 'min-h-[140px]',
 }) => {
-  const combined = [...(primaryNodes ?? []), ...(secondaryNodes ?? [])];
+  const combined = useMemo(() => {
+    if (!secondaryNodes?.length) return primaryNodes ?? [];
+    if (!primaryNodes?.length) return secondaryNodes;
+    return [...primaryNodes, ...secondaryNodes];
+  }, [primaryNodes, secondaryNodes]);
   return (
     <div className="sheet-frame overflow-hidden">
       <div className="sheet-frame__header">
