@@ -1,0 +1,100 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: #0f0f1a;
+  --surface: #1a1a2e;
+  --primary: #a855f7;
+  --accent: #22d3ee;
+  --text: #f4f4fe;
+  --text-muted: #94a3b8;
+  --border: #2e2e4d;
+  --glow: rgba(168, 85, 247, 0.42);
+}
+
+@layer base {
+  body {
+    background-color: var(--bg);
+    color: var(--text);
+    font-family: 'Noto Sans', system-ui, sans-serif;
+    background-image:
+      radial-gradient(circle at 15% 10%, var(--glow) 0%, transparent 32%),
+      radial-gradient(circle at 88% 85%, color-mix(in srgb, var(--accent) 18%, transparent) 0%, transparent 34%),
+      linear-gradient(rgba(255, 255, 255, 0.018) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255, 255, 255, 0.018) 1px, transparent 1px);
+    background-size: 100% 100%, 100% 100%, 36px 36px, 36px 36px;
+    background-attachment: fixed;
+    min-height: 100vh;
+  }
+
+  h1, h2, h3, h4, .font-anime {
+    font-family: 'M PLUS Rounded 1c', 'Zen Maru Gothic', system-ui, sans-serif;
+  }
+}
+
+@layer components {
+  .glass-panel {
+    background: color-mix(in srgb, var(--surface) 82%, transparent);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid var(--border);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.42);
+  }
+
+  .neon-border {
+    border: 1px solid color-mix(in srgb, var(--primary) 65%, var(--border));
+    box-shadow: 0 0 18px var(--glow);
+  }
+
+  .anime-input {
+    background: color-mix(in srgb, var(--bg) 78%, var(--surface));
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 0.875rem;
+    padding: 0.625rem 0.875rem;
+    transition: border-color 150ms ease, box-shadow 150ms ease;
+  }
+
+  .anime-input:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 24%, transparent);
+  }
+
+  .anime-btn-primary {
+    background: linear-gradient(135deg, var(--primary), color-mix(in srgb, var(--primary) 68%, var(--accent)));
+    color: #ffffff;
+    font-weight: 700;
+    border-radius: 0.875rem;
+    box-shadow: 0 0 18px var(--glow);
+    transition: transform 140ms ease, filter 140ms ease, opacity 140ms ease;
+  }
+
+  .anime-btn-primary:hover:not(:disabled) {
+    filter: brightness(1.1);
+    transform: translateY(-1px);
+  }
+
+  .anime-btn-primary:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    box-shadow: none;
+  }
+}
+
+/* Custom sleek scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--primary);
+}

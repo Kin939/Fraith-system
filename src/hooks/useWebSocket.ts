@@ -1,0 +1,199 @@
+import { useCallback, useEffect, useRef } from 'react';
+import { OnlineMember, useCampaignStore } from '../lib/store';
+import type {
+  CampaignWsMessage,
+  CharacterProfile,
+  JournalEntry,
+  LearnedSpellRecord,
+  PlayerId,
+  PurchasedTalent,
+  Quest,
+  RollLogEntry,
+  Spell,
+  TalentNode,
+  ThemeVariables,
+} from '../lib/types';
+
+let sharedSocket: WebSocket | null = null;
+
+export function sendCampaignSocketMessage(type: string, payload: unknown): boolean {
+  if (sharedSocket && sharedSocket.readyState === WebSocket.OPEN) {
+    sharedSocket.send(JSON.stringify({ type, payload }));
+    return true;
+  }
+  return false;
+}
+
+export function useWebSocket() {
+  const user = useCampaignStore((s) => s.user);
+  const reconnectTimerRef = useRef<number | null>(null);
+  const pingTimerRef = useRef<number | null>(null);
+
+  const connect = useCallback(() => {
+    if (!user) return;
+    if (sharedSocket && (sharedSocket.readyState === WebSocket.OPEN || sharedSocket.readyState === WebSocket.CONNECTING)) {
+      return;
+    }
+
+    const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${proto}//${window.location.host}/api/ws`;
+    const ws = new WebSocket(wsUrl);
+    sharedSocket = ws;
+
+    ws.onopen = () => {
+      useCampaignStore.getState().setWsConnected(true);
+      if (pingTimerRef.current) window.clearInterval(pingTimerRef.current);
+      pingTimerRef.current = window.setInterval(() => {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: 'ping' }));
+        }
+      }, 25000);
+    };
+
+    ws.onmessage = (ev) => {
+      try {
+        const msg = JSON.parse(String(ev.data)) as CampaignWsMessage;
+        const store = useCampaignStore.getState();
+
+        switch (msg.type) {
+          case 'connected':
+          case 'presence:update': {
+            const p = msg.payload as { online?: OnlineMember[] };
+            if (Array.isArray(p?.online)) {
+              store.setOnlineUsers(p.online);
+            }
+            break;
+          }
+          case 'quests:updated': {
+            const p = msg.payload as { quests?: Quest[] };
+            if (Array.isArray(p?.quests)) {
+              store.setQuests(p.quests);
+            }
+            break;
+          }
+          case 'bestiary:updated': {
+            void store.refreshBestiary();
+            break;
+          }
+          case 'spells:updated': {
+            const p = msg.payload as { spells?: Spell[] };
+            if (Array.isArray(p?.spells)) {
+              store.setSpells(p.spells);
+            }
+            break;
+          }
+          case 'learned_spells:updated': {
+            const p = msg.payload as {
+              playerId?: PlayerId;
+              learnedSpells?: LearnedSpellRecord[];
+            };
+            if (p?.playerId && Array.isArray(p.learnedSpells)) {
+              store.updateLearnedSpellsInStore(p.playerId, p.learnedSpells);
+            }
+            break;
+          }
+          case 'talents:updated': {
+            const p = msg.payload as {
+              inspirationPoints: number;
+              nodes: TalentNode[];
+              purchases: PurchasedTalent[];
+            };
+            if (p && Array.isArray(p.nodes)) {
+              store.setTalentsBundle(p);
+            }
+            break;
+          }
+          case 'inspiration:updated': {
+            const p = msg.payload as { inspirationPoints?: number };
+            if (typeof p?.inspirationPoints === 'number') {
+              store.setInspirationPoints(p.inspirationPoints);
+            }
+            break;
+          }
+          case 'journal:updated': {
+            const p = msg.payload as { playerId?: PlayerId; journal?: JournalEntry };
+            if (p?.playerId && p.journal) {
+              store.updateJournalInStore(p.playerId, p.journal);
+            }
+            break;
+          }
+          case 'character:updated': {
+            const p = msg.payload as { playerId?: PlayerId; profile?: CharacterProfile };
+            if (p?.playerId && p.profile) {
+              store.updateCharacterProfileInStore(p.playerId, p.profile);
+            }
+            break;
+          }
+          case 'lss:roll': {
+            const roll = msg.payload as RollLogEntry;
+            if (roll && roll.title) {
+              store.prependRoll(roll);
+              if (msg.senderId !== store.user?.id) {
+                store.pushToast({
+                  title: `🎲 ${roll.characterName}: ${roll.title}`,
+                  message: `${roll.breakdown || roll.formula} → Итог: ${roll.total}`,
+                  variant: roll.isCrit
+                    ? roll.critKind === 'failure'
+                      ? 'error'
+                      : 'success'
+                    : 'info',
+                });
+              }
+            }
+            break;
+          }
+          case 'theme:updated': {
+            const p = msg.payload as { userId?: number; theme?: ThemeVariables };
+            if (p?.theme && (!p.userId || p.userId === store.user?.id)) {
+              store.applyLiveTheme(p.theme);
+              store.pushToast({
+                title: 'Тема обновлена Мастером',
+                message: 'Новое неоновое оформление применено в реальном времени.',
+                variant: 'info',
+              });
+            }
+            break;
+          }
+          default:
+            break;
+        }
+      } catch {
+        // Ignore malformed WS message
+      }
+    };
+
+    ws.onclose = () => {
+      useCampaignStore.getState().setWsConnected(false);
+      sharedSocket = null;
+      if (pingTimerRef.current) {
+        window.clearInterval(pingTimerRef.current);
+        pingTimerRef.current = null;
+      }
+      if (useCampaignStore.getState().user) {
+        reconnectTimerRef.current = window.setTimeout(connect, 3000);
+      }
+    };
+
+    ws.onerror = () => {
+      ws.close();
+    };
+  }, [user]);
+
+  useEffect(() => {
+    if (!user) {
+      if (sharedSocket) {
+        sharedSocket.close();
+        sharedSocket = null;
+      }
+      return;
+    }
+
+    connect();
+
+    return () => {
+      if (reconnectTimerRef.current) {
+        window.clearTimeout(reconnectTimerRef.current);
+      }
+    };
+  }, [user, connect]);
+}

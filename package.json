@@ -1,0 +1,41 @@
+{
+  "name": "fraith-system",
+  "private": true,
+  "version": "1.0.0",
+  "description": "D&D 5e Campaign Portal (3 Players + 1 DM) on Cloudflare Pages, Workers, D1, R2 & Durable Objects with Long Story Short integration",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0 --port 5173",
+    "dev:do": "wrangler dev -c wrangler.do.toml --port 8789",
+    "dev:pages": "wrangler pages dev dist --ip 0.0.0.0 --port 8788 --d1 DB --r2 BUCKET --do CAMPAIGN_DO=CampaignRoom@fraith-campaign-do",
+    "build": "tsc -p tsconfig.app.json --noEmit && tsc -p tsconfig.worker.json --noEmit && vite build",
+    "db:migrate:local": "wrangler d1 migrations apply fraith-dnd-db --local",
+    "db:migrate:remote": "wrangler d1 migrations apply fraith-dnd-db --remote",
+    "deploy:do": "wrangler deploy -c wrangler.do.toml",
+    "deploy:pages": "npm run build && wrangler pages deploy dist --project-name fraith-system",
+    "deploy": "npm run deploy:do && npm run db:migrate:remote && npm run deploy:pages"
+  },
+  "dependencies": {
+    "@longstoryshort/vtt-sdk": "^0.9.0",
+    "bcryptjs": "^2.4.3",
+    "hono": "^4.7.0",
+    "lucide-react": "^0.468.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "zustand": "^5.0.2"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250214.0",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "autoprefixer": "^10.4.20",
+    "concurrently": "^9.1.0",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.5",
+    "wrangler": "^3.109.0"
+  }
+}
