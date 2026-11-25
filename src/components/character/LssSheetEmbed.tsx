@@ -11,10 +11,12 @@ import {
   Dices,
   ExternalLink,
   FileJson,
+  Globe,
+  Info,
   Lock,
   MousePointerClick,
   RefreshCw,
-  ShieldCheck,
+  ScrollText,
   Upload,
 } from 'lucide-react';
 import { apiFetch } from '../../lib/api';
@@ -25,6 +27,7 @@ import {
 } from '../../lib/lss';
 import { useCampaignStore } from '../../lib/store';
 import type { CharacterProfile, PlayerId } from '../../lib/types';
+import { LssNativeSheet } from './LssNativeSheet';
 
 interface LssSheetEmbedProps {
   playerId: PlayerId;
@@ -49,13 +52,16 @@ export const LssSheetEmbed: React.FC<LssSheetEmbedProps> = ({
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const pushToast = useCampaignStore((s) => s.pushToast);
 
+  const [sheetMode, setSheetMode] = useState<'native' | 'iframe'>('native');
   const [iframeKey, setIframeKey] = useState(0);
   const [manifestSystem, setManifestSystem] = useState<string | null>(null);
   const [lastEventBadge, setLastEventBadge] = useState<string>('Ожидание событий postMessage');
   const [strictPointerLock, setStrictPointerLock] = useState<boolean>(isReadOnlyViewer);
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [jsonText, setJsonText] = useState('');
-  const [embedUrlDraft, setEmbedUrlDraft] = useState(profile.lssEmbedUrl || LSS_CHARACTER_LIST_EMBED_URL);
+  const [embedUrlDraft, setEmbedUrlDraft] = useState(
+    profile.lssEmbedUrl || LSS_CHARACTER_LIST_EMBED_URL
+  );
   const [importing, setImporting] = useState(false);
 
   useEffect(() => {
@@ -72,6 +78,7 @@ export const LssSheetEmbed: React.FC<LssSheetEmbedProps> = ({
   const embedUrl = profile.lssEmbedUrl || LSS_CHARACTER_LIST_EMBED_URL;
 
   useEffect(() => {
+    if (sheetMode !== 'iframe') return;
     const iframeEl = iframeRef.current;
     if (!iframeEl) return;
 
@@ -94,7 +101,8 @@ export const LssSheetEmbed: React.FC<LssSheetEmbedProps> = ({
       void apiFetch('/api/rolls', {
         method: 'POST',
         body: JSON.stringify({
-          characterName: roll.characterName || profile.characterName || `Игрок ${profile.playerId}`,
+          characterName:
+            roll.characterName || profile.characterName || `Игрок ${profile.playerId}`,
           title: roll.title,
           formula: roll.formula,
           breakdown: roll.breakdown,
@@ -134,9 +142,36 @@ export const LssSheetEmbed: React.FC<LssSheetEmbedProps> = ({
       unsubEvent();
       source.dispose();
     };
-  }, [iframeKey, profile.playerId, profile.characterName, isReadOnlyViewer, onSyncHealth, pushToast]);
+  }, [
+    sheetMode,
+    iframeKey,
+    profile.playerId,
+    profile.characterName,
+    isReadOnlyViewer,
+    onSyncHealth,
+    pushToast,
+  ]);
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleQuickUploadFile = async (file: File) => {
+    try {
+      const rawText = await file.text();
+      const parsed = JSON.parse(rawText) as unknown;
+      await onSyncJson(parsed);
+      pushToast({
+        title: 'Чарник импортирован',
+        message: `Файл «${file.name}» успешно разобран и открыт в интерактивном листе.`,
+        variant: 'success',
+      });
+    } catch (err) {
+      pushToast({
+        title: 'Ошибка чтения .json файла',
+        message: err instanceof Error ? err.message : 'Проверьте экспорт из Long Story Short',
+        variant: 'error',
+      });
+    }
+  };
+
+  const handleFileUploadInModal = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     const text = await file.text();
@@ -158,10 +193,14 @@ export const LssSheetEmbed: React.FC<LssSheetEmbedProps> = ({
       });
       setImportModalOpen(false);
       setJsonText('');
+      if (parsed) setSheetMode('native');
     } catch (err) {
       pushToast({
         title: 'Ошибка импорта JSON',
-        message: err instanceof Error ? err.message : 'Проверьте корректность .json файла Long Story Short',
+        message:
+          err instanceof Error
+            ? err.message
+            : 'Проверьте корректность .json файла Long Story Short',
         variant: 'error',
       });
     } finally {
@@ -171,7 +210,6 @@ export const LssSheetEmbed: React.FC<LssSheetEmbedProps> = ({
 
   const handleTestRollBroadcast = async () => {
     const d20 = Math.floor(Math.random() * 20) + 1;
-    const total = d20;
     const isCrit = d20 === 20 || d20 === 1;
     const critKind = d20 === 20 ? 'success' : d20 === 1 ? 'failure' : undefined;
     const rollerName = profile.characterName || `Игрок ${profile.playerId}`;
@@ -182,56 +220,84 @@ export const LssSheetEmbed: React.FC<LssSheetEmbedProps> = ({
         characterName: rollerName,
         title: 'Бросок к20',
         formula: '1к20',
-        breakdown: `(${d20})`,
-        total: String(total),
+        breakdown: `[${d20}] = ${d20}`,
+        total: String(d20),
         isCrit,
         critKind,
       }),
     });
 
     pushToast({
-      title: `🎲 ${rollerName}: Бросок к20 — ${total}`,
-      message: `Результат (${d20}) отправлен в общий лог стола`,
+      title: `🎲 ${rollerName}: Бросок к20 — ${d20}`,
+      message: `Результат [${d20}] отправлен в общий лог стола`,
       variant: isCrit ? (d20 === 20 ? 'success' : 'error') : 'info',
     });
   };
 
   return (
     <div className="glass-panel rounded-3xl overflow-hidden flex flex-col">
+      {/* Top Toolbar */}
       <div className="px-4 py-3 border-b border-border bg-bg/50 flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2.5 flex-wrap">
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-semibold bg-primary/20 text-primary border border-primary/40">
-            <ShieldCheck className="w-3.5 h-3.5" />
-            Long Story Short Embed
-          </span>
-          <span className="text-xs text-muted">
-            {manifestSystem ? `SDK: ${manifestSystem}` : lastEventBadge}
-          </span>
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <button
+            type="button"
+            onClick={() => setSheetMode('native')}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition-all ${
+              sheetMode === 'native'
+                ? 'anime-btn-primary border-transparent'
+                : 'bg-surface border-border text-muted hover:text-text'
+            }`}
+          >
+            <ScrollText className="w-3.5 h-3.5" />
+            <span>Лист персонажа (.json)</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setSheetMode('iframe')}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition-all ${
+              sheetMode === 'iframe'
+                ? 'anime-btn-primary border-transparent'
+                : 'bg-surface border-border text-muted hover:text-text'
+            }`}
+            title="Встроенный iframe longstoryshort.app (требует добавления домена в белый список LSS)"
+          >
+            <Globe className="w-3.5 h-3.5" />
+            <span>LSS Iframe</span>
+          </button>
+
+          {sheetMode === 'iframe' && (
+            <span className="text-[11px] text-muted ml-1">
+              {manifestSystem ? `SDK: ${manifestSystem}` : lastEventBadge}
+            </span>
+          )}
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
-          <button
-            type="button"
-            onClick={() => setStrictPointerLock((v) => !v)}
-            className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs border transition-colors ${
-              strictPointerLock
-                ? 'border-amber-500/50 bg-amber-500/15 text-amber-200'
-                : 'border-border bg-surface text-muted hover:text-text'
-            }`}
-            title="Переключить защитный экран только-чтения поверх iframe"
-          >
-            {strictPointerLock ? (
-              <>
-                <Lock className="w-3.5 h-3.5" />
-                Экран чтения (вкл)
-              </>
-            ) : (
-              <>
-                <MousePointerClick className="w-3.5 h-3.5" />
-                Навигация в листе
-              </>
-            )}
-          </button>
+          {sheetMode === 'iframe' && (
+            <button
+              type="button"
+              onClick={() => setStrictPointerLock((v) => !v)}
+              className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs border transition-colors ${
+                strictPointerLock
+                  ? 'border-amber-500/50 bg-amber-500/15 text-amber-200'
+                  : 'border-border bg-surface text-muted hover:text-text'
+              }`}
+              title="Переключить защитный экран только-чтения поверх iframe"
+            >
+              {strictPointerLock ? (
+                <>
+                  <Lock className="w-3.5 h-3.5" />
+                  Экран чтения (вкл)
+                </>
+              ) : (
+                <>
+                  <MousePointerClick className="w-3.5 h-3.5" />
+                  Навигация в листе
+                </>
+              )}
+            </button>
+          )}
 
           {!isReadOnlyViewer && (
             <>
@@ -239,7 +305,7 @@ export const LssSheetEmbed: React.FC<LssSheetEmbedProps> = ({
                 type="button"
                 onClick={handleTestRollBroadcast}
                 className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs border border-border bg-surface text-muted hover:text-accent hover:border-accent/50 transition-colors"
-                title="Проверить отправку броска в общий канал кампании"
+                title="Быстрый чистый бросок 1к20 в общий лог стола"
               >
                 <Dices className="w-3.5 h-3.5" />
                 к20
@@ -259,68 +325,138 @@ export const LssSheetEmbed: React.FC<LssSheetEmbedProps> = ({
           <button
             type="button"
             onClick={() => {
-              setIframeKey((k) => k + 1);
+              if (sheetMode === 'iframe') setIframeKey((k) => k + 1);
               void onRefreshCache();
             }}
             disabled={syncing}
             className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs border border-border bg-surface text-muted hover:text-text transition-colors"
-            title="Перезагрузить iframe и обновить кэш D1"
+            title="Обновить данные листа из D1"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${syncing ? 'animate-spin text-primary' : ''}`} />
             Обновить
           </button>
 
           <a
-            href={embedUrl}
+            href="https://longstoryshort.app/characters/list/"
             target="_blank"
             rel="noreferrer"
             className="p-1.5 rounded-xl border border-border text-muted hover:text-text"
-            title="Открыть Long Story Short в новой вкладке"
+            title="Открыть Long Story Short в отдельной вкладке браузера"
           >
             <ExternalLink className="w-3.5 h-3.5" />
           </a>
         </div>
       </div>
 
-      <div className="relative w-full h-[560px] bg-[#0b0b14]">
-        <iframe
-          key={`${profile.playerId}-${iframeKey}`}
-          ref={iframeRef}
-          src={embedUrl}
-          sandbox={SHEET_IFRAME_SANDBOX}
-          allow="clipboard-write"
-          title={`Лист персонажа Long Story Short — Игрок ${profile.playerId}`}
-          className="w-full h-full border-0 block"
+      {/* Mode 1: Built-in Interactive Native LSS Sheet (works without CSP frame-ancestors whitelist!) */}
+      {sheetMode === 'native' ? (
+        <LssNativeSheet
+          profile={profile}
+          isReadOnlyViewer={isReadOnlyViewer}
+          onQuickUploadFile={handleQuickUploadFile}
+          onOpenImportModal={() => setImportModalOpen(true)}
+          onSyncHealth={onSyncHealth}
         />
-
-        {strictPointerLock && (
-          <div className="absolute inset-0 bg-bg/20 backdrop-blur-[1px] flex items-end justify-center p-4 pointer-events-auto">
-            <div className="glass-panel px-4 py-2 rounded-2xl text-xs text-muted flex items-center gap-3 border border-amber-500/30">
-              <Lock className="w-4 h-4 text-amber-300 shrink-0" />
-              <span>
-                Режим строгого просмотра (лист защищён от случайного редактирования). Для прокрутки
-                внутри LSS нажмите «Экран чтения».
-              </span>
+      ) : (
+        <>
+          {/* Helpful Official LSS Whitelist Notice */}
+          <div className="px-4 py-3 bg-amber-500/10 border-b border-amber-500/30 text-xs text-amber-100/90 flex items-start gap-2.5">
+            <Info className="w-4 h-4 text-amber-300 shrink-0 mt-0.5" />
+            <div className="leading-relaxed">
+              <strong>Почему может появляться «longstoryshort.app не позволяет установить соединение»:</strong>{' '}
+              сервер Long Story Short блокирует <code>&lt;iframe&gt;</code> через заголовок{' '}
+              <code>Content-Security-Policy: frame-ancestors</code> для любых доменов вне их белого списка. Чтобы работать без ожидания белого списка — используйте вкладку{' '}
               <button
                 type="button"
-                onClick={() => setStrictPointerLock(false)}
-                className="px-2.5 py-1 rounded-lg bg-primary/20 text-primary font-semibold hover:bg-primary/30 shrink-0"
+                onClick={() => setSheetMode('native')}
+                className="text-accent underline font-semibold"
               >
-                Разблокировать прокрутку
+                «Лист персонажа (.json)»
               </button>
+              . А чтобы разблокировать прямой iframe на вашем боевом домене Cloudflare, отправьте адрес вашего сайта автору LSS (
+              <a
+                href="https://t.me/shakusky"
+                target="_blank"
+                rel="noreferrer"
+                className="text-accent underline"
+              >
+                @shakusky в Telegram
+              </a>{' '}
+              или{' '}
+              <a
+                href="https://vk.ru/longstoryshortapp"
+                target="_blank"
+                rel="noreferrer"
+                className="text-accent underline"
+              >
+                сообщество VK LSS
+              </a>
+              , подробнее в{' '}
+              <a
+                href="https://longstoryshort.app/doc/developers/embedding/"
+                target="_blank"
+                rel="noreferrer"
+                className="text-accent underline"
+              >
+                документации LSS
+              </a>
+              ).
             </div>
           </div>
-        )}
-      </div>
+
+          <div className="relative w-full h-[560px] bg-[#0b0b14]">
+            <iframe
+              key={`${profile.playerId}-${iframeKey}`}
+              ref={iframeRef}
+              src={embedUrl}
+              sandbox={SHEET_IFRAME_SANDBOX}
+              allow="clipboard-write"
+              title={`Лист персонажа Long Story Short — Игрок ${profile.playerId}`}
+              className="w-full h-full border-0 block"
+            />
+
+            {strictPointerLock && (
+              <div className="absolute inset-0 bg-bg/20 backdrop-blur-[1px] flex items-end justify-center p-4 pointer-events-auto">
+                <div className="glass-panel px-4 py-2 rounded-2xl text-xs text-muted flex items-center gap-3 border border-amber-500/30">
+                  <Lock className="w-4 h-4 text-amber-300 shrink-0" />
+                  <span>
+                    Режим строгого просмотра (лист защищён от случайного редактирования). Для
+                    прокрутки внутри LSS нажмите «Экран чтения».
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setStrictPointerLock(false)}
+                    className="px-2.5 py-1 rounded-lg bg-primary/20 text-primary font-semibold hover:bg-primary/30 shrink-0"
+                  >
+                    Разблокировать прокрутку
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </>
+      )}
 
       <div className="px-4 py-2 bg-bg/60 border-t border-border text-[11px] text-muted flex flex-wrap items-center justify-between gap-2">
         <span>
-          Связь только через <code className="text-primary">window.postMessage</code> (
-          <code className="text-accent">@longstoryshort/vtt-sdk</code>) — без доступа к DOM iframe.
+          {sheetMode === 'native' ? (
+            <>
+              Режим: <strong className="text-primary">Встроенный лист LSS (.json)</strong> — все
+              броски к20 и урона синхронизируются со столом в реальном времени.
+            </>
+          ) : (
+            <>
+              Связь только через <code className="text-primary">window.postMessage</code> (
+              <code className="text-accent">@longstoryshort/vtt-sdk</code>) — без доступа к DOM
+              iframe.
+            </>
+          )}
         </span>
         <span>
           Последняя синхронизация:{' '}
-          {profile.lastSyncedAt ? new Date(profile.lastSyncedAt).toLocaleString('ru-RU') : 'не выполнялась'}
+          {profile.lastSyncedAt
+            ? new Date(profile.lastSyncedAt).toLocaleString('ru-RU')
+            : 'не выполнялась'}
         </span>
       </div>
 
@@ -332,24 +468,23 @@ export const LssSheetEmbed: React.FC<LssSheetEmbedProps> = ({
                 Загрузка чарника из Long Story Short
               </h3>
               <p className="text-xs text-muted mt-1">
-                Экспортируйте своего персонажа в файл <code>.json</code> в Long Story Short (или в
-                формате{' '}
+                Экспортируйте своего персонажа в файл <code>.json</code> в Long Story Short (формат{' '}
                 <a
                   href={LSS_SCHEMA_V1_URL}
                   target="_blank"
                   rel="noreferrer"
                   className="text-accent underline"
                 >
-                  character.json v1
+                  character.json
                 </a>
-                ) и загрузите ниже — имя, класс, раса, уровень, ХП, монеты и заметки автоматически
-                сохранятся за вашим слотом.
+                ) и загрузите ниже — откроется полный интерактивный лист с характеристиками,
+                навыками, спасбросками, атаками, бросками к20 и умениями.
               </p>
             </div>
 
             <div className="space-y-1.5">
               <label className="block text-xs text-muted">
-                Ссылка на embed-лист Long Story Short (необязательно):
+                Ссылка на embed-лист Long Story Short (для вкладки LSS Iframe, необязательно):
               </label>
               <input
                 type="url"
@@ -367,7 +502,7 @@ export const LssSheetEmbed: React.FC<LssSheetEmbedProps> = ({
                 <input
                   type="file"
                   accept=".json,application/json"
-                  onChange={handleFileUpload}
+                  onChange={handleFileUploadInModal}
                   className="hidden"
                 />
               </label>

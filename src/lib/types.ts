@@ -46,6 +46,7 @@ export interface CharacterProfile {
   hpTemp: number;
   lssNotes: string;
   hasRawLssJson: boolean;
+  rawLssJson?: string | null;
   lastSyncedAt: string | null;
 }
 

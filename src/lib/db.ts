@@ -245,6 +245,7 @@ function mapCharacterRow(row: CharacterRow): CharacterProfile {
     hpTemp: row.hp_temp,
     lssNotes: row.lss_notes,
     hasRawLssJson: Boolean(row.raw_lss_json),
+    rawLssJson: row.raw_lss_json,
     lastSyncedAt: row.last_synced_at,
   };
 }
