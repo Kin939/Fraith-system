@@ -15,6 +15,7 @@ export function useLssSync(playerId: PlayerId, pollIntervalMs = 30000) {
   const learnedSpells = useCampaignStore((s) => s.learnedSpellsById[playerId] ?? []);
   const setCharacterBundle = useCampaignStore((s) => s.setCharacterBundle);
   const updateCharacterProfileInStore = useCampaignStore((s) => s.updateCharacterProfileInStore);
+  const updateLearnedSpellsInStore = useCampaignStore((s) => s.updateLearnedSpellsInStore);
   const pushToast = useCampaignStore((s) => s.pushToast);
 
   const [syncing, setSyncing] = useState(false);
@@ -71,6 +72,7 @@ export function useLssSync(playerId: PlayerId, pollIntervalMs = 30000) {
       hpTemp?: number;
       coins?: Partial<CharacterCoins>;
       lssNotes?: string;
+      reset?: boolean;
     }) => {
       setSyncing(true);
       try {
@@ -82,12 +84,15 @@ export function useLssSync(playerId: PlayerId, pollIntervalMs = 30000) {
           }
         );
         updateCharacterProfileInStore(playerId, res.profile);
+        if (payload.reset) {
+          updateLearnedSpellsInStore(playerId, []);
+        }
         return res.profile;
       } finally {
         setSyncing(false);
       }
     },
-    [playerId, updateCharacterProfileInStore]
+    [playerId, updateCharacterProfileInStore, updateLearnedSpellsInStore]
   );
 
   return {

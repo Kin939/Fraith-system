@@ -42,7 +42,7 @@ export const PlayerSwitcher: React.FC = () => {
               <Shield className="w-3.5 h-3.5" />
               <span>
                 Игрок {pid}
-                {char ? ` • ${char.characterName}` : ''}
+                {char?.characterName ? ` • ${char.characterName}` : ' • Пусто'}
               </span>
             </button>
           );

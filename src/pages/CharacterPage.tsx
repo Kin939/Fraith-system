@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Coins, FileText, Heart, Save, Shield } from 'lucide-react';
+import { Coins, FileJson, FileText, Heart, RotateCcw, Save, Shield, Upload } from 'lucide-react';
 import { JournalEditor } from '../components/character/JournalEditor';
 import { LearnedSpells } from '../components/character/LearnedSpells';
 import { LssSheetEmbed } from '../components/character/LssSheetEmbed';
@@ -21,6 +21,7 @@ export const CharacterPage: React.FC = () => {
     useLssSync(activePlayerId);
 
   const [editingCoinsAndNotes, setEditingCoinsAndNotes] = useState(false);
+  const [openImportCounter, setOpenImportCounter] = useState(0);
   const [coinsDraft, setCoinsDraft] = useState<CharacterCoins>({
     cp: 0,
     sp: 0,
@@ -39,11 +40,49 @@ export const CharacterPage: React.FC = () => {
   }, [profile]);
 
   const handleSyncJson = useCallback(
-    async (lssJson: unknown) => {
-      await syncLssData({ lssJson });
+    async (lssJson: unknown, lssEmbedUrl?: string) => {
+      const payload: Record<string, unknown> = {};
+      if (lssJson !== null && lssJson !== undefined) payload.lssJson = lssJson;
+      if (lssEmbedUrl) payload.lssEmbedUrl = lssEmbedUrl;
+      await syncLssData(payload);
     },
     [syncLssData]
   );
+
+  const handleQuickFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const rawText = await file.text();
+      const parsed = JSON.parse(rawText) as unknown;
+      await syncLssData({ lssJson: parsed });
+      pushToast({
+        title: 'Чарник успешно загружен',
+        message: `Файл «${file.name}» импортирован и сохранён за слотом Игрока #${activePlayerId}.`,
+        variant: 'success',
+      });
+    } catch (err) {
+      pushToast({
+        title: 'Ошибка чтения .json файла',
+        message: err instanceof Error ? err.message : 'Проверьте экспорт из Long Story Short',
+        variant: 'error',
+      });
+    } finally {
+      e.target.value = '';
+    }
+  };
+
+  const handleResetSlot = async () => {
+    if (!window.confirm('Очистить данные персонажа в этом слоте (включая изученные заклинания)?')) {
+      return;
+    }
+    await syncLssData({ reset: true });
+    pushToast({
+      title: 'Слот персонажа очищен',
+      message: 'Теперь можно загрузить новый чарник из Long Story Short.',
+      variant: 'info',
+    });
+  };
 
   const handleSyncHealth = useCallback(
     async (hp: { hpCurrent: number; hpMax: number; hpTemp: number }) => {
@@ -60,7 +99,7 @@ export const CharacterPage: React.FC = () => {
     setEditingCoinsAndNotes(false);
     pushToast({
       title: 'Монеты и заметки сохранены',
-      message: 'Кэш персонажа в D1 обновлён.',
+      message: 'Данные персонажа в D1 обновлены.',
       variant: 'success',
     });
   };
@@ -68,55 +107,128 @@ export const CharacterPage: React.FC = () => {
   if (!profile) {
     return (
       <div className="glass-panel rounded-3xl p-8 text-center text-sm text-muted">
-        Загрузка данных персонажа...
+        Загрузка слота персонажа...
       </div>
     );
   }
+
+  const hasCharacter = Boolean(profile.characterName.trim());
 
   return (
     <div className="space-y-5">
       {isDm && <PlayerSwitcher />}
 
-      {/* Character Hero Banner */}
-      <div className="glass-panel rounded-3xl p-5 flex flex-wrap items-center justify-between gap-4">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-[11px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-primary/20 text-primary border border-primary/40">
-              Игрок #{profile.playerId}
-            </span>
-            <span className="text-xs text-accent font-semibold">
-              {profile.race} • {DND_CLASS_LABELS_RU[profile.charClass] || profile.charClass}{' '}
-              {profile.subclass ? `(${profile.subclass})` : ''}
-            </span>
-          </div>
-          <h1 className="font-anime font-extrabold text-2xl">{profile.characterName}</h1>
-        </div>
-
-        <div className="flex items-center gap-3 flex-wrap">
-          <div className="px-4 py-2 rounded-2xl bg-bg/70 border border-border flex items-center gap-2">
-            <Shield className="w-4 h-4 text-primary" />
-            <div className="text-xs">
-              <div className="text-muted">Уровень</div>
-              <div className="font-anime font-extrabold text-sm">{profile.level}</div>
+      {/* Character Hero Banner OR Empty Slot Upload Prompt */}
+      {!hasCharacter ? (
+        <div className="glass-panel neon-border rounded-3xl p-6 flex flex-wrap items-center justify-between gap-4">
+          <div className="space-y-1.5 max-w-2xl">
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-primary/20 text-primary border border-primary/40">
+                Игрок #{profile.playerId} • Слот пуст
+              </span>
             </div>
+            <h1 className="font-anime font-extrabold text-xl sm:text-2xl">
+              Персонаж ещё не загружен
+            </h1>
+            <p className="text-xs sm:text-sm text-muted leading-relaxed">
+              {isDm
+                ? 'Игрок ещё не загрузил свой чарник из Long Story Short. Вы можете загрузить .json за него или заполнить профиль во вкладке Мастера.'
+                : 'Загрузите экспортированный .json файл своего персонажа из Long Story Short, чтобы автоматически подтянуть имя, класс, уровень, хиты, монеты и открыть изучение заклинаний.'}
+            </p>
           </div>
 
-          <div className="px-4 py-2 rounded-2xl bg-bg/70 border border-border flex items-center gap-2">
-            <Heart className="w-4 h-4 text-rose-400" />
-            <div className="text-xs">
-              <div className="text-muted">Хиты (кэш LSS)</div>
-              <div className="font-anime font-extrabold text-sm">
-                {profile.hpCurrent} / {profile.hpMax}
-                {profile.hpTemp > 0 ? ` (+${profile.hpTemp})` : ''}
+          <div className="flex items-center gap-2.5 flex-wrap">
+            <label className="anime-btn-primary px-4 py-2.5 text-xs sm:text-sm inline-flex items-center gap-2 cursor-pointer">
+              <Upload className="w-4 h-4" />
+              <span>Загрузить чарник (.json)</span>
+              <input
+                type="file"
+                accept=".json,application/json"
+                onChange={handleQuickFileSelect}
+                className="hidden"
+              />
+            </label>
+
+            {!isDm && (
+              <button
+                type="button"
+                onClick={() => setOpenImportCounter((c) => c + 1)}
+                className="px-3.5 py-2.5 rounded-xl border border-border bg-bg/70 hover:border-accent text-xs font-medium inline-flex items-center gap-1.5 text-muted hover:text-text transition-colors"
+              >
+                <FileJson className="w-4 h-4 text-accent" />
+                <span>Вставить JSON / ссылку LSS</span>
+              </button>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div className="glass-panel rounded-3xl p-5 flex flex-wrap items-center justify-between gap-4">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-[11px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-primary/20 text-primary border border-primary/40">
+                Игрок #{profile.playerId}
+              </span>
+              <span className="text-xs text-accent font-semibold">
+                {[
+                  profile.race,
+                  DND_CLASS_LABELS_RU[profile.charClass] || profile.charClass,
+                ]
+                  .filter(Boolean)
+                  .join(' • ')}{' '}
+                {profile.subclass ? `(${profile.subclass})` : ''}
+              </span>
+            </div>
+            <h1 className="font-anime font-extrabold text-2xl">{profile.characterName}</h1>
+          </div>
+
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="px-4 py-2 rounded-2xl bg-bg/70 border border-border flex items-center gap-2">
+              <Shield className="w-4 h-4 text-primary" />
+              <div className="text-xs">
+                <div className="text-muted">Уровень</div>
+                <div className="font-anime font-extrabold text-sm">{profile.level}</div>
               </div>
             </div>
+
+            <div className="px-4 py-2 rounded-2xl bg-bg/70 border border-border flex items-center gap-2">
+              <Heart className="w-4 h-4 text-rose-400" />
+              <div className="text-xs">
+                <div className="text-muted">Хиты (LSS)</div>
+                <div className="font-anime font-extrabold text-sm">
+                  {profile.hpCurrent} / {profile.hpMax}
+                  {profile.hpTemp > 0 ? ` (+${profile.hpTemp})` : ''}
+                </div>
+              </div>
+            </div>
+
+            <label
+              className="px-3 py-2 rounded-2xl bg-accent/15 border border-accent/40 text-accent hover:bg-accent/25 text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer transition-colors"
+              title="Обновить данные персонажа из свежего .json файла Long Story Short"
+            >
+              <Upload className="w-3.5 h-3.5" />
+              <span>Обновить .json</span>
+              <input
+                type="file"
+                accept=".json,application/json"
+                onChange={handleQuickFileSelect}
+                className="hidden"
+              />
+            </label>
+
+            <button
+              type="button"
+              onClick={handleResetSlot}
+              className="p-2 rounded-xl border border-border text-muted hover:text-rose-300 hover:border-rose-500/40 transition-colors"
+              title="Очистить слот персонажа"
+            >
+              <RotateCcw className="w-4 h-4" />
+            </button>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Main Two-Column Character Workspace */}
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-5">
-        {/* Left: Live LSS Embedded Sheet */}
         <div className="xl:col-span-7">
           <LssSheetEmbed
             playerId={activePlayerId}
@@ -126,17 +238,16 @@ export const CharacterPage: React.FC = () => {
             onSyncHealth={handleSyncHealth}
             onRefreshCache={refreshNow}
             syncing={syncing}
+            externalOpenImport={openImportCounter}
           />
         </div>
 
-        {/* Right: Coins & Notes (LSS JSON Cache), Learned Spells, Personal Journal */}
         <div className="xl:col-span-5 space-y-5">
-          {/* Money & Notes from LSS JSON Cache */}
           <div className="glass-panel rounded-3xl p-5 space-y-4">
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 <Coins className="w-5 h-5 text-amber-400" />
-                <h3 className="font-anime font-bold text-base">Деньги и заметки (LSS JSON кэш)</h3>
+                <h3 className="font-anime font-bold text-base">Деньги и заметки (LSS)</h3>
               </div>
 
               {!isDm && (
@@ -145,12 +256,11 @@ export const CharacterPage: React.FC = () => {
                   onClick={() => setEditingCoinsAndNotes((v) => !v)}
                   className="text-xs text-accent hover:underline"
                 >
-                  {editingCoinsAndNotes ? 'Отмена' : 'Резервное ред.'}
+                  {editingCoinsAndNotes ? 'Отмена' : 'Редактировать'}
                 </button>
               )}
             </div>
 
-            {/* 5e Coin Purse */}
             <div className="grid grid-cols-5 gap-2 text-center">
               {(
                 [
@@ -182,11 +292,10 @@ export const CharacterPage: React.FC = () => {
               ))}
             </div>
 
-            {/* LSS Notes */}
             <div className="space-y-1.5">
               <div className="text-xs text-muted flex items-center gap-1.5">
                 <FileText className="w-3.5 h-3.5 text-primary" />
-                <span>Заметки из листа Long Story Short:</span>
+                <span>Заметки из чарника Long Story Short:</span>
               </div>
 
               {editingCoinsAndNotes && !isDm ? (
@@ -203,22 +312,19 @@ export const CharacterPage: React.FC = () => {
                     className="anime-btn-primary px-3.5 py-1.5 text-xs inline-flex items-center gap-1.5"
                   >
                     <Save className="w-3.5 h-3.5" />
-                    Сохранить резервные поля
+                    Сохранить
                   </button>
                 </div>
               ) : (
                 <div className="p-3 rounded-2xl bg-bg/50 border border-border/70 text-xs text-text/90 leading-relaxed whitespace-pre-line">
-                  {profile.lssNotes ||
-                    'Нет импортированных заметок. Нажмите «Импорт JSON LSS», чтобы подтянуть данные из схемы Long Story Short.'}
+                  {profile.lssNotes || 'Нет импортированных заметок.'}
                 </div>
               )}
             </div>
           </div>
 
-          {/* Learned Spells Read-Only List from Tab 4 */}
           <LearnedSpells learnedSpells={learnedSpells} maxSpells={profile.maxSpells} />
 
-          {/* Personal Editable Journal */}
           <JournalEditor
             playerId={activePlayerId}
             journal={journal}

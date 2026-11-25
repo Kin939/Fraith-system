@@ -18,22 +18,22 @@ const DEMO_ACCOUNTS = [
   {
     username: 'player1',
     password: 'player123',
-    label: 'Аэлин (Игрок 1)',
-    subtitle: 'Wizard 5 • Прорицание',
+    label: 'Игрок 1',
+    subtitle: 'Слот игрока #1 (загрузка LSS)',
     badge: 'P1',
   },
   {
     username: 'player2',
     password: 'player123',
-    label: 'Каэл (Игрок 2)',
-    subtitle: 'Cleric 5 • Сумерки',
+    label: 'Игрок 2',
+    subtitle: 'Слот игрока #2 (загрузка LSS)',
     badge: 'P2',
   },
   {
     username: 'player3',
     password: 'player123',
-    label: 'Никс (Игрок 3)',
-    subtitle: 'Warlock 5 • Архифея',
+    label: 'Игрок 3',
+    subtitle: 'Слот игрока #3 (загрузка LSS)',
     badge: 'P3',
   },
 ];

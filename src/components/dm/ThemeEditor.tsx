@@ -271,7 +271,7 @@ export const ThemeEditor: React.FC = () => {
                     Превью карточки персонажа
                   </div>
                   <div className="font-anime font-extrabold text-base mt-0.5">
-                    {selectedAccount?.displayName || 'Аэлин Звёздный Шёпот'}
+                    {selectedAccount?.displayName || 'Игрок'}
                   </div>
                 </div>
                 <span
@@ -282,13 +282,13 @@ export const ThemeEditor: React.FC = () => {
                   }}
                   className="text-xs font-anime font-bold px-2.5 py-1 rounded-xl border"
                 >
-                  Ур. 5 • ХП 32/32
+                  Превью темы
                 </span>
               </div>
 
               <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--text-muted)' }}>
                 <Sparkles className="w-3.5 h-3.5" style={{ color: 'var(--accent)' }} />
-                <span>Изучено заклинаний: 6/8 • Золото: 145 ЗМ</span>
+                <span>Элементы интерфейса перекрашиваются в реальном времени</span>
               </div>
             </div>
 
@@ -301,7 +301,7 @@ export const ThemeEditor: React.FC = () => {
               className="rounded-2xl p-4 border space-y-3"
             >
               <div className="flex items-center justify-between gap-2">
-                <div className="font-anime font-bold text-sm">Поймай 10 кобольдов</div>
+                <div className="font-anime font-bold text-sm">Пример карточки задания</div>
                 <span
                   style={{
                     backgroundColor: 'color-mix(in srgb, var(--accent) 20%, transparent)',
@@ -314,7 +314,7 @@ export const ThemeEditor: React.FC = () => {
               </div>
 
               <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                Выследить шайку изобретателей в Хрустальных штольнях Фрейта.
+                Предпросмотр цветов поверхности, границ, текста и шкалы прогресса.
               </p>
 
               <div className="space-y-1">

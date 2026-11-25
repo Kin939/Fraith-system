@@ -3,6 +3,11 @@
 
 PRAGMA foreign_keys = ON;
 
+CREATE TABLE IF NOT EXISTS schema_migrations (
+  version TEXT PRIMARY KEY,
+  applied_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   username TEXT UNIQUE NOT NULL,
@@ -23,20 +28,20 @@ CREATE TABLE IF NOT EXISTS user_themes (
 
 CREATE TABLE IF NOT EXISTS character_profiles (
   player_id INTEGER PRIMARY KEY CHECK (player_id IN (1, 2, 3)),
-  character_name TEXT NOT NULL,
-  char_class TEXT NOT NULL DEFAULT 'Wizard',
+  character_name TEXT NOT NULL DEFAULT '',
+  char_class TEXT NOT NULL DEFAULT '',
   subclass TEXT NOT NULL DEFAULT '',
-  race TEXT NOT NULL DEFAULT 'Human',
-  level INTEGER NOT NULL DEFAULT 1,
-  max_spells INTEGER NOT NULL DEFAULT 6,
+  race TEXT NOT NULL DEFAULT '',
+  level INTEGER NOT NULL DEFAULT 0,
+  max_spells INTEGER NOT NULL DEFAULT 0,
   lss_embed_url TEXT NOT NULL DEFAULT 'https://longstoryshort.app/iframe/characters/list/',
   coins_cp INTEGER NOT NULL DEFAULT 0,
   coins_sp INTEGER NOT NULL DEFAULT 0,
   coins_ep INTEGER NOT NULL DEFAULT 0,
   coins_gp INTEGER NOT NULL DEFAULT 0,
   coins_pp INTEGER NOT NULL DEFAULT 0,
-  hp_current INTEGER NOT NULL DEFAULT 10,
-  hp_max INTEGER NOT NULL DEFAULT 10,
+  hp_current INTEGER NOT NULL DEFAULT 0,
+  hp_max INTEGER NOT NULL DEFAULT 0,
   hp_temp INTEGER NOT NULL DEFAULT 0,
   lss_notes TEXT NOT NULL DEFAULT '',
   raw_lss_json TEXT,
@@ -83,15 +88,24 @@ CREATE INDEX IF NOT EXISTS idx_bestiary_cr ON bestiary(cr_numeric ASC, sort_orde
 CREATE TABLE IF NOT EXISTS spells (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
+  name_en TEXT NOT NULL DEFAULT '',
+  url TEXT NOT NULL DEFAULT '',
   level INTEGER NOT NULL CHECK (level >= 0 AND level <= 9),
   school TEXT NOT NULL,
+  type_line TEXT NOT NULL DEFAULT '',
   classes TEXT NOT NULL,
+  subclasses TEXT NOT NULL DEFAULT '',
   casting_time TEXT NOT NULL DEFAULT '1 действие',
   spell_range TEXT NOT NULL DEFAULT '60 футов',
   components TEXT NOT NULL DEFAULT 'В, С',
+  components_badge TEXT NOT NULL DEFAULT '',
+  ritual INTEGER NOT NULL DEFAULT 0,
+  concentration INTEGER NOT NULL DEFAULT 0,
   duration TEXT NOT NULL DEFAULT 'Мгновенная',
   description TEXT NOT NULL,
-  source TEXT NOT NULL DEFAULT 'SRD 5.1',
+  description_html TEXT NOT NULL DEFAULT '',
+  source TEXT NOT NULL DEFAULT 'PH14',
+  source_title TEXT NOT NULL DEFAULT '',
   is_homebrew INTEGER NOT NULL DEFAULT 0,
   created_by INTEGER REFERENCES users(id) ON DELETE SET NULL
 );
@@ -138,5 +152,12 @@ CREATE TABLE IF NOT EXISTS roll_log (
   total TEXT NOT NULL,
   is_crit INTEGER NOT NULL DEFAULT 0,
   crit_kind TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS media_blobs (
+  key TEXT PRIMARY KEY,
+  content_type TEXT NOT NULL,
+  data_base64 TEXT NOT NULL,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );

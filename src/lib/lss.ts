@@ -1,4 +1,4 @@
-import type { CharacterCoins } from './types';
+import type { CharacterCoins, Spell } from './types';
 
 export const LSS_ORIGIN = 'https://longstoryshort.app';
 export const LSS_ALLOWED_ORIGINS = [LSS_ORIGIN];
@@ -51,29 +51,54 @@ const CLASS_ALIASES: Record<string, string> = {
 };
 
 export const DND_CLASS_LABELS_RU: Record<string, string> = {
-  Wizard: 'Волшебник (Wizard)',
-  Cleric: 'Жрец (Cleric)',
-  Sorcerer: 'Чародей (Sorcerer)',
-  Warlock: 'Колдун (Warlock)',
-  Bard: 'Бард (Bard)',
-  Druid: 'Друид (Druid)',
-  Paladin: 'Паладин (Paladin)',
-  Ranger: 'Следопыт (Ranger)',
-  Fighter: 'Воин (Fighter)',
-  Rogue: 'Плут (Rogue)',
-  Barbarian: 'Варвар (Barbarian)',
-  Monk: 'Монах (Monk)',
+  Wizard: 'Волшебник',
+  Cleric: 'Жрец',
+  Sorcerer: 'Чародей',
+  Warlock: 'Колдун',
+  Bard: 'Бард',
+  Druid: 'Друид',
+  Paladin: 'Паладин',
+  Ranger: 'Следопыт',
+  Fighter: 'Воин',
+  Rogue: 'Плут',
+  Barbarian: 'Варвар',
+  Monk: 'Монах',
+  Artificer: 'Изобретатель',
+};
+
+export const CANONICAL_TO_DNDSU_CLASS_ID: Record<string, number> = {
+  Barbarian: 11,
+  Bard: 12,
+  Cleric: 13,
+  Fighter: 14,
+  Monk: 15,
+  Paladin: 16,
+  Ranger: 17,
+  Rogue: 18,
+  Sorcerer: 19,
+  Warlock: 20,
+  Wizard: 21,
+  Druid: 22,
+  Artificer: 23,
 };
 
 export const MAGIC_SCHOOL_LABELS_RU: Record<string, string> = {
-  Abjuration: 'Ограждение (Abjuration)',
-  Conjuration: 'Вызов (Conjuration)',
-  Divination: 'Прорицание (Divination)',
-  Enchantment: 'Очарование (Enchantment)',
-  Evocation: 'Воплощение (Evocation)',
-  Illusion: 'Иллюзия (Illusion)',
-  Necromancy: 'Некромантия (Necromancy)',
-  Transmutation: 'Преобразование (Transmutation)',
+  Abjuration: 'Ограждение',
+  Conjuration: 'Вызов',
+  Divination: 'Прорицание',
+  Enchantment: 'Очарование',
+  Evocation: 'Воплощение',
+  Illusion: 'Иллюзия',
+  Necromancy: 'Некромантия',
+  Transmutation: 'Преобразование',
+  Ограждение: 'Ограждение',
+  Вызов: 'Вызов',
+  Прорицание: 'Прорицание',
+  Очарование: 'Очарование',
+  Воплощение: 'Воплощение',
+  Иллюзия: 'Иллюзия',
+  Некромантия: 'Некромантия',
+  Преобразование: 'Преобразование',
 };
 
 export function normalizeDndClass(raw?: string | null): string | undefined {
@@ -83,6 +108,7 @@ export function normalizeDndClass(raw?: string | null): string | undefined {
     .trim()
     .toLowerCase()
     .replace(/\s+\d+$/, '');
+  if (!firstToken) return undefined;
   if (CLASS_ALIASES[firstToken]) {
     return CLASS_ALIASES[firstToken];
   }
@@ -90,6 +116,56 @@ export function normalizeDndClass(raw?: string | null): string | undefined {
     if (firstToken.includes(alias)) return canonical;
   }
   return raw.trim();
+}
+
+export function extractPlayerCanonicalClasses(charClassRaw?: string | null): string[] {
+  if (!charClassRaw) return [];
+  return charClassRaw
+    .split(/[,/|;]/)
+    .map((part) => normalizeDndClass(part))
+    .filter((c): c is string => Boolean(c));
+}
+
+/**
+ * Checks whether a spell from dnd.su (or custom DM spell) can be learned by a character
+ * based on their class(es) OR subclass parent class in `spell.subclasses` (e.g. `клятвопреступник (паладин)`).
+ */
+export function isSpellAllowedForCharacter(
+  spell: Pick<Spell, 'classes' | 'subclasses'>,
+  charClassRaw?: string | null,
+  subclassRaw?: string | null
+): boolean {
+  const playerClasses = extractPlayerCanonicalClasses(charClassRaw);
+  if (playerClasses.length === 0) return false;
+
+  // If spell has no class restriction listed (e.g. special/universal homebrew), allow any caster
+  if ((!spell.classes || spell.classes.length === 0) && !spell.subclasses) {
+    return true;
+  }
+
+  const spellCanonical = new Set<string>();
+  for (const c of spell.classes || []) {
+    const norm = normalizeDndClass(c);
+    if (norm) spellCanonical.add(norm.toLowerCase());
+  }
+
+  // Also check parent classes in `subclasses`, e.g. `круг земли (друид), клятва мести (паладин)`
+  if (spell.subclasses) {
+    const subLower = spell.subclasses.toLowerCase();
+    if (subclassRaw && subclassRaw.trim().length > 2) {
+      const playerSubLower = subclassRaw.trim().toLowerCase();
+      if (subLower.includes(playerSubLower)) {
+        return true;
+      }
+    }
+    const parenMatches = spell.subclasses.matchAll(/\(([^)]+)\)/g);
+    for (const m of parenMatches) {
+      const norm = normalizeDndClass(m[1]);
+      if (norm) spellCanonical.add(norm.toLowerCase());
+    }
+  }
+
+  return playerClasses.some((pc) => spellCanonical.has(pc.toLowerCase()));
 }
 
 function readVal(field: unknown): unknown {
@@ -122,7 +198,6 @@ function toStr(val: unknown): string | undefined {
       .filter(Boolean);
     if (parts.length > 0) return parts.join('\n');
   }
-  // Handle ProseMirror / Tiptap rich text blocks inside LSS exports
   if (unwrapped && typeof unwrapped === 'object') {
     const obj = unwrapped as Record<string, unknown>;
     if (obj.data && typeof obj.data === 'object') {
@@ -162,7 +237,6 @@ export function parseLssCharacterPayload(rawInput: unknown): ParsedLssCharacter 
     throw new Error('Некорректный формат JSON персонажа LSS');
   }
 
-  // Unwrap LSS export container (`data` or `json` stringified inner sheet)
   let sheet: Record<string, unknown> = root;
   if (typeof root.data === 'string') {
     try {
@@ -249,7 +323,7 @@ export function parseLssCharacterPayload(rawInput: unknown): ParsedLssCharacter 
   const notes = noteSections.length > 0 ? noteSections.join('\n\n') : undefined;
   const maxSpells =
     toInt(sheet.maxSpells) ??
-    (level !== undefined ? Math.max(4, level + 3) : undefined);
+    (level !== undefined ? Math.max(6, level + 4) : 10);
 
   return {
     characterName,
@@ -264,44 +338,4 @@ export function parseLssCharacterPayload(rawInput: unknown): ParsedLssCharacter 
     hpTemp,
     notes,
   };
-}
-
-export function buildSampleLssExport(profile: {
-  characterName: string;
-  charClass: string;
-  race: string;
-  level: number;
-}): string {
-  return JSON.stringify(
-    {
-      $schema: LSS_SCHEMA_V1_URL,
-      edition: '2014',
-      name: { value: profile.characterName },
-      info: {
-        charClass: { value: profile.charClass },
-        race: { value: profile.race },
-        level: { value: profile.level },
-      },
-      vitality: {
-        'hp-current': { value: 36 },
-        'hp-max': { value: 38 },
-        'hp-temp': { value: 4 },
-      },
-      coins: {
-        cp: { value: 25 },
-        sp: { value: 40 },
-        ep: { value: 0 },
-        gp: { value: 185 },
-        pp: { value: 3 },
-      },
-      text: {
-        notes: {
-          value:
-            'Импортировано из Long Story Short (v1 character.json): запас зелий лечения (x2), свиток Туманного шага, метка Гильдии Звездочётов.',
-        },
-      },
-    },
-    null,
-    2
-  );
 }

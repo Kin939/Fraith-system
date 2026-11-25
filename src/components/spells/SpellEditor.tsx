@@ -6,16 +6,30 @@ import { useCampaignStore } from '../../lib/store';
 import type { Spell } from '../../lib/types';
 
 const ALL_CLASSES = [
-  'Wizard',
-  'Cleric',
-  'Sorcerer',
-  'Warlock',
-  'Bard',
-  'Druid',
-  'Paladin',
-  'Ranger',
+  'волшебник',
+  'бард',
+  'друид',
+  'жрец',
+  'изобретатель',
+  'колдун',
+  'паладин',
+  'следопыт',
+  'чародей',
+  'варвар',
+  'воин',
+  'монах',
+  'плут',
 ];
-const ALL_SCHOOLS = Object.keys(MAGIC_SCHOOL_LABELS_RU);
+const ALL_SCHOOLS = [
+  'Воплощение',
+  'Вызов',
+  'Иллюзия',
+  'Некромантия',
+  'Ограждение',
+  'Очарование',
+  'Преобразование',
+  'Прорицание',
+];
 
 export const SpellEditor: React.FC = () => {
   const spells = useCampaignStore((s) => s.spells);
@@ -25,14 +39,14 @@ export const SpellEditor: React.FC = () => {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [name, setName] = useState('');
   const [level, setLevel] = useState(1);
-  const [school, setSchool] = useState('Evocation');
-  const [selectedClasses, setSelectedClasses] = useState<string[]>(['Wizard']);
+  const [school, setSchool] = useState('Воплощение');
+  const [selectedClasses, setSelectedClasses] = useState<string[]>(['волшебник']);
   const [castingTime, setCastingTime] = useState('1 действие');
   const [spellRange, setSpellRange] = useState('60 футов');
   const [components, setComponents] = useState('В, С');
   const [duration, setDuration] = useState('Мгновенная');
   const [description, setDescription] = useState('');
-  const [source, setSource] = useState('Homebrew // Fraith');
+  const [source, setSource] = useState('HB');
   const [isHomebrew, setIsHomebrew] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -44,14 +58,14 @@ export const SpellEditor: React.FC = () => {
       setEditingId(null);
       setName('');
       setLevel(1);
-      setSchool('Evocation');
-      setSelectedClasses(['Wizard']);
+      setSchool('Воплощение');
+      setSelectedClasses(['волшебник']);
       setCastingTime('1 действие');
       setSpellRange('60 футов');
       setComponents('В, С');
       setDuration('Мгновенная');
       setDescription('');
-      setSource('Homebrew // Fraith');
+      setSource('HB');
       setIsHomebrew(true);
       return;
     }
@@ -234,7 +248,7 @@ export const SpellEditor: React.FC = () => {
                 required
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="Астральное копьё Сорена"
+                placeholder="Название заклинания"
                 className="anime-input w-full text-sm"
               />
             </div>

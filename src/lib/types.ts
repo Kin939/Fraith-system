@@ -95,6 +95,14 @@ export interface BestiaryCreature {
 }
 
 export type MagicSchool =
+  | 'Воплощение'
+  | 'Вызов'
+  | 'Иллюзия'
+  | 'Некромантия'
+  | 'Ограждение'
+  | 'Очарование'
+  | 'Преобразование'
+  | 'Прорицание'
   | 'Abjuration'
   | 'Conjuration'
   | 'Divination'
@@ -104,30 +112,68 @@ export type MagicSchool =
   | 'Necromancy'
   | 'Transmutation';
 
-export type DndClass =
-  | 'Wizard'
-  | 'Cleric'
-  | 'Sorcerer'
-  | 'Warlock'
-  | 'Bard'
-  | 'Druid'
-  | 'Paladin'
-  | 'Ranger';
+export interface SpellSourceBadge {
+  code: string;
+  title: string;
+  href?: string;
+}
 
 export interface Spell {
   id: number;
+  slug?: string;
+  url?: string;
   name: string;
+  nameSort?: string;
+  nameEn?: string;
   level: number;
   school: MagicSchool | string;
+  schoolIcon?: string;
+  typeLine?: string;
+  ritual?: boolean;
+  concentration?: boolean;
+  componentsBadge?: string;
   classes: string[];
+  classesTce?: string[];
+  subclasses?: string;
   castingTime: string;
   spellRange: string;
   components: string;
   duration: string;
   description: string;
+  descriptionHtml?: string;
   source: string;
+  sourceTitle?: string;
+  sourceBadges?: SpellSourceBadge[];
   isHomebrew: boolean;
   createdBy: number | null;
+  // Optional dnd.su exact filter vectors
+  fClass?: number[];
+  fClassTce?: number[];
+  fArchetype?: number[];
+  fSource?: number[];
+  fSchool?: number[];
+  fConc?: number[];
+  fRitual?: number[];
+  fComp?: string;
+  fCast?: string[];
+  fDam?: number[];
+}
+
+export interface DndsuFilterOption {
+  title: string;
+  value: number | string;
+}
+
+export interface DndsuFilterGroup {
+  title: string;
+  list: DndsuFilterOption[];
+}
+
+export type DndsuCategoryFilters = Record<string, DndsuFilterGroup[]>;
+
+export interface DndsuFiltersPayload {
+  official: DndsuCategoryFilters;
+  homebrew: DndsuCategoryFilters;
 }
 
 export interface LearnedSpellRecord {

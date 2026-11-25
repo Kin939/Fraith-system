@@ -26,6 +26,7 @@ import {
   listRecentRolls,
   listSpells,
   mapUserRowToAuthUser,
+  nextCustomSpellId,
   parseCrToNumeric,
   purchaseTalentForPlayer,
   saveJournalEntry,
@@ -35,7 +36,7 @@ import {
 import { parseLssCharacterPayload } from '../../src/lib/lss';
 import { getImageFromR2, uploadImageToR2 } from '../../src/lib/r2';
 import { parseThemeJson } from '../../src/lib/theme';
-import type { AuthUser, PlayerId, QuestStatus, ThemeVariables } from '../../src/lib/types';
+import type { AuthUser, PlayerId, QuestStatus, Spell, ThemeVariables } from '../../src/lib/types';
 
 export interface Env {
   DB: D1Database;
@@ -382,6 +383,47 @@ app.post('/player/:id/sync-lss', async (c) => {
     if (typeof co.pp === 'number') nextCoins.pp = Math.max(0, Math.trunc(co.pp));
   }
 
+  // Optional slot reset so player/DM can clear a character slot back to empty state
+  if (body.reset === true) {
+    await c.env.DB.batch([
+      c.env.DB.prepare(
+        `UPDATE character_profiles
+         SET character_name = '',
+             char_class = '',
+             subclass = '',
+             race = '',
+             level = 0,
+             max_spells = 0,
+             coins_cp = 0,
+             coins_sp = 0,
+             coins_ep = 0,
+             coins_gp = 0,
+             coins_pp = 0,
+             hp_current = 0,
+             hp_max = 0,
+             hp_temp = 0,
+             lss_notes = '',
+             raw_lss_json = NULL,
+             last_synced_at = NULL
+         WHERE player_id = ?`
+      ).bind(playerId),
+      c.env.DB.prepare(`DELETE FROM learned_spells WHERE player_id = ?`).bind(playerId),
+      c.env.DB.prepare(`UPDATE users SET display_name = ? WHERE player_id = ?`).bind(
+        `Игрок ${playerId}`,
+        playerId
+      ),
+    ]);
+    const cleared = await getCharacterProfile(c.env.DB, playerId);
+    await broadcastCampaignEvent(c.env, 'character:updated', { playerId, profile: cleared }, user.id);
+    await broadcastCampaignEvent(
+      c.env,
+      'learned_spells:updated',
+      { playerId, learnedSpells: [] },
+      user.id
+    );
+    return c.json({ profile: cleared });
+  }
+
   await c.env.DB.prepare(
     `UPDATE character_profiles
      SET character_name = ?,
@@ -425,6 +467,12 @@ app.post('/player/:id/sync-lss', async (c) => {
       playerId
     )
     .run();
+
+  if (nextName.trim()) {
+    await c.env.DB.prepare(`UPDATE users SET display_name = ? WHERE player_id = ?`)
+      .bind(nextName.trim(), playerId)
+      .run();
+  }
 
   const updated = await getCharacterProfile(c.env.DB, playerId);
   await broadcastCampaignEvent(c.env, 'character:updated', { playerId, profile: updated }, user.id);
@@ -761,8 +809,67 @@ app.delete('/dm/bestiary/:id', async (c) => {
 });
 
 // ============================================================================
-// Tab 4: Spells Catalog, Class-Validated Learning & DM Homebrew / Import
+// Tab 4: Spells Catalog (dnd.su Official + Homebrew Static Assets + Custom DM Spells)
 // ============================================================================
+
+let dndsuCatalogCache: Map<number, Spell> | null = null;
+
+function stripHtmlForPlainText(html: string): string {
+  return html
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(p|li|tr|h2|h3|h4|blockquote|div)>/gi, '\n')
+    .replace(/<td[^>]*>/gi, ' ')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&quot;/g, '"')
+    .replace(/&#039;/g, "'")
+    .replace(/&laquo;/g, '«')
+    .replace(/&raquo;/g, '»')
+    .replace(/&ndash;/g, '–')
+    .replace(/&mdash;/g, '—')
+    .replace(/&amp;/g, '&')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+async function resolveDndsuSpellFromAssets(
+  env: Env,
+  requestUrl: string,
+  spellId: number
+): Promise<Spell | null> {
+  if (dndsuCatalogCache) {
+    return dndsuCatalogCache.get(spellId) ?? null;
+  }
+  if (!env.ASSETS) {
+    return null;
+  }
+  try {
+    const origin = new URL(requestUrl).origin;
+    const [offRes, hbRes] = await Promise.all([
+      env.ASSETS.fetch(new Request(`${origin}/data/dndsu-spells-official.json`)),
+      env.ASSETS.fetch(new Request(`${origin}/data/dndsu-spells-homebrew.json`)),
+    ]);
+    if (!offRes.ok || !hbRes.ok) return null;
+    const [offJson, hbJson] = (await Promise.all([offRes.json(), hbRes.json()])) as [
+      Array<Spell>,
+      Array<Spell>,
+    ];
+    const map = new Map<number, Spell>();
+    for (const sp of [...offJson, ...hbJson]) {
+      const descHtml = sp.descriptionHtml || '';
+      map.set(sp.id, {
+        ...sp,
+        description: sp.description || stripHtmlForPlainText(descHtml),
+        createdBy: null,
+      });
+    }
+    dndsuCatalogCache = map;
+    return map.get(spellId) ?? null;
+  } catch {
+    return null;
+  }
+}
 
 app.get('/spells', async (c) => {
   const user = c.get('user');
@@ -785,7 +892,21 @@ app.post('/spells/:id/learn', async (c) => {
   }
 
   const spellId = Number.parseInt(c.req.param('id'), 10);
-  const res = await learnSpellForPlayer(c.env.DB, user.playerId, spellId);
+  if (!Number.isFinite(spellId) || spellId <= 0) {
+    return c.json({ error: 'Некорректный идентификатор заклинания' }, 400);
+  }
+
+  let catalogSpell = await resolveDndsuSpellFromAssets(c.env, c.req.url, spellId);
+  if (!catalogSpell) {
+    const body = await c.req
+      .json<{ spell?: Spell }>()
+      .catch((): { spell?: Spell } => ({}));
+    if (body.spell && body.spell.id === spellId && body.spell.name) {
+      catalogSpell = body.spell;
+    }
+  }
+
+  const res = await learnSpellForPlayer(c.env.DB, user.playerId, spellId, catalogSpell);
   if (!res.ok) {
     return c.json({ error: res.error }, 400);
   }
@@ -824,12 +945,16 @@ app.post('/dm/spells', async (c) => {
   const user = c.get('user')!;
   const body = await c.req.json<{
     name: string;
+    nameEn?: string;
     level: number;
     school: string;
     classes: string[] | string;
+    subclasses?: string;
     castingTime?: string;
     spellRange?: string;
     components?: string;
+    ritual?: boolean;
+    concentration?: boolean;
     duration?: string;
     description: string;
     source?: string;
@@ -842,26 +967,48 @@ app.post('/dm/spells', async (c) => {
 
   const classesCsv = Array.isArray(body.classes)
     ? body.classes.map((cl) => cl.trim()).filter(Boolean).join(',')
-    : (body.classes || 'Wizard').trim();
+    : (body.classes || 'волшебник').trim();
 
   const level = Math.min(9, Math.max(0, Math.trunc(body.level ?? 0)));
+  const customId = await nextCustomSpellId(c.env.DB);
+  const school = (body.school || 'Воплощение').trim();
+  const ritual = Boolean(body.ritual);
+  const concentration = Boolean(body.concentration);
+  const compStr = (body.components || 'В, С').trim();
+  const hasV = /(^|[\s,])В([\s,(]|$)/i.test(compStr);
+  const hasS = /(^|[\s,])С([\s,(]|$)/i.test(compStr);
+  const hasM = /(^|[\s,])М([\s,(]|$)/i.test(compStr);
+  const componentsBadge = `${hasV ? 'В' : '.'}${hasS ? 'С' : '.'}${hasM ? 'М' : '.'}`;
+  const typeLine = `${level === 0 ? 'Заговор' : `${level} уровень`}, ${school.toLowerCase()}${
+    ritual ? ' (ритуал)' : ''
+  }`;
 
   await c.env.DB.prepare(
-    `INSERT INTO spells (name, level, school, classes, casting_time, spell_range, components, duration, description, source, is_homebrew, created_by)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO spells (
+       id, name, name_en, level, school, type_line, classes, subclasses,
+       casting_time, spell_range, components, components_badge, ritual, concentration,
+       duration, description, source, is_homebrew, created_by
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   )
     .bind(
+      customId,
       body.name.trim(),
+      (body.nameEn || '').trim(),
       level,
-      (body.school || 'Evocation').trim(),
+      school,
+      typeLine,
       classesCsv,
+      (body.subclasses || '').trim(),
       (body.castingTime || '1 действие').trim(),
       (body.spellRange || '60 футов').trim(),
-      (body.components || 'В, С').trim(),
+      compStr,
+      componentsBadge,
+      ritual ? 1 : 0,
+      concentration ? 1 : 0,
       (body.duration || 'Мгновенная').trim(),
       body.description.trim(),
-      (body.source || (body.isHomebrew ? 'Homebrew' : 'SRD 5.1')).trim(),
-      body.isHomebrew ? 1 : 0,
+      (body.source || (body.isHomebrew !== false ? 'HB' : 'PH14')).trim(),
+      body.isHomebrew !== false ? 1 : 0,
       user.id
     )
     .run();
@@ -878,33 +1025,38 @@ app.post('/dm/spells/import', async (c) => {
     .catch((): { spells?: Array<Record<string, unknown>> } => ({}));
   const items: Array<Record<string, unknown>> = Array.isArray(body.spells) ? body.spells : [];
   if (items.length === 0) {
-    return c.json({ error: 'Передайте непустой массив заклинаний (формат Open5e / SRD JSON)' }, 400);
+    return c.json({ error: 'Передайте непустой массив заклинаний в формате JSON' }, 400);
   }
 
+  let nextId = await nextCustomSpellId(c.env.DB);
   const stmt = c.env.DB.prepare(
-    `INSERT INTO spells (name, level, school, classes, casting_time, spell_range, components, duration, description, source, is_homebrew, created_by)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO spells (id, name, name_en, level, school, classes, casting_time, spell_range, components, duration, description, source, is_homebrew, created_by)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   );
 
   const batch = items.slice(0, 100).map((raw) => {
+    const id = nextId++;
     const name = String(raw.name || 'Заклинание без названия').trim();
+    const nameEn = String(raw.nameEn || raw.name_en || '').trim();
     const level = Math.min(
       9,
       Math.max(0, Number.parseInt(String(raw.level_int ?? raw.level ?? 0), 10) || 0)
     );
-    const school = String(raw.school || 'Evocation').trim();
+    const school = String(raw.school || 'Воплощение').trim();
     const classes = Array.isArray(raw.classes)
       ? raw.classes.join(',')
-      : String(raw.dnd_class || raw.classes || 'Wizard').replace(/\s*,\s*/g, ',');
+      : String(raw.dnd_class || raw.classes || 'волшебник').replace(/\s*,\s*/g, ',');
     const castingTime = String(raw.casting_time || raw.castingTime || '1 действие');
     const spellRange = String(raw.range || raw.spellRange || '60 футов');
     const components = String(raw.components || 'В, С');
     const duration = String(raw.duration || 'Мгновенная');
     const description = String(raw.desc || raw.description || '');
-    const source = String(raw.document__title || raw.source || 'Open5e SRD');
-    const isHomebrew = raw.isHomebrew ? 1 : 0;
+    const source = String(raw.document__title || raw.source || 'HB');
+    const isHomebrew = raw.isHomebrew !== false ? 1 : 0;
     return stmt.bind(
+      id,
       name,
+      nameEn,
       level,
       school,
       classes,
@@ -1212,28 +1364,35 @@ app.put('/dm/characters/:playerId', async (c) => {
     lssEmbedUrl?: string;
   }>();
 
-  await c.env.DB.prepare(
-    `UPDATE character_profiles
-     SET character_name = ?,
-         char_class = ?,
-         subclass = ?,
-         race = ?,
-         level = ?,
-         max_spells = ?,
-         lss_embed_url = COALESCE(?, lss_embed_url)
-     WHERE player_id = ?`
-  )
-    .bind(
-      body.characterName.trim(),
-      body.charClass.trim(),
+  const trimmedName = (body.characterName || '').trim();
+  const trimmedClass = (body.charClass || '').trim();
+
+  await c.env.DB.batch([
+    c.env.DB.prepare(
+      `UPDATE character_profiles
+       SET character_name = ?,
+           char_class = ?,
+           subclass = ?,
+           race = ?,
+           level = ?,
+           max_spells = ?,
+           lss_embed_url = COALESCE(?, lss_embed_url)
+       WHERE player_id = ?`
+    ).bind(
+      trimmedName,
+      trimmedClass,
       (body.subclass || '').trim(),
-      (body.race || 'Human').trim(),
-      Math.max(1, Math.min(20, Math.trunc(body.level ?? 1))),
-      Math.max(0, Math.trunc(body.maxSpells ?? 6)),
+      (body.race || '').trim(),
+      trimmedName ? Math.max(1, Math.min(20, Math.trunc(body.level ?? 1))) : 0,
+      Math.max(0, Math.trunc(body.maxSpells ?? 0)),
       body.lssEmbedUrl?.trim() || null,
       playerId
-    )
-    .run();
+    ),
+    c.env.DB.prepare(`UPDATE users SET display_name = ? WHERE player_id = ?`).bind(
+      trimmedName || `Игрок ${playerId}`,
+      playerId
+    ),
+  ]);
 
   const profile = await getCharacterProfile(c.env.DB, playerId);
   await broadcastCampaignEvent(c.env, 'character:updated', { playerId, profile }, dmUser.id);
