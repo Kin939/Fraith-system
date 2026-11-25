@@ -259,6 +259,7 @@ app.get('/characters', async (c) => {
       : {
           ...p,
           lssNotes: '',
+          rawLssJson: null,
           coins: { cp: 0, sp: 0, ep: 0, gp: 0, pp: 0 },
         }
   );
