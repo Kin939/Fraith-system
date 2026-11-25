@@ -70,3 +70,15 @@ npm run deploy:pages
 # 5. Задайте продакшен-секрет для подписи JWT-куки
 npx wrangler pages secret put JWT_SECRET --project-name fraith-system
 ```
+
+---
+
+## Автодеплой через GitHub Actions (`.github/workflows/deploy.yml`)
+
+В репозитории настроен CI/CD пайплайн:
+1. В настройках репозитория GitHub (**Settings → Secrets and variables → Actions**) добавьте два секрета:
+   - `CLOUDFLARE_API_TOKEN` — API-токен Cloudflare с правами на *Cloudflare Pages (Edit)*, *Workers Scripts (Edit)*, *D1 (Edit)* и *R2 (Edit)*.
+   - `CLOUDFLARE_ACCOUNT_ID` — ваш Account ID из панели Cloudflare.
+2. Убедитесь, что в `wrangler.toml` прописан реальный `database_id` вашей D1-базы `fraith-dnd-db`.
+3. При каждом слиянии в `main` (или ручном запуске **Run workflow** во вкладке Actions) GitHub автоматически проверит типы, соберёт `dist`, обновит Durable Object, применит миграции D1 и задеплоит сайт на Cloudflare Pages.
+
