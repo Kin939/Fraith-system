@@ -6,17 +6,39 @@ export class ApiError extends Error {
   }
 }
 
-export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+export async function apiFetch<T>(
+  path: string,
+  init?: RequestInit & { timeoutMs?: number }
+): Promise<T> {
   const headers = new Headers(init?.headers);
   if (init?.body && !(init.body instanceof FormData) && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json');
   }
 
-  const res = await fetch(path, {
-    ...init,
-    headers,
-    credentials: 'include',
-  });
+  const timeoutMs = init?.timeoutMs ?? 15000;
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+
+  let res: Response;
+  try {
+    res = await fetch(path, {
+      ...init,
+      headers,
+      credentials: 'include',
+      signal: init?.signal ?? ctrl.signal,
+    });
+  } catch (err) {
+    clearTimeout(timer);
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      throw new ApiError(
+        'Превышено время ожидания ответа сервера Cloudflare. Если вы в РФ без VPN/Zapret, провайдер может ограничивать соединение с Cloudflare (16 КБ ТСПУ).',
+        408
+      );
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
 
   if (!res.ok) {
     let message = `Ошибка запроса (${res.status})`;

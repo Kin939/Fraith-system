@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Eye, EyeOff, KeyRound } from 'lucide-react';
+import { resolvePublicAssetUrl } from '../lib/cdnAssets';
 
 interface LoginPageProps {
   onLogin: (username: string, password: string) => Promise<boolean>;
@@ -23,7 +24,12 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, loading, error })
       <div className="glass-panel neon-border rounded-3xl max-w-md w-full p-7 space-y-6">
         <div className="text-center space-y-2">
           <img
-            src="/apple-touch-icon.png"
+            src={resolvePublicAssetUrl('/apple-touch-icon.png')}
+            onError={(e) => {
+              if (!e.currentTarget.src.endsWith('/favicon.svg')) {
+                e.currentTarget.src = '/favicon.svg';
+              }
+            }}
             alt="FRAITH.SYSTEM"
             className="w-16 h-16 mx-auto rounded-2xl object-cover border border-primary/50 shadow-neon"
           />

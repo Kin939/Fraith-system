@@ -1,17 +1,30 @@
-import React from 'react';
+import React, { Suspense, lazy } from 'react';
 import { AlertTriangle, RotateCcw, X } from 'lucide-react';
 import { Sidebar } from './components/layout/Sidebar';
 import { TabBar } from './components/layout/TabBar';
 import { useAuth } from './hooks/useAuth';
 import { useWebSocket } from './hooks/useWebSocket';
 import { useCampaignStore } from './lib/store';
-import { BestiaryPage } from './pages/BestiaryPage';
-import { CharacterPage } from './pages/CharacterPage';
-import { DmPage } from './pages/DmPage';
 import { LoginPage } from './pages/LoginPage';
-import { QuestsPage } from './pages/QuestsPage';
-import { SpellsPage } from './pages/SpellsPage';
-import { TalentsPage } from './pages/TalentsPage';
+
+const CharacterPage = lazy(() =>
+  import('./pages/CharacterPage').then((m) => ({ default: m.CharacterPage }))
+);
+const QuestsPage = lazy(() =>
+  import('./pages/QuestsPage').then((m) => ({ default: m.QuestsPage }))
+);
+const BestiaryPage = lazy(() =>
+  import('./pages/BestiaryPage').then((m) => ({ default: m.BestiaryPage }))
+);
+const SpellsPage = lazy(() =>
+  import('./pages/SpellsPage').then((m) => ({ default: m.SpellsPage }))
+);
+const TalentsPage = lazy(() =>
+  import('./pages/TalentsPage').then((m) => ({ default: m.TalentsPage }))
+);
+const DmPage = lazy(() =>
+  import('./pages/DmPage').then((m) => ({ default: m.DmPage }))
+);
 
 class PageErrorBoundary extends React.Component<
   { resetKey: string; children: React.ReactNode },
@@ -87,12 +100,20 @@ export const App: React.FC = () => {
 
       <main className="flex-1 min-w-0 p-4 sm:p-6 lg:p-8 max-w-[1600px] w-full mx-auto">
         <PageErrorBoundary resetKey={`${activeTab}-${dmSelectedPlayerId}`}>
-          {activeTab === 'character' && <CharacterPage />}
-          {activeTab === 'quests' && <QuestsPage />}
-          {activeTab === 'bestiary' && <BestiaryPage />}
-          {activeTab === 'spells' && <SpellsPage />}
-          {activeTab === 'talents' && <TalentsPage />}
-          {activeTab === 'dm' && <DmPage />}
+          <Suspense
+            fallback={
+              <div className="glass-panel rounded-3xl p-8 text-center text-xs text-muted animate-pulse">
+                Загрузка раздела...
+              </div>
+            }
+          >
+            {activeTab === 'character' && <CharacterPage />}
+            {activeTab === 'quests' && <QuestsPage />}
+            {activeTab === 'bestiary' && <BestiaryPage />}
+            {activeTab === 'spells' && <SpellsPage />}
+            {activeTab === 'talents' && <TalentsPage />}
+            {activeTab === 'dm' && <DmPage />}
+          </Suspense>
         </PageErrorBoundary>
       </main>
 
