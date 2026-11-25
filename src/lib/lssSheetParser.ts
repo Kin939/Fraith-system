@@ -1,4 +1,4 @@
-import { DND_CLASS_LABELS_RU } from './lss';
+import { DND_CLASS_LABELS_RU, formatCharacterClassesRu } from './lss';
 import type { CharacterCoins } from './types';
 
 export type AbilityCode = 'str' | 'dex' | 'con' | 'int' | 'wis' | 'cha';
@@ -916,7 +916,8 @@ export function parseFullLssSheet(rawJson: string | null | undefined): LssParsed
 
   const name = asStr(sheet.name) || asStr(info.name) || 'Безымянный герой';
   const rawCharClass = asStr(info.charClass) || asStr(sheet.charClass) || '';
-  const classLabel = DND_CLASS_LABELS_RU[rawCharClass] || rawCharClass;
+  const classLabel =
+    formatCharacterClassesRu(rawCharClass) || DND_CLASS_LABELS_RU[rawCharClass] || rawCharClass;
   const subclass = asStr(info.charSubclass) || asStr(sheet.subclass);
   const race = asStr(info.race) || asStr(sheet.race);
   const background = asStr(info.background);

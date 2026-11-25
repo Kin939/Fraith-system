@@ -2,7 +2,14 @@ import React, { useState } from 'react';
 import { BookMarked, Check, Copy, ExternalLink, Lock, Plus, Trash2, Upload, X } from 'lucide-react';
 import { apiFetch } from '../../lib/api';
 import { getSchoolMeta } from '../../lib/dndsuSpells';
-import { DND_CLASS_LABELS_RU, isSpellAllowedForCharacter, MAGIC_SCHOOL_LABELS_RU } from '../../lib/lss';
+import {
+  DND_CLASS_LABELS_RU,
+  DND_HOMEBREW_CLASS_BY_KEY,
+  formatCharacterClassesRu,
+  isSpellAllowedForCharacter,
+  MAGIC_SCHOOL_LABELS_RU,
+  normalizeDndClass,
+} from '../../lib/lss';
 import { useCampaignStore } from '../../lib/store';
 import type { CharacterProfile, LearnedSpellRecord, Spell } from '../../lib/types';
 
@@ -237,12 +244,36 @@ export const SpellCard: React.FC<SpellCardProps> = ({
               <strong>Классы:</strong>{' '}
               <span className="text-text/95">
                 {spell.classes.map((cl, idx) => {
-                  const displayCl = DND_CLASS_LABELS_RU[cl] ? DND_CLASS_LABELS_RU[cl].toLowerCase() : cl;
+                  const norm = normalizeDndClass(cl);
+                  const hbMeta = norm ? DND_HOMEBREW_CLASS_BY_KEY[norm] : undefined;
+                  const displayCl =
+                    (norm && DND_CLASS_LABELS_RU[norm]?.toLowerCase()) ||
+                    (DND_CLASS_LABELS_RU[cl] ? DND_CLASS_LABELS_RU[cl].toLowerCase() : cl);
                   const isTce = tceSet.has(cl.toLowerCase());
                   return (
                     <React.Fragment key={`${cl}-${idx}`}>
                       {idx > 0 && ', '}
-                      <span>{displayCl}</span>
+                      {hbMeta ? (
+                        <a
+                          href={hbMeta.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          title={`Homebrew класс dnd.su (${hbMeta.source})`}
+                          className="hover:text-accent underline decoration-dotted underline-offset-2"
+                        >
+                          {displayCl}
+                        </a>
+                      ) : (
+                        <span>{displayCl}</span>
+                      )}
+                      {hbMeta && (
+                        <sup
+                          title={`Homebrew класс dnd.su • ${hbMeta.source}`}
+                          className="ml-0.5 text-[10px] font-bold text-purple-300"
+                        >
+                          HB
+                        </sup>
+                      )}
                       {isTce && (
                         <sup
                           title="Опциональный список заклинаний Tasha's Cauldron of Everything"
@@ -261,7 +292,43 @@ export const SpellCard: React.FC<SpellCardProps> = ({
           {spell.subclasses && (
             <li>
               <strong>Подклассы:</strong>{' '}
-              <span className="text-text/90">{spell.subclasses}</span>
+              <span className="text-text/90">
+                {spell.subclasses
+                  .split(',')
+                  .map((s) => s.trim())
+                  .filter(Boolean)
+                  .map((subEntry, idx) => {
+                    const paren = subEntry.match(/\(([^)]+)\)\s*$/);
+                    const normParent = paren ? normalizeDndClass(paren[1]) : undefined;
+                    const hbMeta = normParent ? DND_HOMEBREW_CLASS_BY_KEY[normParent] : undefined;
+                    return (
+                      <React.Fragment key={`${subEntry}-${idx}`}>
+                        {idx > 0 && ', '}
+                        {hbMeta ? (
+                          <a
+                            href={hbMeta.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            title={`Подкласс Homebrew-класса «${hbMeta.labelRu}» (${hbMeta.source})`}
+                            className="hover:text-accent underline decoration-dotted underline-offset-2"
+                          >
+                            {subEntry}
+                          </a>
+                        ) : (
+                          <span>{subEntry}</span>
+                        )}
+                        {hbMeta && (
+                          <sup
+                            title={`Homebrew dnd.su • ${hbMeta.source}`}
+                            className="ml-0.5 text-[10px] font-bold text-purple-300"
+                          >
+                            HB
+                          </sup>
+                        )}
+                      </React.Fragment>
+                    );
+                  })}
+              </span>
             </li>
           )}
         </ul>
@@ -309,7 +376,7 @@ export const SpellCard: React.FC<SpellCardProps> = ({
             ) : !classAllowed ? (
               <span className="inline-flex items-center gap-1.5 text-xs text-muted">
                 <Lock className="w-3.5 h-3.5 text-rose-400 shrink-0" />
-                Недоступно классу «{DND_CLASS_LABELS_RU[playerProfile!.charClass] || playerProfile!.charClass}»
+                Недоступно классу «{formatCharacterClassesRu(playerProfile!.charClass) || playerProfile!.charClass}»
               </span>
             ) : slotsFull ? (
               <span className="inline-flex items-center gap-1.5 text-xs text-amber-300">

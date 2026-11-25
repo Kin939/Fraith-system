@@ -1,0 +1,358 @@
+[
+  {
+    "id": 395,
+    "key": "Alchemist",
+    "nameRu": "Алхимик",
+    "nameLower": "алхимик",
+    "nameEn": "Alchemist",
+    "source": "Valda's Spire of Secrets",
+    "url": "https://dnd.su/homebrew/class/395-alchemist/",
+    "casterType": "subclass",
+    "subclasses": [
+      {
+        "id": 2004,
+        "title": "Динамо-инженер"
+      },
+      {
+        "id": 2005,
+        "title": "Апотекарий"
+      },
+      {
+        "id": 2006,
+        "title": "Аморист"
+      }
+    ]
+  },
+  {
+    "id": 853,
+    "key": "AlternateBarbarian",
+    "nameRu": "Альтернативный Варвар",
+    "nameLower": "альтернативный варвар",
+    "nameEn": "Alternate Barbarian",
+    "source": "laserllama",
+    "url": "https://dnd.su/homebrew/class/853-alternate-barbarian/",
+    "casterType": "subclass",
+    "subclasses": [
+      {
+        "id": 2036,
+        "title": "Путь природы"
+      },
+      {
+        "id": 2037,
+        "title": "Путь чародейства"
+      },
+      {
+        "id": 2038,
+        "title": "Путь звериного сердца"
+      }
+    ]
+  },
+  {
+    "id": 382,
+    "key": "AlternateFighter",
+    "nameRu": "Альтернативный Воин",
+    "nameLower": "альтернативный воин",
+    "nameEn": "Alternate Fighter",
+    "source": "laserllama",
+    "url": "https://dnd.su/homebrew/class/382-alternate-fighter/",
+    "casterType": "subclass",
+    "subclasses": [
+      {
+        "id": 2029,
+        "title": "Колдовской клинок"
+      },
+      {
+        "id": 2030,
+        "title": "Мистик"
+      },
+      {
+        "id": 2031,
+        "title": "Мистический рыцарь"
+      },
+      {
+        "id": 2032,
+        "title": "Лучник леса"
+      }
+    ]
+  },
+  {
+    "id": 391,
+    "key": "AlternateMonk",
+    "nameRu": "Альтернативный монах",
+    "nameLower": "альтернативный монах",
+    "nameEn": "Alternate Monk",
+    "source": "laserllama",
+    "url": "https://dnd.su/homebrew/class/391-alternate-monk/",
+    "casterType": "subclass",
+    "subclasses": [
+      {
+        "id": 2033,
+        "title": "Путь Ву Чжень"
+      },
+      {
+        "id": 2034,
+        "title": "Путь тени"
+      },
+      {
+        "id": 2035,
+        "title": "Путь света"
+      }
+    ]
+  },
+  {
+    "id": 857,
+    "key": "AlternateRogue",
+    "nameRu": "Альтернативный Плут",
+    "nameLower": "альтернативный плут",
+    "nameEn": "Alternate Rogue",
+    "source": "laserllama",
+    "url": "https://dnd.su/homebrew/class/857-alternate-rogue/",
+    "casterType": "subclass",
+    "subclasses": [
+      {
+        "id": 2039,
+        "title": "Каратель"
+      },
+      {
+        "id": 2040,
+        "title": "Мистический ловкач"
+      },
+      {
+        "id": 2041,
+        "title": "Искатель"
+      },
+      {
+        "id": 2042,
+        "title": "Кровавый клинок"
+      },
+      {
+        "id": 2043,
+        "title": "Фантом"
+      }
+    ]
+  },
+  {
+    "id": 403,
+    "key": "Warlord",
+    "nameRu": "Воевода",
+    "nameLower": "воевода",
+    "nameEn": "Warlord",
+    "source": "laserllama",
+    "url": "https://dnd.su/homebrew/class/403-warlord/",
+    "casterType": "subclass",
+    "subclasses": [
+      {
+        "id": 2027,
+        "title": "Академия отваги"
+      },
+      {
+        "id": 2028,
+        "title": "Академия поклонения"
+      }
+    ]
+  },
+  {
+    "id": 472,
+    "key": "Jaeger",
+    "nameRu": "Егерь",
+    "nameLower": "егерь",
+    "nameEn": "Jaeger",
+    "source": "Steinhardt's Guide to the Eldritch Hunt",
+    "url": "https://dnd.su/homebrew/class/472-jaeger/",
+    "casterType": "subclass",
+    "subclasses": [
+      {
+        "id": 2002,
+        "title": "Орден Еретиков"
+      },
+      {
+        "id": 2003,
+        "title": "Орден Спасения"
+      }
+    ]
+  },
+  {
+    "id": 565,
+    "key": "Stargazer",
+    "nameRu": "Звездочёт",
+    "nameLower": "звездочёт",
+    "nameEn": "Stargazer",
+    "source": "morethanwordscansay",
+    "url": "https://dnd.su/homebrew/class/565-stargazer/",
+    "casterType": "full",
+    "subclasses": [
+      {
+        "id": 2021,
+        "title": "Трин воды"
+      },
+      {
+        "id": 2022,
+        "title": "Трин воздуха"
+      },
+      {
+        "id": 2023,
+        "title": "Трин земли"
+      },
+      {
+        "id": 2024,
+        "title": "Трин огня"
+      }
+    ]
+  },
+  {
+    "id": 195,
+    "key": "BloodHunter",
+    "nameRu": "Кровавый охотник",
+    "nameLower": "кровавый охотник",
+    "nameEn": "Blood Hunter",
+    "source": "Matt Mercer / Critical Role",
+    "url": "https://dnd.su/homebrew/class/195-blood-hunter/",
+    "casterType": "subclass",
+    "subclasses": [
+      {
+        "id": 2001,
+        "title": "Орден осквернённых душ"
+      }
+    ]
+  },
+  {
+    "id": 277,
+    "key": "Magus",
+    "nameRu": "Магус",
+    "nameLower": "магус",
+    "nameEn": "Magus",
+    "source": "laserllama",
+    "url": "https://dnd.su/homebrew/class/277-magus/",
+    "casterType": "half",
+    "subclasses": [
+      {
+        "id": 2010,
+        "title": "Орден Демиургов"
+      },
+      {
+        "id": 2011,
+        "title": "Орден Мистических лучников"
+      },
+      {
+        "id": 2012,
+        "title": "Орден Танцоров Клинка"
+      },
+      {
+        "id": 2013,
+        "title": "Орден Затмения"
+      },
+      {
+        "id": 2014,
+        "title": "Орден Чешуи"
+      },
+      {
+        "id": 2015,
+        "title": "Орден Стражей"
+      },
+      {
+        "id": 2016,
+        "title": "Орден Чароборцев"
+      }
+    ]
+  },
+  {
+    "id": 208,
+    "key": "Mystic",
+    "nameRu": "Мистик",
+    "nameLower": "мистик",
+    "nameEn": "Mystic",
+    "source": "Unearthed Arcana",
+    "url": "https://dnd.su/homebrew/class/208-mystic/",
+    "casterType": "subclass",
+    "subclasses": [
+      {
+        "id": 2007,
+        "title": "Орден Ву Дзень"
+      }
+    ]
+  },
+  {
+    "id": 202,
+    "key": "LingeringSoul",
+    "nameRu": "Неупокоенная душа",
+    "nameLower": "неупокоенная душа",
+    "nameEn": "The Lingering Soul",
+    "source": "Matt Mercer / Critical Role",
+    "url": "https://dnd.su/homebrew/class/202-the-lingering-soul/",
+    "casterType": "feature",
+    "subclasses": [
+      {
+        "id": 2046,
+        "title": "Зов полтергейста"
+      }
+    ]
+  },
+  {
+    "id": 401,
+    "key": "Savant",
+    "nameRu": "Савант",
+    "nameLower": "савант",
+    "nameEn": "Savant",
+    "source": "laserllama",
+    "url": "https://dnd.su/homebrew/class/401-savant/",
+    "casterType": "subclass",
+    "subclasses": [
+      {
+        "id": 2044,
+        "title": "Рунописец"
+      },
+      {
+        "id": 2045,
+        "title": "Философ"
+      }
+    ]
+  },
+  {
+    "id": 419,
+    "key": "Runekeeper",
+    "nameRu": "Хранитель рун",
+    "nameLower": "хранитель рун",
+    "nameEn": "Runekeeper",
+    "source": "Dungeon Masters Guild",
+    "url": "https://dnd.su/homebrew/class/419-runekeeper/",
+    "casterType": "runic",
+    "subclasses": [
+      {
+        "id": 2025,
+        "title": "Инфернальный язык"
+      },
+      {
+        "id": 2026,
+        "title": "Гоблинский язык"
+      }
+    ]
+  },
+  {
+    "id": 389,
+    "key": "Shaman",
+    "nameRu": "Шаман",
+    "nameLower": "шаман",
+    "nameEn": "Shaman",
+    "source": "laserllama",
+    "url": "https://dnd.su/homebrew/class/389-shaman/",
+    "casterType": "pact",
+    "subclasses": [
+      {
+        "id": 2017,
+        "title": "Связующий проклятия"
+      },
+      {
+        "id": 2018,
+        "title": "Воин духа"
+      },
+      {
+        "id": 2019,
+        "title": "Знахарь"
+      },
+      {
+        "id": 2020,
+        "title": "Дикое сердце"
+      }
+    ]
+  }
+]

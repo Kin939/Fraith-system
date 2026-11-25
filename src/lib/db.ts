@@ -1,4 +1,4 @@
-import { isSpellAllowedForCharacter } from './lss';
+import { formatCharacterClassesRu, isSpellAllowedForCharacter } from './lss';
 import { DEFAULT_ANIME_THEME, parseThemeJson } from './theme';
 import type {
   AuthUser,
@@ -601,7 +601,7 @@ export async function learnSpellForPlayer(
     .bind(spellId)
     .first<SpellRow>();
 
-  if (!spellRow && catalogSpell) {
+  if (catalogSpell && (!spellRow || spellRow.created_by === null)) {
     await upsertCatalogSpellInDb(db, catalogSpell);
     spellRow = await db
       .prepare(`SELECT * FROM spells WHERE id = ?`)
@@ -613,16 +613,22 @@ export async function learnSpellForPlayer(
     return { ok: false, error: 'Заклинание не найдено в каталоге' };
   }
   const spell = mapSpellRow(spellRow);
+  const checkTarget = catalogSpell ? { ...spell, fClass: catalogSpell.fClass } : spell;
 
-  const classMatches = isSpellAllowedForCharacter(spell, profile.charClass, profile.subclass);
+  const classMatches = isSpellAllowedForCharacter(
+    checkTarget,
+    profile.charClass,
+    profile.subclass
+  );
   if (!classMatches) {
     const reqList = [
       ...(spell.classes || []),
       ...(spell.subclasses ? [spell.subclasses] : []),
     ].join(', ');
+    const classLabel = formatCharacterClassesRu(profile.charClass) || profile.charClass;
     return {
       ok: false,
-      error: `Заклинание недоступно для вашего класса (${profile.charClass}). Доступно для: ${reqList || 'особых источников'}`,
+      error: `Заклинание недоступно для вашего класса (${classLabel}). Доступно для: ${reqList || 'особых источников'}`,
     };
   }
 

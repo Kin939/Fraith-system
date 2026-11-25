@@ -18,6 +18,12 @@ import { QuestEditor } from '../components/quests/QuestEditor';
 import { SpellEditor } from '../components/spells/SpellEditor';
 import { TalentEditor } from '../components/talents/TalentEditor';
 import { apiFetch } from '../lib/api';
+import {
+  DND_HOMEBREW_CLASS_BY_KEY,
+  DND_HOMEBREW_CLASSES_META,
+  DND_OFFICIAL_CLASS_LABELS_RU,
+  normalizeDndClass,
+} from '../lib/lss';
 import { useCampaignStore } from '../lib/store';
 import type { CharacterProfile, PlayerId } from '../lib/types';
 
@@ -184,13 +190,26 @@ const CharacterRosterCard: React.FC<{
 
       <div className="grid grid-cols-2 gap-2">
         <div>
-          <label className="block text-xs text-muted mb-1">Класс</label>
+          <label className="block text-xs text-muted mb-1">Класс (офиц. / HB dnd.su)</label>
           <input
+            list={`dm-class-list-${profile.playerId}`}
             value={draft.charClass}
             onChange={(e) => setDraft({ ...draft, charClass: e.target.value })}
-            placeholder="Волшебник / Wizard"
+            placeholder="Волшебник / Магус / Шаман..."
             className="anime-input w-full text-sm"
           />
+          <datalist id={`dm-class-list-${profile.playerId}`}>
+            {Object.entries(DND_OFFICIAL_CLASS_LABELS_RU).map(([en, ru]) => (
+              <option key={en} value={en}>
+                {ru}
+              </option>
+            ))}
+            {DND_HOMEBREW_CLASSES_META.map((hb) => (
+              <option key={hb.key} value={hb.key}>
+                {hb.labelRu} (HB • {hb.source})
+              </option>
+            ))}
+          </datalist>
         </div>
         <div>
           <label className="block text-xs text-muted mb-1">Уровень</label>
@@ -229,11 +248,24 @@ const CharacterRosterCard: React.FC<{
       <div>
         <label className="block text-xs text-muted mb-1">Архетип / Подкласс</label>
         <input
+          list={`dm-subclass-list-${profile.playerId}`}
           value={draft.subclass}
           onChange={(e) => setDraft({ ...draft, subclass: e.target.value })}
-          placeholder="Школа Прорицания / Домен Жизни..."
+          placeholder="Орден Демиургов / Школа Прорицания..."
           className="anime-input w-full text-xs"
         />
+        {(() => {
+          const normCls = normalizeDndClass(draft.charClass);
+          const hbMeta = normCls ? DND_HOMEBREW_CLASS_BY_KEY[normCls] : undefined;
+          if (!hbMeta || hbMeta.archetypes.length === 0) return null;
+          return (
+            <datalist id={`dm-subclass-list-${profile.playerId}`}>
+              {hbMeta.archetypes.map((arch) => (
+                <option key={arch} value={arch} />
+              ))}
+            </datalist>
+          );
+        })()}
       </div>
 
       <button

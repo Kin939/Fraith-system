@@ -31,8 +31,9 @@ import {
 } from '../lib/dndsuSpells';
 import {
   CANONICAL_TO_DNDSU_CLASS_ID,
-  DND_CLASS_LABELS_RU,
+  DND_HOMEBREW_CLASS_BY_KEY,
   extractPlayerCanonicalClasses,
+  formatCharacterClassesRu,
   MAGIC_SCHOOL_LABELS_RU,
 } from '../lib/lss';
 import { useCampaignStore } from '../lib/store';
@@ -322,12 +323,28 @@ export const SpellsPage: React.FC = () => {
 
           <div className="flex items-center gap-2.5 flex-wrap">
             {isPlayer && playerProfile?.characterName ? (
-              <div className="px-3.5 py-2 rounded-2xl bg-bg/75 border border-primary/40 text-xs flex items-center gap-2.5">
-                <span>
-                  Класс:{' '}
+              <div className="px-3.5 py-2 rounded-2xl bg-bg/75 border border-primary/40 text-xs flex items-center gap-2.5 flex-wrap">
+                <span className="inline-flex items-center gap-1.5">
+                  <span>Класс:</span>
                   <strong className="text-accent">
-                    {DND_CLASS_LABELS_RU[playerProfile.charClass] || playerProfile.charClass}
+                    {formatCharacterClassesRu(playerProfile.charClass) || playerProfile.charClass}
                   </strong>
+                  {extractPlayerCanonicalClasses(playerProfile.charClass).map((c) => {
+                    const hb = DND_HOMEBREW_CLASS_BY_KEY[c];
+                    if (!hb) return null;
+                    return (
+                      <a
+                        key={hb.key}
+                        href={hb.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        title={`Открыть Homebrew-класс «${hb.labelRu}» на dnd.su`}
+                        className="px-1.5 py-0.2 rounded bg-purple-500/25 border border-purple-400/40 text-purple-200 text-[10px] font-bold hover:bg-purple-500/35"
+                      >
+                        HB ↗
+                      </a>
+                    );
+                  })}
                 </span>
                 <span className="text-border">•</span>
                 <span>
