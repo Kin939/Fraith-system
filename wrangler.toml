@@ -1,0 +1,30 @@
+#:schema node_modules/wrangler/config-schema.json
+name = "fraith-system"
+compatibility_date = "2024-12-01"
+pages_build_output_dir = "./dist"
+
+[vars]
+CAMPAIGN_ID = "fraith-main-campaign"
+JWT_SECRET = "change-me-in-production-via-wrangler-pages-secret-put"
+CF_ACCESS_ENABLED = "false"
+
+# Cloudflare D1 SQLite Database
+# Create in production: `npx wrangler d1 create fraith-dnd-db` and replace database_id below
+[[d1_databases]]
+binding = "DB"
+database_name = "fraith-dnd-db"
+database_id = "00000000-0000-0000-0000-000000000001"
+migrations_dir = "migrations"
+
+# Cloudflare R2 Object Storage (images for quests, bestiary, talents, avatars)
+# Create in production: `npx wrangler r2 bucket create fraith-dnd-assets`
+[[r2_buckets]]
+binding = "BUCKET"
+bucket_name = "fraith-dnd-assets"
+
+# Cloudflare Durable Object Binding (Pages binds to the standalone DO Worker script)
+# Deploy DO first: `npx wrangler deploy -c wrangler.do.toml`
+[[durable_objects.bindings]]
+name = "CAMPAIGN_DO"
+class_name = "CampaignRoom"
+script_name = "fraith-campaign-do"

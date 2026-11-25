@@ -1,0 +1,12 @@
+#:schema node_modules/wrangler/config-schema.json
+name = "fraith-campaign-do"
+main = "workers/campaign-do.ts"
+compatibility_date = "2024-12-01"
+
+[[durable_objects.bindings]]
+name = "CAMPAIGN_DO"
+class_name = "CampaignRoom"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["CampaignRoom"]
