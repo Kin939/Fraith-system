@@ -676,7 +676,7 @@ export async function getTalentsState(
     .first<{ points: number }>();
 
   const { results: nodeRows } = await db
-    .prepare(`SELECT * FROM talent_tree ORDER BY position_y ASC, position_x ASC, id ASC`)
+    .prepare(`SELECT * FROM talent_tree ORDER BY id ASC`)
     .all<{
       id: number;
       title: string;
@@ -686,24 +686,46 @@ export async function getTalentsState(
       position_x: number;
       position_y: number;
       parent_id: number | null;
+      is_unlocked?: number;
+      unlocked_at?: string | null;
     }>();
 
   const { results: purchaseRows } = await db
     .prepare(`SELECT player_id, talent_id, purchased_at FROM purchased_talents`)
     .all<{ player_id: PlayerId; talent_id: number; purchased_at: string }>();
 
+  const legacyUnlockedIds = new Set(purchaseRows.map((p) => p.talent_id));
+
   return {
     inspirationPoints: pool?.points ?? 0,
-    nodes: nodeRows.map((n) => ({
-      id: n.id,
-      title: n.title,
-      description: n.description,
-      imageKey: n.image_key,
-      cost: n.cost,
-      positionX: n.position_x,
-      positionY: n.position_y,
-      parentId: n.parent_id,
-    })),
+    nodes: nodeRows.map((n, idx) => {
+      // Auto-convert any old small grid index (0..15) into pixel canvas coordinates
+      const px =
+        n.position_x >= 0 && n.position_x <= 15 && n.position_y >= 0 && n.position_y <= 15
+          ? n.position_x === 0 && n.position_y === 0
+            ? 60 + (idx % 4) * 230
+            : 40 + n.position_x * 230
+          : n.position_x;
+      const py =
+        n.position_x >= 0 && n.position_x <= 15 && n.position_y >= 0 && n.position_y <= 15
+          ? n.position_x === 0 && n.position_y === 0
+            ? 60 + Math.floor(idx / 4) * 220
+            : 40 + n.position_y * 220
+          : n.position_y;
+
+      return {
+        id: n.id,
+        title: n.title,
+        description: n.description,
+        imageKey: n.image_key,
+        cost: n.cost,
+        positionX: px,
+        positionY: py,
+        parentId: n.parent_id,
+        isUnlocked: Boolean(n.is_unlocked) || legacyUnlockedIds.has(n.id),
+        unlockedAt: n.unlocked_at ?? null,
+      };
+    }),
     purchases: purchaseRows.map((p) => ({
       playerId: p.player_id,
       talentId: p.talent_id,
@@ -712,36 +734,40 @@ export async function getTalentsState(
   };
 }
 
-export async function purchaseTalentForPlayer(
+export async function unlockTalentForParty(
   db: D1Database,
   campaignId: string,
-  playerId: PlayerId,
   talentId: number
 ): Promise<{ ok: true; remainingPoints: number } | { ok: false; error: string }> {
   const talent = await db
     .prepare(`SELECT * FROM talent_tree WHERE id = ?`)
     .bind(talentId)
-    .first<{ id: number; cost: number; parent_id: number | null; title: string }>();
+    .first<{
+      id: number;
+      cost: number;
+      parent_id: number | null;
+      title: string;
+      is_unlocked?: number;
+    }>();
 
   if (!talent) {
     return { ok: false, error: 'Талант не найден' };
   }
 
-  const alreadyOwned = await db
-    .prepare(`SELECT 1 FROM purchased_talents WHERE player_id = ? AND talent_id = ?`)
-    .bind(playerId, talentId)
-    .first();
-  if (alreadyOwned) {
-    return { ok: false, error: 'Этот талант уже приобретён вашим персонажем' };
+  if (talent.is_unlocked) {
+    return { ok: false, error: 'Этот талант уже открыт для всей группы' };
   }
 
   if (talent.parent_id !== null) {
-    const hasParent = await db
-      .prepare(`SELECT 1 FROM purchased_talents WHERE player_id = ? AND talent_id = ?`)
-      .bind(playerId, talent.parent_id)
-      .first();
-    if (!hasParent) {
-      return { ok: false, error: 'Сначала необходимо открыть предыдущий узел в ветке талантов' };
+    const parent = await db
+      .prepare(`SELECT is_unlocked FROM talent_tree WHERE id = ?`)
+      .bind(talent.parent_id)
+      .first<{ is_unlocked?: number }>();
+    if (!parent?.is_unlocked) {
+      return {
+        ok: false,
+        error: 'Сначала необходимо открыть предыдущий узел в ветке талантов',
+      };
     }
   }
 
@@ -765,10 +791,12 @@ export async function purchaseTalentForPlayer(
 
   await db
     .prepare(
-      `INSERT INTO purchased_talents (player_id, talent_id, purchased_at)
-       VALUES (?, ?, datetime('now'))`
+      `UPDATE talent_tree
+       SET is_unlocked = 1,
+           unlocked_at = datetime('now')
+       WHERE id = ?`
     )
-    .bind(playerId, talentId)
+    .bind(talentId)
     .run();
 
   const updatedPool = await db

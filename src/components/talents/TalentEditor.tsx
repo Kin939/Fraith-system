@@ -1,50 +1,55 @@
-import React, { useState } from 'react';
-import { Plus, Save, Sparkles, Trash2, Upload } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Plus, Save, Sparkles, Trash2, Upload, X } from 'lucide-react';
 import { apiFetch, uploadImageAsset } from '../../lib/api';
 import { resolveImageUrl } from '../../lib/artwork';
 import { useCampaignStore } from '../../lib/store';
 import type { PurchasedTalent, TalentNode } from '../../lib/types';
+import { TalentTree } from './TalentTree';
 
-export const TalentEditor: React.FC = () => {
-  const nodes = useCampaignStore((s) => s.talentNodes);
-  const inspirationPoints = useCampaignStore((s) => s.inspirationPoints);
+export interface TalentNodeModalProps {
+  open: boolean;
+  editingNode: TalentNode | null;
+  initialPos: { x: number; y: number };
+  allNodes: TalentNode[];
+  onClose: () => void;
+}
+
+export const TalentNodeModal: React.FC<TalentNodeModalProps> = ({
+  open,
+  editingNode,
+  initialPos,
+  allNodes,
+  onClose,
+}) => {
   const setTalentsBundle = useCampaignStore((s) => s.setTalentsBundle);
   const pushToast = useCampaignStore((s) => s.pushToast);
 
-  const [editingId, setEditingId] = useState<number | null>(null);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [cost, setCost] = useState(2);
-  const [positionX, setPositionX] = useState(0);
-  const [positionY, setPositionY] = useState(0);
   const [parentId, setParentId] = useState<number | null>(null);
   const [imageKey, setImageKey] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  const [customInspirationSet, setCustomInspirationSet] = useState<string>('');
-
-  const selectNode = (n: TalentNode | null) => {
-    if (!n) {
-      setEditingId(null);
+  useEffect(() => {
+    if (!open) return;
+    if (editingNode) {
+      setTitle(editingNode.title);
+      setDescription(editingNode.description);
+      setCost(editingNode.cost);
+      setParentId(editingNode.parentId);
+      setImageKey(editingNode.imageKey);
+    } else {
       setTitle('');
       setDescription('');
       setCost(2);
-      setPositionX(0);
-      setPositionY(0);
       setParentId(null);
       setImageKey(null);
-      return;
     }
-    setEditingId(n.id);
-    setTitle(n.title);
-    setDescription(n.description);
-    setCost(n.cost);
-    setPositionX(n.positionX);
-    setPositionY(n.positionY);
-    setParentId(n.parentId);
-    setImageKey(n.imageKey);
-  };
+  }, [open, editingNode]);
+
+  if (!open) return null;
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -54,42 +59,41 @@ export const TalentEditor: React.FC = () => {
       const res = await uploadImageAsset(file, 'talents');
       setImageKey(res.key);
       pushToast({
-        title: 'Иконка таланта сохранена в R2',
+        title: 'Иконка таланта загружена',
         message: res.key,
         variant: 'success',
       });
     } catch (err) {
       pushToast({
-        title: 'Ошибка R2',
+        title: 'Ошибка загрузки иконки',
         message: err instanceof Error ? err.message : 'Не удалось загрузить файл',
         variant: 'error',
       });
     } finally {
       setUploading(false);
+      e.target.value = '';
     }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!title.trim()) return;
     setSaving(true);
     try {
-      const payload = {
-        title,
-        description,
-        cost,
-        positionX,
-        positionY,
-        parentId,
-        imageKey,
-      };
-      const res = editingId
+      const res = editingNode
         ? await apiFetch<{
             inspirationPoints: number;
             nodes: TalentNode[];
             purchases: PurchasedTalent[];
-          }>(`/api/dm/talents/${editingId}`, {
+          }>(`/api/dm/talents/${editingNode.id}`, {
             method: 'PUT',
-            body: JSON.stringify(payload),
+            body: JSON.stringify({
+              title: title.trim(),
+              description: description.trim(),
+              cost,
+              parentId,
+              imageKey,
+            }),
           })
         : await apiFetch<{
             inspirationPoints: number;
@@ -97,18 +101,28 @@ export const TalentEditor: React.FC = () => {
             purchases: PurchasedTalent[];
           }>('/api/dm/talents', {
             method: 'POST',
-            body: JSON.stringify(payload),
+            body: JSON.stringify({
+              title: title.trim(),
+              description: description.trim(),
+              cost,
+              positionX: initialPos.x,
+              positionY: initialPos.y,
+              parentId,
+              imageKey,
+            }),
           });
       setTalentsBundle(res);
       pushToast({
-        title: editingId ? 'Узел таланта обновлён' : 'Узел таланта добавлен',
-        message: 'Дерево талантов синхронизировано.',
+        title: editingNode ? 'Талант обновлён' : 'Талант размещён на холсте',
+        message: editingNode
+          ? 'Данные таланта сохранены.'
+          : 'Перетащите плитку мышью в любое удобное место дерева.',
         variant: 'success',
       });
-      if (!editingId) selectNode(null);
+      onClose();
     } catch (err) {
       pushToast({
-        title: 'Ошибка сохранения узла',
+        title: 'Ошибка сохранения таланта',
         message: err instanceof Error ? err.message : 'Проверьте данные',
         variant: 'error',
       });
@@ -117,17 +131,159 @@ export const TalentEditor: React.FC = () => {
     }
   };
 
-  const handleDelete = async (id: number) => {
+  const handleDelete = async () => {
+    if (!editingNode) return;
+    if (!window.confirm(`Удалить узел таланта «${editingNode.title}»?`)) return;
     const res = await apiFetch<{
       inspirationPoints: number;
       nodes: TalentNode[];
       purchases: PurchasedTalent[];
-    }>(`/api/dm/talents/${id}`, {
+    }>(`/api/dm/talents/${editingNode.id}`, {
       method: 'DELETE',
     });
     setTalentsBundle(res);
-    if (editingId === id) selectNode(null);
+    onClose();
   };
+
+  return (
+    <div
+      onClick={onClose}
+      className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4"
+    >
+      <form
+        onClick={(e) => e.stopPropagation()}
+        onSubmit={handleSubmit}
+        className="glass-panel neon-border rounded-3xl max-w-lg w-full p-6 space-y-4"
+      >
+        <div className="flex items-center justify-between gap-3">
+          <h3 className="font-anime font-bold text-lg">
+            {editingNode ? 'Редактирование таланта' : 'Новый узел дерева талантов'}
+          </h3>
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-1.5 rounded-xl border border-border text-muted hover:text-text"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div>
+          <label className="block text-xs text-muted mb-1">Название таланта</label>
+          <input
+            required
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="Например: Благословение единства"
+            className="anime-input w-full text-sm"
+          />
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs text-muted mb-1">Стоимость (общие ✦)</label>
+            <input
+              type="number"
+              min={0}
+              value={cost}
+              onChange={(e) => setCost(Math.max(0, Number(e.target.value)))}
+              className="anime-input w-full text-sm"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs text-muted mb-1">Связь от предыдущего таланта</label>
+            <select
+              value={parentId ?? ''}
+              onChange={(e) => setParentId(e.target.value ? Number(e.target.value) : null)}
+              className="anime-input w-full text-sm"
+            >
+              <option value="">Корневой талант (без родителя)</option>
+              {allNodes
+                .filter((n) => n.id !== editingNode?.id)
+                .map((n) => (
+                  <option key={n.id} value={n.id}>
+                    {n.title}
+                  </option>
+                ))}
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <label className="block text-xs text-muted mb-1">Описание эффекта для группы</label>
+          <textarea
+            required
+            rows={4}
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="Какой бонус или способность получает вся группа при открытии этого таланта..."
+            className="anime-input w-full text-sm"
+          />
+        </div>
+
+        <div className="flex items-center gap-3">
+          <img
+            src={resolveImageUrl(imageKey, '✦')}
+            alt="icon"
+            className="w-12 h-12 rounded-2xl object-cover border border-border"
+          />
+          <label className="px-3.5 py-2 rounded-xl bg-bg/70 border border-border hover:border-primary text-xs cursor-pointer inline-flex items-center gap-2">
+            <Upload className="w-3.5 h-3.5 text-accent" />
+            <span>{uploading ? 'Загрузка...' : 'Загрузить иконку'}</span>
+            <input type="file" accept="image/*" onChange={handleUpload} className="hidden" />
+          </label>
+        </div>
+
+        <div className="flex items-center justify-between gap-2 pt-2 border-t border-border">
+          {editingNode ? (
+            <button
+              type="button"
+              onClick={() => void handleDelete()}
+              className="px-3.5 py-2 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/40 text-xs font-semibold text-rose-300 inline-flex items-center gap-1.5"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Удалить</span>
+            </button>
+          ) : (
+            <span className="text-[11px] text-muted">
+              После создания двигайте плитку мышью по холсту.
+            </span>
+          )}
+
+          <div className="flex items-center gap-2 ml-auto">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 rounded-xl border border-border text-xs text-muted hover:text-text"
+            >
+              Отмена
+            </button>
+            <button
+              type="submit"
+              disabled={saving}
+              className="anime-btn-primary px-4 py-2 text-xs inline-flex items-center gap-1.5"
+            >
+              {editingNode ? <Save className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
+              <span>{saving ? 'Сохранение...' : editingNode ? 'Сохранить' : 'Создать плитку'}</span>
+            </button>
+          </div>
+        </div>
+      </form>
+    </div>
+  );
+};
+
+export const TalentEditor: React.FC = () => {
+  const nodes = useCampaignStore((s) => s.talentNodes);
+  const inspirationPoints = useCampaignStore((s) => s.inspirationPoints);
+  const setTalentsBundle = useCampaignStore((s) => s.setTalentsBundle);
+  const pushToast = useCampaignStore((s) => s.pushToast);
+
+  const [customInspirationSet, setCustomInspirationSet] = useState<string>('');
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editingNode, setEditingNode] = useState<TalentNode | null>(null);
+  const [spawnPos, setSpawnPos] = useState<{ x: number; y: number }>({ x: 80, y: 80 });
 
   const handleSetInspiration = async () => {
     const val = Number.parseInt(customInspirationSet, 10);
@@ -157,16 +313,17 @@ export const TalentEditor: React.FC = () => {
           <Sparkles className="w-6 h-6 text-accent" />
           <div>
             <div className="font-anime font-bold text-base">
-              Управление общим пулом Вдохновений: <span className="text-accent">{inspirationPoints} ✦</span>
+              Управление общим пулом Вдохновений:{' '}
+              <span className="text-accent">{inspirationPoints} ✦</span>
             </div>
             <div className="text-xs text-muted">
-              Очки общие для всей группы и могут накапливаться без ограничений.
+              Очки общие для всей группы — любой открытый талант действует сразу на весь отряд.
             </div>
           </div>
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
-          {[1, 2, 5, 10].map((delta) => (
+          {[-1, 1, 2, 5, 10].map((delta) => (
             <button
               key={delta}
               type="button"
@@ -181,9 +338,13 @@ export const TalentEditor: React.FC = () => {
                 });
                 setTalentsBundle(res);
               }}
-              className="px-3 py-1.5 rounded-xl bg-primary/20 text-primary border border-primary/40 text-xs font-bold hover:bg-primary/30"
+              className={`px-3 py-1.5 rounded-xl border text-xs font-bold transition-colors ${
+                delta < 0
+                  ? 'bg-rose-500/15 text-rose-300 border-rose-500/35 hover:bg-rose-500/25'
+                  : 'bg-primary/20 text-primary border-primary/40 hover:bg-primary/30'
+              }`}
             >
-              +{delta} ✦
+              {delta > 0 ? `+${delta} ✦` : `${delta} ✦`}
             </button>
           ))}
 
@@ -197,183 +358,37 @@ export const TalentEditor: React.FC = () => {
           />
           <button
             type="button"
-            onClick={handleSetInspiration}
-            className="px-3 py-1.5 rounded-xl border border-border bg-surface text-xs font-semibold hover:border-accent"
+            onClick={() => void handleSetInspiration()}
+            className="anime-btn-primary px-3.5 py-1.5 text-xs"
           >
             Задать
           </button>
         </div>
       </div>
 
-      {/* Talent Nodes CRUD */}
-      <div className="grid grid-cols-1 xl:grid-cols-12 gap-5">
-        <div className="xl:col-span-5 glass-panel rounded-3xl p-4 space-y-3">
-          <div className="flex items-center justify-between">
-            <h4 className="font-anime font-bold text-sm">Узлы дерева ({nodes.length})</h4>
-            <button
-              type="button"
-              onClick={() => selectNode(null)}
-              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-primary/20 text-primary text-xs font-semibold"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              Новый узел
-            </button>
-          </div>
+      {/* Interactive Drag-and-Drop Visual Talent Tree Canvas */}
+      <TalentTree
+        nodes={nodes}
+        inspirationPoints={inspirationPoints}
+        selectedEditorId={editingNode?.id ?? null}
+        onRequestCreateAt={(x, y) => {
+          setEditingNode(null);
+          setSpawnPos({ x, y });
+          setModalOpen(true);
+        }}
+        onRequestEditNode={(node) => {
+          setEditingNode(node);
+          setModalOpen(true);
+        }}
+      />
 
-          <div className="space-y-2 max-h-[460px] overflow-y-auto pr-1">
-            {nodes.map((n) => (
-              <div
-                key={n.id}
-                onClick={() => selectNode(n)}
-                className={`p-3 rounded-2xl border cursor-pointer flex items-center justify-between gap-2 ${
-                  editingId === n.id
-                    ? 'bg-primary/15 border-primary'
-                    : 'bg-bg/50 border-border hover:border-primary/40'
-                }`}
-              >
-                <div className="min-w-0">
-                  <div className="text-sm font-semibold truncate">{n.title}</div>
-                  <div className="text-[11px] text-muted">
-                    Стоимость: {n.cost} ✦ • Сетка ({n.positionX}, {n.positionY})
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    void handleDelete(n.id);
-                  }}
-                  className="p-1.5 rounded-lg text-muted hover:text-rose-400"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <form
-          onSubmit={handleSubmit}
-          className="xl:col-span-7 glass-panel rounded-3xl p-5 space-y-4"
-        >
-          <h4 className="font-anime font-bold text-base">
-            {editingId ? `Редактирование узла #${editingId}` : 'Добавление плитки таланта'}
-          </h4>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="sm:col-span-2">
-              <label className="block text-xs text-muted mb-1">Название навыка *</label>
-              <input
-                required
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder="Астральное Пробуждение"
-                className="anime-input w-full text-sm"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs text-muted mb-1">Стоимость (вдохновения) *</label>
-              <input
-                type="number"
-                min={0}
-                value={cost}
-                onChange={(e) => setCost(Number(e.target.value))}
-                className="anime-input w-full text-sm"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs text-muted mb-1">Родительский узел (связь)</label>
-              <select
-                value={parentId ?? ''}
-                onChange={(e) =>
-                  setParentId(e.target.value ? Number(e.target.value) : null)
-                }
-                className="anime-input w-full text-sm"
-              >
-                <option value="">— Нет (корневой талант) —</option>
-                {nodes
-                  .filter((n) => n.id !== editingId)
-                  .map((n) => (
-                    <option key={n.id} value={n.id}>
-                      #{n.id} — {n.title}
-                    </option>
-                  ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-xs text-muted mb-1">Координата сетки X (столбец 0..6)</label>
-              <input
-                type="number"
-                min={0}
-                max={10}
-                value={positionX}
-                onChange={(e) => setPositionX(Number(e.target.value))}
-                className="anime-input w-full text-sm"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs text-muted mb-1">Координата сетки Y (ряд 0..8)</label>
-              <input
-                type="number"
-                min={0}
-                max={12}
-                value={positionY}
-                onChange={(e) => setPositionY(Number(e.target.value))}
-                className="anime-input w-full text-sm"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-xs text-muted mb-1">Описание эффекта *</label>
-            <textarea
-              required
-              rows={3}
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              className="anime-input w-full text-sm"
-            />
-          </div>
-
-          <div className="flex flex-wrap items-center gap-3 p-3 rounded-2xl bg-bg/60 border border-border">
-            <img
-              src={resolveImageUrl(imageKey, '✦')}
-              alt="Иконка"
-              className="w-14 h-14 rounded-2xl object-cover border border-primary"
-            />
-            <div className="space-y-1">
-              <label className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-surface border border-border hover:border-primary text-xs font-medium cursor-pointer">
-                <Upload className="w-3.5 h-3.5 text-primary" />
-                <span>{uploading ? 'Загрузка...' : 'Загрузить иконку в R2'}</span>
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={handleUpload}
-                  className="hidden"
-                />
-              </label>
-              <div className="text-[11px] text-muted">
-                image_key: <code>{imageKey || 'preset'}</code>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex justify-end">
-            <button
-              type="submit"
-              disabled={saving}
-              className="anime-btn-primary px-5 py-2.5 text-xs inline-flex items-center gap-2"
-            >
-              <Save className="w-4 h-4" />
-              <span>{saving ? 'Сохранение...' : editingId ? 'Обновить узел' : 'Создать узел'}</span>
-            </button>
-          </div>
-        </form>
-      </div>
+      <TalentNodeModal
+        open={modalOpen}
+        editingNode={editingNode}
+        initialPos={spawnPos}
+        allNodes={nodes}
+        onClose={() => setModalOpen(false)}
+      />
     </div>
   );
 };

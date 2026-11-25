@@ -48,7 +48,7 @@ export const BestiaryPage: React.FC = () => {
             <Skull className="w-5 h-5" />
           </div>
           <div>
-            <h1 className="font-anime font-extrabold text-xl">Бестиарий Разлома</h1>
+            <h1 className="font-anime font-extrabold text-xl">Бестиарий</h1>
             <p className="text-xs text-muted">
               Отсортировано по уровню опасности (CR) • Открыто существ: {revealedCount} из{' '}
               {creatures.length}

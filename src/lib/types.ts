@@ -193,6 +193,8 @@ export interface TalentNode {
   positionX: number;
   positionY: number;
   parentId: number | null;
+  isUnlocked: boolean;
+  unlockedAt: string | null;
 }
 
 export interface PurchasedTalent {
@@ -226,6 +228,7 @@ export type CampaignWsEventType =
   | 'journal:updated'
   | 'character:updated'
   | 'lss:roll'
+  | 'rolls:cleared'
   | 'lss:health'
   | 'theme:updated';
 

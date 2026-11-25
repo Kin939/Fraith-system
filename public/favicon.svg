@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <defs>
+    <linearGradient id="bgGrad" x1="6" y1="4" x2="58" y2="60" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#1e1538" />
+      <stop offset="55%" stop-color="#120f24" />
+      <stop offset="100%" stop-color="#090912" />
+    </linearGradient>
+    <linearGradient id="d20Stroke" x1="12" y1="8" x2="52" y2="56" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#c084fc" />
+      <stop offset="50%" stop-color="#a855f7" />
+      <stop offset="100%" stop-color="#22d3ee" />
+    </linearGradient>
+    <linearGradient id="coreGlow" x1="20" y1="18" x2="44" y2="46" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#a855f7" stop-opacity="0.42" />
+      <stop offset="100%" stop-color="#22d3ee" stop-opacity="0.26" />
+    </linearGradient>
+  </defs>
+
+  <!-- Rounded dark arcane badge -->
+  <rect x="3" y="3" width="58" height="58" rx="16" fill="url(#bgGrad)" stroke="url(#d20Stroke)" stroke-width="2.5" />
+
+  <!-- Subtle inner rune ring -->
+  <circle cx="32" cy="32" r="23" stroke="#a855f7" stroke-opacity="0.22" stroke-width="1" stroke-dasharray="3 3" />
+
+  <!-- D20 Icosahedron Silhouette & Facets -->
+  <polygon
+    points="32,9 52,20.5 52,43.5 32,55 12,43.5 12,20.5"
+    fill="url(#coreGlow)"
+    stroke="url(#d20Stroke)"
+    stroke-width="2.4"
+    stroke-linejoin="round"
+  />
+  <!-- Inner triangle of D20 -->
+  <polygon
+    points="32,17 44.5,39 19.5,39"
+    fill="#141129"
+    fill-opacity="0.82"
+    stroke="#22d3ee"
+    stroke-width="1.8"
+    stroke-linejoin="round"
+  />
+  <!-- Facet struts -->
+  <line x1="32" y1="9" x2="32" y2="17" stroke="#c084fc" stroke-width="1.6" stroke-linecap="round" />
+  <line x1="12" y1="20.5" x2="32" y2="17" stroke="#a855f7" stroke-width="1.4" stroke-opacity="0.85" />
+  <line x1="52" y1="20.5" x2="32" y2="17" stroke="#a855f7" stroke-width="1.4" stroke-opacity="0.85" />
+  <line x1="12" y1="20.5" x2="19.5" y2="39" stroke="#a855f7" stroke-width="1.4" stroke-opacity="0.85" />
+  <line x1="52" y1="20.5" x2="44.5" y2="39" stroke="#22d3ee" stroke-width="1.4" stroke-opacity="0.85" />
+  <line x1="12" y1="43.5" x2="19.5" y2="39" stroke="#a855f7" stroke-width="1.5" />
+  <line x1="52" y1="43.5" x2="44.5" y2="39" stroke="#22d3ee" stroke-width="1.5" />
+  <line x1="32" y1="55" x2="19.5" y2="39" stroke="#a855f7" stroke-width="1.4" stroke-opacity="0.85" />
+  <line x1="32" y1="55" x2="44.5" y2="39" stroke="#22d3ee" stroke-width="1.4" stroke-opacity="0.85" />
+
+  <!-- Number 20 spark in center -->
+  <text
+    x="32"
+    y="35.2"
+    text-anchor="middle"
+    fill="#f8fafc"
+    font-family="system-ui, -apple-system, sans-serif"
+    font-weight="800"
+    font-size="10.5"
+    letter-spacing="-0.4"
+  >20</text>
+</svg>

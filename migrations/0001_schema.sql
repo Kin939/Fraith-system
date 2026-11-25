@@ -137,9 +137,11 @@ CREATE TABLE IF NOT EXISTS talent_tree (
   description TEXT NOT NULL,
   image_key TEXT,
   cost INTEGER NOT NULL DEFAULT 1 CHECK (cost >= 0),
-  position_x INTEGER NOT NULL DEFAULT 0,
-  position_y INTEGER NOT NULL DEFAULT 0,
-  parent_id INTEGER REFERENCES talent_tree(id) ON DELETE SET NULL
+  position_x INTEGER NOT NULL DEFAULT 60,
+  position_y INTEGER NOT NULL DEFAULT 60,
+  parent_id INTEGER REFERENCES talent_tree(id) ON DELETE SET NULL,
+  is_unlocked INTEGER NOT NULL DEFAULT 0,
+  unlocked_at TEXT
 );
 
 CREATE TABLE IF NOT EXISTS purchased_talents (

@@ -47,7 +47,7 @@ export const DmPage: React.FC = () => {
     { id: 'bestiary', label: 'Бестиарий + CR', icon: <Skull className="w-4 h-4" /> },
     { id: 'spells', label: 'Заклинания / Homebrew', icon: <BookOpen className="w-4 h-4" /> },
     { id: 'talents', label: 'Таланты и Вдохновения', icon: <Sparkles className="w-4 h-4" /> },
-    { id: 'roster', label: 'Герои и ссылки LSS', icon: <Users className="w-4 h-4" /> },
+    { id: 'roster', label: 'Герои и лимиты', icon: <Users className="w-4 h-4" /> },
     { id: 'themes', label: 'Темы аккаунтов', icon: <Palette className="w-4 h-4" /> },
   ];
 
@@ -227,11 +227,12 @@ const CharacterRosterCard: React.FC<{
       </div>
 
       <div>
-        <label className="block text-xs text-muted mb-1">URL встраивания LSS</label>
+        <label className="block text-xs text-muted mb-1">Архетип / Подкласс</label>
         <input
-          value={draft.lssEmbedUrl}
-          onChange={(e) => setDraft({ ...draft, lssEmbedUrl: e.target.value })}
-          className="anime-input w-full text-xs font-mono"
+          value={draft.subclass}
+          onChange={(e) => setDraft({ ...draft, subclass: e.target.value })}
+          placeholder="Школа Прорицания / Домен Жизни..."
+          className="anime-input w-full text-xs"
         />
       </div>
 
