@@ -243,6 +243,46 @@ a.dndsu-source-plaque:hover {
   background: color-mix(in srgb, var(--bg) 42%, transparent);
 }
 
+/* Classic D&D 5e / LSS Character Sheet frames in Fraith dark neon-anime theme */
+.sheet-frame {
+  position: relative;
+  background: color-mix(in srgb, var(--bg) 76%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--border) 92%, var(--primary));
+  border-radius: 0.95rem;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03), 0 6px 20px rgba(0, 0, 0, 0.28);
+}
+
+.sheet-frame--accent {
+  border-color: color-mix(in srgb, var(--primary) 52%, var(--border));
+  box-shadow: 0 0 16px color-mix(in srgb, var(--glow) 40%, transparent);
+}
+
+.sheet-frame__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.42rem 0.75rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--primary) 35%, var(--border));
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--primary) 14%, transparent),
+    transparent 85%
+  );
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text);
+}
+
+.sheet-grid-paper {
+  background-image:
+    linear-gradient(color-mix(in srgb, var(--border) 32%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--border) 32%, transparent) 1px, transparent 1px);
+  background-size: 18px 18px;
+}
+
 /* Custom sleek scrollbar */
 ::-webkit-scrollbar {
   width: 8px;

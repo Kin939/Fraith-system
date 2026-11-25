@@ -404,6 +404,8 @@ app.post('/player/:id/sync-lss', async (c) => {
              subclass = '',
              race = '',
              level = 0,
+             experience_current = 0,
+             experience_max = 0,
              max_spells = 0,
              coins_cp = 0,
              coins_sp = 0,
@@ -433,6 +435,26 @@ app.post('/player/:id/sync-lss', async (c) => {
       user.id
     );
     return c.json({ profile: cleared });
+  }
+
+  // Enforce DM-only experience points: if a player syncs JSON, preserve current DB XP inside rawJsonToStore
+  if (rawJsonToStore && user.role !== 'dm') {
+    try {
+      const parsedRoot = JSON.parse(rawJsonToStore) as Record<string, unknown>;
+      if (typeof parsedRoot.data === 'string') {
+        const inner = JSON.parse(parsedRoot.data) as Record<string, unknown>;
+        if (!inner.info || typeof inner.info !== 'object') inner.info = {};
+        (inner.info as Record<string, unknown>).experience = { value: current.experienceCurrent };
+        parsedRoot.data = JSON.stringify(inner);
+      } else if (parsedRoot.info && typeof parsedRoot.info === 'object') {
+        (parsedRoot.info as Record<string, unknown>).experience = {
+          value: current.experienceCurrent,
+        };
+      }
+      rawJsonToStore = JSON.stringify(parsedRoot);
+    } catch {
+      // Keep rawJsonToStore as-is if non-standard
+    }
   }
 
   await c.env.DB.prepare(
@@ -1515,6 +1537,92 @@ app.put('/dm/characters/:playerId', async (c) => {
       playerId
     ),
   ]);
+
+  const profile = await getCharacterProfile(c.env.DB, playerId);
+  await broadcastCampaignEvent(c.env, 'character:updated', { playerId, profile }, dmUser.id);
+  return c.json({ profile });
+});
+
+app.post('/dm/characters/:playerId/xp', async (c) => {
+  const dmUser = c.get('user')!;
+  const playerId = parseValidPlayerId(c.req.param('playerId'));
+  if (!playerId) return c.json({ error: 'Некорректный playerId' }, 400);
+
+  const current = await getCharacterProfile(c.env.DB, playerId);
+  if (!current) return c.json({ error: 'Профиль не найден' }, 404);
+
+  const body = await c.req
+    .json<{
+      delta?: number;
+      setXp?: number;
+      setMaxXp?: number | null;
+      levelUp?: boolean;
+    }>()
+    .catch(
+      (): {
+        delta?: number;
+        setXp?: number;
+        setMaxXp?: number | null;
+        levelUp?: boolean;
+      } => ({})
+    );
+
+  let nextXp = current.experienceCurrent ?? 0;
+  if (typeof body.setXp === 'number' && Number.isFinite(body.setXp)) {
+    nextXp = Math.max(0, Math.trunc(body.setXp));
+  } else if (typeof body.delta === 'number' && Number.isFinite(body.delta)) {
+    nextXp = Math.max(0, Math.trunc(nextXp + body.delta));
+  }
+
+  let nextMaxXp = current.experienceMax ?? 0;
+  if (body.setMaxXp === null) {
+    nextMaxXp = 0; // 0 = auto D&D 5e next-level threshold
+  } else if (typeof body.setMaxXp === 'number' && Number.isFinite(body.setMaxXp)) {
+    nextMaxXp = Math.max(0, Math.trunc(body.setMaxXp));
+  }
+
+  let nextLevel = current.level || 1;
+  if (body.levelUp === true && nextLevel < 20) {
+    nextLevel = Math.min(20, nextLevel + 1);
+  }
+
+  // Also synchronize XP and level inside raw_lss_json if present
+  let nextRawJson = current.rawLssJson ?? null;
+  if (nextRawJson) {
+    try {
+      const parsedRoot = JSON.parse(nextRawJson) as Record<string, unknown>;
+      if (typeof parsedRoot.data === 'string') {
+        const inner = JSON.parse(parsedRoot.data) as Record<string, unknown>;
+        if (!inner.info || typeof inner.info !== 'object') inner.info = {};
+        const infoObj = inner.info as Record<string, unknown>;
+        infoObj.experience = { value: nextXp };
+        if (body.levelUp === true) {
+          infoObj.level = { value: nextLevel };
+        }
+        parsedRoot.data = JSON.stringify(inner);
+      } else if (parsedRoot.info && typeof parsedRoot.info === 'object') {
+        const infoObj = parsedRoot.info as Record<string, unknown>;
+        infoObj.experience = { value: nextXp };
+        if (body.levelUp === true) {
+          infoObj.level = { value: nextLevel };
+        }
+      }
+      nextRawJson = JSON.stringify(parsedRoot);
+    } catch {
+      // Ignore malformed raw json
+    }
+  }
+
+  await c.env.DB.prepare(
+    `UPDATE character_profiles
+     SET experience_current = ?,
+         experience_max = ?,
+         level = ?,
+         raw_lss_json = COALESCE(?, raw_lss_json)
+     WHERE player_id = ?`
+  )
+    .bind(nextXp, nextMaxXp, nextLevel, nextRawJson, playerId)
+    .run();
 
   const profile = await getCharacterProfile(c.env.DB, playerId);
   await broadcastCampaignEvent(c.env, 'character:updated', { playerId, profile }, dmUser.id);

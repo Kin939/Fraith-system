@@ -301,7 +301,7 @@ export const SpellsPage: React.FC = () => {
   return (
     <div className="space-y-4">
       {/* Top dnd.su Header + Category Tabs (Официальные / Homebrew / Все / Изученные) */}
-      <div className="glass-panel rounded-3xl p-4 sm:p-5 space-y-4">
+      <div className="relative z-30 glass-panel rounded-3xl p-4 sm:p-5 space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <div className="w-11 h-11 rounded-2xl bg-primary/20 border border-primary/40 flex items-center justify-center text-primary shrink-0">

@@ -21,25 +21,79 @@ export const SKILL_META: Array<{
   labelRu: string;
   defaultStat: AbilityCode;
 }> = [
-  { key: 'acrobatics', labelRu: 'Акробатика', defaultStat: 'dex' },
-  { key: 'investigation', labelRu: 'Анализ', defaultStat: 'int' },
   { key: 'athletics', labelRu: 'Атлетика', defaultStat: 'str' },
-  { key: 'perception', labelRu: 'Внимательность', defaultStat: 'wis' },
+  { key: 'acrobatics', labelRu: 'Акробатика', defaultStat: 'dex' },
+  { key: 'sleight of hand', labelRu: 'Ловкость рук', defaultStat: 'dex' },
+  { key: 'stealth', labelRu: 'Скрытность', defaultStat: 'dex' },
+  { key: 'investigation', labelRu: 'Анализ', defaultStat: 'int' },
+  { key: 'history', labelRu: 'История', defaultStat: 'int' },
+  { key: 'arcana', labelRu: 'Магия', defaultStat: 'int' },
+  { key: 'nature', labelRu: 'Природа', defaultStat: 'int' },
+  { key: 'religion', labelRu: 'Религия', defaultStat: 'int' },
+  { key: 'perception', labelRu: 'Восприятие', defaultStat: 'wis' },
   { key: 'survival', labelRu: 'Выживание', defaultStat: 'wis' },
+  { key: 'medicine', labelRu: 'Медицина', defaultStat: 'wis' },
+  { key: 'insight', labelRu: 'Проницательность', defaultStat: 'wis' },
+  { key: 'animal handling', labelRu: 'Уход за животными', defaultStat: 'wis' },
   { key: 'performance', labelRu: 'Выступление', defaultStat: 'cha' },
   { key: 'intimidation', labelRu: 'Запугивание', defaultStat: 'cha' },
-  { key: 'history', labelRu: 'История', defaultStat: 'int' },
-  { key: 'sleight of hand', labelRu: 'Ловкость рук', defaultStat: 'dex' },
-  { key: 'arcana', labelRu: 'Магия', defaultStat: 'int' },
-  { key: 'medicine', labelRu: 'Медицина', defaultStat: 'wis' },
   { key: 'deception', labelRu: 'Обман', defaultStat: 'cha' },
-  { key: 'nature', labelRu: 'Природа', defaultStat: 'int' },
-  { key: 'insight', labelRu: 'Проницательность', defaultStat: 'wis' },
-  { key: 'religion', labelRu: 'Религия', defaultStat: 'int' },
-  { key: 'stealth', labelRu: 'Скрытность', defaultStat: 'dex' },
   { key: 'persuasion', labelRu: 'Убеждение', defaultStat: 'cha' },
-  { key: 'animal handling', labelRu: 'Уход за животными', defaultStat: 'wis' },
 ];
+
+export const DND5E_XP_BY_LEVEL: Record<number, number> = {
+  1: 0,
+  2: 300,
+  3: 900,
+  4: 2700,
+  5: 6500,
+  6: 14000,
+  7: 23000,
+  8: 34000,
+  9: 48000,
+  10: 64000,
+  11: 85000,
+  12: 100000,
+  13: 120000,
+  14: 140000,
+  15: 165000,
+  16: 195000,
+  17: 225000,
+  18: 265000,
+  19: 305000,
+  20: 355000,
+};
+
+export function getXpProgressInfo(
+  level: number,
+  currentXp: number,
+  customMaxXp = 0
+): {
+  currentXp: number;
+  floorXp: number;
+  targetXp: number;
+  percent: number;
+  canLevelUp: boolean;
+} {
+  const safeLevel = Math.min(20, Math.max(1, level || 1));
+  const floorXp = customMaxXp > 0 ? 0 : (DND5E_XP_BY_LEVEL[safeLevel] ?? 0);
+  const defaultNext =
+    safeLevel >= 20 ? 355000 : (DND5E_XP_BY_LEVEL[safeLevel + 1] ?? 300);
+  const targetXp = customMaxXp > 0 ? customMaxXp : defaultNext;
+  const span = Math.max(1, targetXp - floorXp);
+  const rawPct =
+    safeLevel >= 20 && customMaxXp <= 0
+      ? 100
+      : Math.round(((currentXp - floorXp) / span) * 100);
+  const percent = Math.min(100, Math.max(0, rawPct));
+  return {
+    currentXp,
+    floorXp,
+    targetXp,
+    percent,
+    canLevelUp: safeLevel < 20 && currentXp >= targetXp,
+  };
+}
 
 export const TEXT_BLOCK_LABELS_RU: Record<string, string> = {
   traits: 'Умения и способности',
@@ -137,6 +191,18 @@ export interface LssParsedResource {
   notes: string;
 }
 
+export interface LssManualSpellRow {
+  id: string;
+  level: number;
+  name: string;
+  castingTime: string;
+  range: string;
+  concentration: boolean;
+  ritual: boolean;
+  material: boolean;
+  notes: string;
+}
+
 export interface LssParsedSheet {
   edition: string;
   name: string;
@@ -146,6 +212,7 @@ export interface LssParsedSheet {
   race: string;
   background: string;
   alignment: string;
+  size: string;
   playerName: string;
   experience: number | null;
   level: number;
@@ -154,6 +221,13 @@ export interface LssParsedSheet {
   inspiration: boolean;
   exhaustion: number;
   conditions: string[];
+
+  physical: {
+    size: string;
+    carryCapacity: string;
+    highJump: string;
+    longJump: string;
+  };
 
   deathSaves: {
     success: number;
@@ -221,12 +295,14 @@ export interface LssParsedSheet {
 
   spellcasting: {
     baseAbility: AbilityCode | null;
+    abilityMod: number | null;
     saveDc: number | null;
     attackBonus: number | null;
     slotsByLevel: Record<number, { total: number; expended: number }>;
     pactSlots: { level: number; total: number; expended: number };
     slots: Array<{ level: number; total: number; expended: number; isPact?: boolean }>;
     preparedSlugs: string[];
+    manualSpells: LssManualSpellRow[];
   };
 
   textBlocks: Array<{
@@ -235,6 +311,15 @@ export interface LssParsedSheet {
     plainText: string;
     nodes: LssRichParagraph[];
   }>;
+  textByKey: Record<
+    string,
+    {
+      key: string;
+      label: string;
+      plainText: string;
+      nodes: LssRichParagraph[];
+    }
+  >;
 }
 
 function unwrapVal(v: unknown): unknown {
@@ -1289,12 +1374,34 @@ export function parseFullLssSheet(rawJson: string | null | undefined): LssParsed
     ? topSpells.prepared.filter((s): s is string => typeof s === 'string')
     : [];
 
+  // Manual spell rows stored inside sheet.manualSpells
+  const manualSpellsRaw = Array.isArray(sheet.manualSpells) ? sheet.manualSpells : [];
+  const manualSpells: LssManualSpellRow[] = [];
+  manualSpellsRaw.forEach((item, idx) => {
+    if (!item || typeof item !== 'object') return;
+    const r = item as Record<string, unknown>;
+    const spName = asStr(r.name);
+    if (!spName) return;
+    manualSpells.push({
+      id: asStr(r.id) || `mspell-${idx}`,
+      level: Math.min(9, Math.max(0, asNum(r.level) ?? 0)),
+      name: spName,
+      castingTime: asStr(r.castingTime) || '1 д.',
+      range: asStr(r.range) || '60 фт.',
+      concentration: Boolean(r.concentration),
+      ritual: Boolean(r.ritual),
+      material: Boolean(r.material),
+      notes: asStr(r.notes),
+    });
+  });
+
   // Rich text blocks
   const textObj = (sheet.text && typeof sheet.text === 'object' ? sheet.text : {}) as Record<
     string,
     unknown
   >;
   const textBlocks: LssParsedSheet['textBlocks'] = [];
+  const textByKey: LssParsedSheet['textByKey'] = {};
   for (const [key, rawBlock] of Object.entries(textObj)) {
     if (!rawBlock || typeof rawBlock !== 'object') continue;
     const br = rawBlock as Record<string, unknown>;
@@ -1307,18 +1414,21 @@ export function parseFullLssSheet(rawJson: string | null | undefined): LssParsed
       const vo = valObj as Record<string, unknown>;
       nodes = parseRichDocNodes(vo.data ?? vo, resourcesMap);
     }
-    if (nodes.length === 0) continue;
     const label =
       asStr(br.customLabel) || TEXT_BLOCK_LABELS_RU[key] || `Раздел (${key})`;
-    textBlocks.push({
+    const parsedEntry = {
       key,
       label,
       plainText: nodesToPlainText(nodes),
       nodes,
-    });
+    };
+    textByKey[key] = parsedEntry;
+    if (nodes.length > 0) {
+      textBlocks.push(parsedEntry);
+    }
   }
 
-  // SubInfo
+  // SubInfo & Physical calculations (Size, Carrying Capacity, High Jump, Long Jump)
   const subInfoMeta: Array<[string, string]> = [
     ['age', 'Возраст'],
     ['height', 'Рост'],
@@ -1334,6 +1444,30 @@ export function parseFullLssSheet(rawJson: string | null | undefined): LssParsed
     subInfoMap[k] = val;
     if (val) subInfo.push({ key: k, label: lbl, value: val });
   }
+
+  const size = asStr(info.size) || asStr(subInfoObj.size) || 'Средний';
+  const sizeLower = size.toLowerCase();
+  const carryMult = sizeLower.includes('крошеч')
+    ? 0.5
+    : sizeLower.includes('больш')
+      ? 2
+      : sizeLower.includes('огром')
+        ? 4
+        : sizeLower.includes('громад')
+          ? 8
+          : 1;
+  const carryWeight = Math.round(abilities.str.score * 15 * carryMult);
+  const pushDragLift = Math.round(abilities.str.score * 30 * carryMult);
+  const highJumpFt = Math.max(0, 3 + abilities.str.mod);
+  const longJumpFt = Math.max(0, abilities.str.score);
+
+  const physical = {
+    size,
+    carryCapacity:
+      asStr(subInfoObj.carryCustom) || `${carryWeight} / ${pushDragLift} фунт.`,
+    highJump: asStr(subInfoObj.highJumpCustom) || `${highJumpFt} фут.`,
+    longJump: asStr(subInfoObj.longJumpCustom) || `${longJumpFt} фут.`,
+  };
 
   let avatarUrl: string | null = null;
   if (sheet.avatar && typeof sheet.avatar === 'object') {
@@ -1356,6 +1490,7 @@ export function parseFullLssSheet(rawJson: string | null | undefined): LssParsed
     race,
     background,
     alignment,
+    size,
     playerName,
     experience,
     level,
@@ -1364,6 +1499,7 @@ export function parseFullLssSheet(rawJson: string | null | undefined): LssParsed
     inspiration,
     exhaustion,
     conditions,
+    physical,
     deathSaves: {
       success: deathSuccess,
       fail: deathFail,
@@ -1401,14 +1537,17 @@ export function parseFullLssSheet(rawJson: string | null | undefined): LssParsed
     profFlagKeys,
     spellcasting: {
       baseAbility: baseCode,
+      abilityMod: baseCode ? abilities[baseCode].mod : null,
       saveDc,
       attackBonus: spellAttackBonus,
       slotsByLevel,
       pactSlots,
       slots,
       preparedSlugs,
+      manualSpells,
     },
     textBlocks,
+    textByKey,
   };
 }
 

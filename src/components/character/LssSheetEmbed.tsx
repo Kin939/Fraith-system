@@ -4,6 +4,7 @@ import {
   FileJson,
   Lock,
   RefreshCw,
+  RotateCcw,
   ScrollText,
   Unlock,
   Upload,
@@ -12,14 +13,22 @@ import {
 import { LSS_SCHEMA_V1_URL } from '../../lib/lss';
 import { packLssStructures, unwrapLssJsonMutable } from '../../lib/lssSheetParser';
 import { useCampaignStore } from '../../lib/store';
-import type { CharacterProfile, PlayerId } from '../../lib/types';
+import type {
+  CharacterProfile,
+  JournalEntry,
+  LearnedSpellRecord,
+  PlayerId,
+} from '../../lib/types';
 import { LssNativeSheet } from './LssNativeSheet';
 
 interface LssSheetEmbedProps {
   playerId: PlayerId;
   profile: CharacterProfile;
-  isReadOnlyViewer: boolean;
+  journal: JournalEntry | null;
+  learnedSpells: LearnedSpellRecord[];
+  isDm: boolean;
   onSyncJson: (lssJson: unknown) => Promise<void>;
+  onResetSlot: () => Promise<void>;
   onRefreshCache: () => Promise<void>;
   syncing: boolean;
   externalOpenImport?: number;
@@ -27,13 +36,19 @@ interface LssSheetEmbedProps {
 
 export const LssSheetEmbed: React.FC<LssSheetEmbedProps> = ({
   profile,
-  isReadOnlyViewer,
+  journal,
+  learnedSpells,
+  isDm,
   onSyncJson,
+  onResetSlot,
   onRefreshCache,
   syncing,
   externalOpenImport,
 }) => {
   const pushToast = useCampaignStore((s) => s.pushToast);
+  const updateCharacterProfileInStore = useCampaignStore(
+    (s) => s.updateCharacterProfileInStore
+  );
 
   const [dmAllowEdit, setDmAllowEdit] = useState(false);
   const [importModalOpen, setImportModalOpen] = useState(false);
@@ -50,7 +65,7 @@ export const LssSheetEmbed: React.FC<LssSheetEmbedProps> = ({
     }
   }, [externalOpenImport]);
 
-  const canEdit = !isReadOnlyViewer || dmAllowEdit;
+  const canEdit = !isDm || dmAllowEdit;
 
   const handleQuickUploadFile = async (file: File) => {
     try {
@@ -59,7 +74,7 @@ export const LssSheetEmbed: React.FC<LssSheetEmbedProps> = ({
       await onSyncJson(parsed);
       pushToast({
         title: 'Чарник импортирован',
-        message: `Файл «${file.name}» успешно загружен в интерактивный лист.`,
+        message: `Файл «${file.name}» успешно загружен в классический лист.`,
         variant: 'success',
       });
     } catch (err) {
@@ -86,7 +101,7 @@ export const LssSheetEmbed: React.FC<LssSheetEmbedProps> = ({
       await onSyncJson(parsed);
       pushToast({
         title: 'Чарник персонажа загружен',
-        message: 'Данные персонажа сохранены в базе кампании.',
+        message: 'Данные персонажа сохранены.',
         variant: 'success',
       });
       setImportModalOpen(false);
@@ -122,19 +137,24 @@ export const LssSheetEmbed: React.FC<LssSheetEmbedProps> = ({
     URL.revokeObjectURL(url);
   };
 
+  const hasCharacter = Boolean(profile.characterName.trim() || profile.rawLssJson);
+
   return (
     <div className="glass-panel rounded-3xl overflow-hidden flex flex-col">
-      {/* Clean Native Header Bar (No LSS Iframe!) */}
-      <div className="px-4 py-3 border-b border-border bg-bg/50 flex flex-wrap items-center justify-between gap-2">
+      {/* Top Sheet Utility Bar */}
+      <div className="px-4 py-2.5 border-b border-border bg-bg/60 flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-primary/15 border border-primary/35 text-primary">
-            <ScrollText className="w-3.5 h-3.5" />
-            <span>Лист персонажа</span>
-          </div>
+          <span className="text-[11px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-lg bg-primary/20 text-primary border border-primary/40">
+            Игрок #{profile.playerId}
+          </span>
+          <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-muted">
+            <ScrollText className="w-3.5 h-3.5 text-accent" />
+            <span>Классический лист D&amp;D 5e</span>
+          </span>
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
-          {isReadOnlyViewer && (
+          {isDm && (
             <button
               type="button"
               onClick={() => setDmAllowEdit((v) => !v)}
@@ -143,17 +163,17 @@ export const LssSheetEmbed: React.FC<LssSheetEmbedProps> = ({
                   ? 'border-amber-400/50 bg-amber-500/15 text-amber-200 font-semibold'
                   : 'border-border bg-surface text-muted hover:text-text'
               }`}
-              title="Разрешить Мастеру редактировать лист этого игрока"
+              title="Разрешить Мастеру редактировать поля чарника этого игрока (опыт доступен Мастеру всегда)"
             >
               {dmAllowEdit ? (
                 <>
                   <Unlock className="w-3.5 h-3.5" />
-                  <span>Правка Мастером (ВКЛ)</span>
+                  <span>Правка Мастером: ВКЛ</span>
                 </>
               ) : (
                 <>
                   <Lock className="w-3.5 h-3.5" />
-                  <span>Просмотр (разблок.)</span>
+                  <span>Правка Мастером</span>
                 </>
               )}
             </button>
@@ -164,7 +184,7 @@ export const LssSheetEmbed: React.FC<LssSheetEmbedProps> = ({
               type="button"
               onClick={handleExportJson}
               className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs border border-border bg-surface text-muted hover:text-text transition-colors"
-              title="Экспортировать чарник в файл .json (совместим с Long Story Short)"
+              title="Скачать чарник в формате .json (совместим с Long Story Short)"
             >
               <Download className="w-3.5 h-3.5 text-primary" />
               <span>Скачать .json</span>
@@ -178,7 +198,7 @@ export const LssSheetEmbed: React.FC<LssSheetEmbedProps> = ({
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-accent/15 text-accent border border-accent/40 hover:bg-accent/25 transition-colors"
             >
               <FileJson className="w-3.5 h-3.5" />
-              <span>Загрузить .json</span>
+              <span>Импорт .json</span>
             </button>
           )}
 
@@ -187,28 +207,44 @@ export const LssSheetEmbed: React.FC<LssSheetEmbedProps> = ({
             onClick={() => void onRefreshCache()}
             disabled={syncing}
             className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs border border-border bg-surface text-muted hover:text-text transition-colors"
-            title="Обновить данные листа с сервера"
+            title="Синхронизировать с сервером"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${syncing ? 'animate-spin text-primary' : ''}`} />
-            <span>Обновить</span>
           </button>
+
+          {hasCharacter && canEdit && (
+            <button
+              type="button"
+              onClick={() => void onResetSlot()}
+              className="p-1.5 rounded-xl border border-border text-muted hover:text-rose-300 hover:border-rose-500/40 transition-colors"
+              title="Очистить слот персонажа"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
       </div>
 
-      {/* Full Editable LSS-Compatible Sheet */}
+      {/* Full-Width Classic 3-Page Sheet */}
       <LssNativeSheet
         profile={profile}
+        journal={journal}
+        learnedSpells={learnedSpells}
         canEdit={canEdit}
+        isDm={isDm}
         onQuickUploadFile={handleQuickUploadFile}
         onOpenImportModal={() => setImportModalOpen(true)}
         onSyncJson={onSyncJson}
+        onProfileUpdated={(nextProfile) =>
+          updateCharacterProfileInStore(profile.playerId, nextProfile)
+        }
       />
 
       {/* Footer Sync Info */}
       <div className="px-4 py-2 bg-bg/60 border-t border-border text-[11px] text-muted flex flex-wrap items-center justify-between gap-2">
         <span>
-          Все изменения характеристик, навыков, ячеек и снаряжения автоматически сохраняются в формате{' '}
-          <strong className="text-primary">LSS .json</strong>.
+          Полная совместимость с форматом <strong className="text-primary">LSS .json</strong> •
+          автосохранение всех изменений листа
         </span>
         <span>
           Синхронизация:{' '}
@@ -243,7 +279,7 @@ export const LssSheetEmbed: React.FC<LssSheetEmbedProps> = ({
                   >
                     character.json
                   </a>
-                  ) и выберите его ниже. После импорта все поля можно свободно редактировать прямо на сайте.
+                  ) и выберите его ниже. Все 3 страницы листа заполнятся автоматически.
                 </p>
               </div>
 
