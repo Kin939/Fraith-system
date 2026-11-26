@@ -257,6 +257,109 @@ await sleep(600);
 const afterReadDiff = p1Sock.log.filter((m) => m.type === 'diff').length;
 check('read-участник не может писать в документ', beforeReadDiff === afterReadDiff, { beforeReadDiff, afterReadDiff });
 
+// ------------------------------------------- персистентность: удаление фигур
+// Регрессия: diff с removed раньше терялся при закрытии сокета (дебаунс жил
+// в памяти DO и умирал вместе с инстансом), и удалённая фигура возвращалась
+// после F5. Теперь удаление сохраняется сразу + есть alarm-подстраховка.
+const persistSock = openSocket(p1Auth.cookie, boardId);
+const persistWelcome = await persistSock.waitFor((m) => m.type === 'welcome');
+check('persist: сокет открыт', Boolean(persistWelcome.payload?.selfId));
+
+// Автор diff не получает эхо — подтверждение ждём на наблюдателе.
+const persistObserver = openSocket(dmAuth.cookie, boardId);
+await persistObserver.waitFor((m) => m.type === 'welcome');
+
+const makeShape = (id) => ({
+  id,
+  typeName: 'shape',
+  type: 'geo',
+  x: 40,
+  y: 40,
+  rotation: 0,
+  index: 'a2',
+  parentId: 'page:page',
+  isLocked: false,
+  opacity: 1,
+  meta: {},
+  props: {
+    geo: 'ellipse', w: 80, h: 80, color: 'black', labelColor: 'black', fill: 'none',
+    dash: 'draw', size: 'm', font: 'draw', align: 'middle', verticalAlign: 'middle',
+    growY: 0, url: '', richText: { type: 'doc' },
+  },
+});
+
+const persistentId = 'shape:persist-delete';
+persistSock.send({
+  type: 'diff',
+  payload: { diff: { added: { [persistentId]: makeShape(persistentId) }, updated: {}, removed: {} } },
+});
+await persistObserver.waitFor((m) => m.type === 'diff' && m.payload?.diff?.added?.[persistentId]);
+await sleep(150);
+
+persistSock.send({
+  type: 'diff',
+  payload: { diff: { added: {}, updated: {}, removed: { [persistentId]: makeShape(persistentId) } } },
+});
+const removedEcho = await persistObserver.waitFor(
+  (m) => m.type === 'diff' && m.payload?.diff?.removed && persistentId in m.payload.diff.removed
+);
+check('persist: удаление принято и разослано', Boolean(removedEcho), removedEcho?.payload?.seq);
+
+// Закрываем сокеты сразу после удаления — именно этот сценарий терял данные.
+persistObserver.ws.close();
+persistSock.ws.close();
+await sleep(2200);
+
+const reopenSock = openSocket(p1Auth.cookie, boardId);
+const reopenWelcome = await reopenSock.waitFor((m) => m.type === 'welcome');
+let reopenedRecords = {};
+if (reopenWelcome.payload?.mode === 'snapshot') {
+  await reopenSock.waitFor((m) => m.type === 'snapshot:chunk' && m.payload?.done === true);
+  for (const msg of reopenSock.log) {
+    if (msg.type === 'snapshot:chunk') Object.assign(reopenedRecords, msg.payload?.records ?? {});
+  }
+}
+check('persist: после переподключения режим snapshot', reopenWelcome.payload?.mode === 'snapshot', reopenWelcome.payload?.mode);
+check('persist: удалённая фигура не вернулась', !(persistentId in reopenedRecords), Object.keys(reopenedRecords));
+check('persist: ранее добавленная фигура на месте', Boolean(reopenedRecords['shape:test-e2e']), Object.keys(reopenedRecords));
+reopenSock.ws.close();
+
+// ------------------------------------ досылка патчей без сокета (HTTP fallback)
+// Клиент закрывает вкладку/теряет сокет — очередь правок уходит через fetch(keepalive).
+const httpShapeId = 'shape:http-diff';
+const httpObserver = openSocket(dmAuth.cookie, boardId);
+await httpObserver.waitFor((m) => m.type === 'welcome');
+
+const httpAdd = await p1(`/boards/${boardId}/diffs`, {
+  method: 'POST',
+  body: JSON.stringify({
+    diffs: [{ added: { [httpShapeId]: makeShape(httpShapeId) }, updated: {}, removed: {} }],
+  }),
+});
+check('HTTP-досылка патча принимается', httpAdd.status === 200 && httpAdd.body.applied === 1, httpAdd.body);
+const httpEcho = await httpObserver.waitFor(
+  (m) => m.type === 'diff' && m.payload?.diff?.added?.[httpShapeId]
+);
+check('HTTP-патч транслируется по WS остальным', Boolean(httpEcho), httpEcho?.payload?.seq);
+
+const httpRemove = await p1(`/boards/${boardId}/diffs`, {
+  method: 'POST',
+  body: JSON.stringify({
+    diffs: [{ added: {}, updated: {}, removed: { [httpShapeId]: makeShape(httpShapeId) } }],
+  }),
+});
+check('HTTP-удаление применяется', httpRemove.status === 200 && httpRemove.body.applied === 1, httpRemove.body);
+
+const httpForbidden = await p2(`/boards/${boardId}/diffs`, {
+  method: 'POST',
+  body: JSON.stringify({ diffs: [{ added: { 'shape:evil': makeShape('shape:evil') }, updated: {}, removed: {} }] }),
+});
+check('read-права не могут досылать патчи (403)', httpForbidden.status === 403, httpForbidden.status);
+
+const httpEmpty = await p1(`/boards/${boardId}/diffs`, { method: 'POST', body: JSON.stringify({ diffs: [] }) });
+check('пустая очередь не ошибка', httpEmpty.status === 200 && httpEmpty.body.applied === 0, httpEmpty.body);
+httpObserver.ws.close();
+
 // ---------------------------------------------------------------- удаление
 const blockedDelete = await p2(`/boards/${boardId}`, { method: 'DELETE' });
 check('не-автор не может удалить доску (403)', blockedDelete.status === 403, blockedDelete.status);

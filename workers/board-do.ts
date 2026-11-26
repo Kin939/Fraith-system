@@ -102,6 +102,10 @@ const DEFAULT_TIMER: BoardTimerState = {
 };
 
 const JOURNAL_LIMIT = 400;
+/** Дебаунс записи документа в SQLite-хранилище DO. */
+const PERSIST_DEBOUNCE_MS = 350;
+/** Страховочный durable-аларм: пишем документ не позже этого срока после правки. */
+const PERSIST_ALARM_MS = 1500;
 const SNAPSHOT_CHUNK = 200;
 const CURSOR_THROTTLE_MS = 45;
 const VOTE_CAP_PER_OBJECT = 3;
@@ -152,11 +156,25 @@ export class BoardRoom extends DurableObject<BoardRoomEnv> {
 
   private schedulePersist(): void {
     this.dirty = true;
+    // setTimeout живёт только в памяти инстанса: при выгрузке DO (hibernation)
+    // таймер пропадает вместе с несохранёнными правками. Поэтому дублируем
+    // запись durable-алармом — он переживает выгрузку и обязательно сработает.
+    void this.ctx.storage.setAlarm(Date.now() + PERSIST_ALARM_MS);
     if (this.persistTimer) return;
     this.persistTimer = setTimeout(() => {
       this.persistTimer = null;
       void this.persistDoc();
-    }, 900);
+    }, PERSIST_DEBOUNCE_MS);
+  }
+
+  /** Durable-страховка: аларм срабатывает даже если инстанс был выгружен. */
+  async alarm(): Promise<void> {
+    await this.ensureLoaded();
+    if (this.persistTimer) {
+      clearTimeout(this.persistTimer);
+      this.persistTimer = null;
+    }
+    await this.persistDoc();
   }
 
   private async persistDoc(): Promise<void> {
@@ -205,6 +223,46 @@ export class BoardRoom extends DurableObject<BoardRoomEnv> {
       if (url.pathname === '/flush' && request.method === 'POST') {
         await this.persistDoc();
         return Response.json({ ok: true });
+      }
+      // Досылка патчей без WebSocket: клиент закрывает вкладку/теряет сокет и
+      // отправляет накопленную очередь через fetch(keepalive). Авторизацию и
+      // право записи уже проверил HTTP-слой (board-routes).
+      if (url.pathname === '/diffs' && request.method === 'POST') {
+        const userId = Number.parseInt(url.searchParams.get('userId') || '0', 10);
+        let body: { diffs?: RecordsDiff[] } = {};
+        try {
+          body = (await request.json()) as { diffs?: RecordsDiff[] };
+        } catch {
+          return Response.json({ ok: false, error: 'bad-json' }, { status: 400 });
+        }
+        const diffs = Array.isArray(body.diffs) ? body.diffs.slice(0, 200) : [];
+        if (diffs.length === 0) return Response.json({ ok: true, applied: 0, seq: this.seq });
+
+        let applied = 0;
+        let removals = 0;
+        for (const diff of diffs) {
+          if (!diff || typeof diff !== 'object') continue;
+          this.applyDiff(diff);
+          this.seq += 1;
+          this.journal.push({ seq: this.seq, diff, userId });
+          if (this.journal.length > JOURNAL_LIMIT) this.journal.shift();
+          applied += 1;
+          removals += diff.removed ? Object.keys(diff.removed).length : 0;
+          this.broadcast({ type: 'diff', payload: { diff, seq: this.seq }, senderId: userId }, null);
+        }
+        if (applied > 0) {
+          this.schedulePersist();
+          this.patchesSincePersist += applied;
+          if (removals > 0 || this.patchesSincePersist >= 25) {
+            this.patchesSincePersist = 0;
+            if (this.persistTimer) {
+              clearTimeout(this.persistTimer);
+              this.persistTimer = null;
+            }
+            await this.persistDoc();
+          }
+        }
+        return Response.json({ ok: true, applied, seq: this.seq });
       }
       return new Response('BoardRoom Durable Object Active', { status: 200 });
     }
@@ -281,11 +339,16 @@ export class BoardRoom extends DurableObject<BoardRoomEnv> {
       this.journal.push(entry);
       if (this.journal.length > JOURNAL_LIMIT) this.journal.shift();
       this.schedulePersist();
-      // Периодическая синхронная запись: setTimeout может не пережить выгрузку DO,
-      // поэтому каждые 25 патчей фиксируем документ в SQLite-хранилище сразу.
       this.patchesSincePersist += 1;
-      if (this.patchesSincePersist >= 25) {
+      // Удаления фиксируем сразу: потерянный delete — самая заметная и самая
+      // обидная потеря (после F5 фигура возвращается). Их немного, запись дешёвая.
+      const removedCount = diff.removed ? Object.keys(diff.removed).length : 0;
+      if (removedCount > 0 || this.patchesSincePersist >= 25) {
         this.patchesSincePersist = 0;
+        if (this.persistTimer) {
+          clearTimeout(this.persistTimer);
+          this.persistTimer = null;
+        }
         await this.persistDoc();
       }
       this.broadcast({ type: 'diff', payload: { diff, seq: this.seq }, senderId: sender.userId }, ws);

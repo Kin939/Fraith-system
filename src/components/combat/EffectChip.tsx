@@ -18,7 +18,7 @@ const durationLabel = (effect: CombatEffect): string | null => {
   return null;
 };
 
-/** Компактный чип состояния/эффекта с подсказкой из справочника 5e. */
+/** Чип состояния/эффекта с подсказкой из справочника 5e. */
 export const EffectChip: React.FC<EffectChipProps> = ({ effect, canRemove = false, onRemove }) => {
   const isExhaustion = effect.effectType === 'exhaustion';
   const title = [
@@ -40,14 +40,14 @@ export const EffectChip: React.FC<EffectChipProps> = ({ effect, canRemove = fals
   return (
     <span
       title={title}
-      className={`inline-flex items-center gap-1 h-5 pl-1 pr-1.5 border text-[10px] ${tone}`}
+      className={`inline-flex items-center gap-1.5 h-7 pl-2 pr-2 border text-xs leading-none ${tone}`}
     >
-      <Icon className="w-2.5 h-2.5 shrink-0" strokeWidth={1.75} />
-      <span className="truncate max-w-[9rem]">
+      <Icon className="w-3.5 h-3.5 shrink-0" strokeWidth={1.75} />
+      <span className="truncate max-w-[11rem]">
         {isExhaustion ? `Истощение ${effect.exhaustionLevel}` : conditionLabel(effect.effectName)}
       </span>
-      {effect.durationType === 'rounds' && effect.durationValue != null && (
-        <span className="font-mono text-[9px] opacity-80">{effect.durationValue}р</span>
+      {durationLabel(effect) && (
+        <span className="font-mono text-[10px] opacity-80 shrink-0">{durationLabel(effect)}</span>
       )}
       {canRemove && onRemove && (
         <button
@@ -56,7 +56,7 @@ export const EffectChip: React.FC<EffectChipProps> = ({ effect, canRemove = fals
             event.stopPropagation();
             onRemove(effect.id);
           }}
-          className="ml-0.5 text-[10px] leading-none opacity-60 hover:opacity-100"
+          className="ml-0.5 w-5 h-5 flex items-center justify-center text-xs leading-none opacity-70 hover:opacity-100 hover:text-negative"
           title="Снять эффект"
         >
           ✕

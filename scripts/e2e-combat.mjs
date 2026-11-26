@@ -443,6 +443,73 @@ check(
   { before: currentBefore?.id, now: reordered.find((p) => p.isCurrent)?.id }
 );
 
+// ------------------------------- правка карточки участника (панель настроек)
+// Регрессия: PATCH только с maxHp раньше отправлял value=undefined и обнулял
+// текущие HP — участник «умирал» от смены максимума.
+const heroBefore = (await dm(`/combats/${combatId}`)).body.combat?.participants?.find(
+  (p) => p.id === heroParticipant?.id
+);
+const maxOnly = await dm(`/combats/${combatId}/participants/${heroParticipant?.id}`, {
+  method: 'PATCH',
+  body: JSON.stringify({ maxHp: (heroBefore?.maxHp ?? 12) + 4 }),
+});
+const heroMaxOnly = maxOnly.body.combat?.participants?.find((p) => p.id === heroParticipant?.id);
+check(
+  'смена только максимума HP сохраняет текущие HP',
+  heroMaxOnly?.currentHp === heroBefore?.currentHp && heroMaxOnly?.maxHp === (heroBefore?.maxHp ?? 12) + 4,
+  { before: [heroBefore?.currentHp, heroBefore?.maxHp], after: [heroMaxOnly?.currentHp, heroMaxOnly?.maxHp] }
+);
+
+const overMax = await dm(`/combats/${combatId}/participants/${heroParticipant?.id}`, {
+  method: 'PATCH',
+  body: JSON.stringify({ currentHp: 9999, tempHp: 7 }),
+});
+const heroOver = overMax.body.combat?.participants?.find((p) => p.id === heroParticipant?.id);
+check(
+  'текущие HP подрезаются до максимума, временные применяются',
+  heroOver?.currentHp === heroOver?.maxHp && heroOver?.tempHp === 7,
+  { hp: heroOver?.currentHp, max: heroOver?.maxHp, temp: heroOver?.tempHp }
+);
+
+const multiPatch = await dm(`/combats/${combatId}/participants/${heroParticipant?.id}`, {
+  method: 'PATCH',
+  body: JSON.stringify({
+    displayName: 'Герой E2E',
+    armorClass: 17,
+    hideName: true,
+    notes: 'заметка E2E',
+    isHiddenFromPlayers: false,
+  }),
+});
+const heroPatched = multiPatch.body.combat?.participants?.find((p) => p.id === heroParticipant?.id);
+check(
+  'одним запросом применяются имя, КД, скрытие имени и заметки',
+  heroPatched?.displayName === 'Герой E2E' &&
+    heroPatched?.armorClass === 17 &&
+    heroPatched?.hideName === true &&
+    heroPatched?.notes === 'заметка E2E',
+  { name: heroPatched?.displayName, ac: heroPatched?.armorClass, hide: heroPatched?.hideName, notes: heroPatched?.notes }
+);
+
+const restored = await dm(`/combats/${combatId}/participants/${heroParticipant?.id}`, {
+  method: 'PATCH',
+  body: JSON.stringify({
+    displayName: heroBefore?.displayName,
+    armorClass: heroBefore?.armorClass,
+    hideName: false,
+    notes: heroBefore?.notes ?? '',
+    maxHp: heroBefore?.maxHp,
+    currentHp: heroBefore?.currentHp,
+    tempHp: heroBefore?.tempHp ?? 0,
+  }),
+});
+const heroRestored = restored.body.combat?.participants?.find((p) => p.id === heroParticipant?.id);
+check(
+  'сброс карточки участника к исходным значениям',
+  heroRestored?.displayName === heroBefore?.displayName && heroRestored?.currentHp === heroBefore?.currentHp,
+  { name: heroRestored?.displayName, hp: heroRestored?.currentHp }
+);
+
 const addMidFight = await dm(`/combats/${combatId}/participants`, {
   method: 'POST',
   body: JSON.stringify({
