@@ -19,8 +19,9 @@ import type {
   NextSessionBanner,
   PlayerId,
   PurchasedTalent,
+  EntityNote,
+  NoteEntityKind,
   Quest,
-  QuestNote,
   RollLogEntry,
   Spell,
   TalentNode,
@@ -74,8 +75,11 @@ interface CampaignState {
   learnedSpellsById: Partial<Record<PlayerId, LearnedSpellRecord[]>>;
 
   quests: Quest[];
-  /** Party notes per quest id (loaded on demand, synced in real time) */
-  questNotes: Record<number, QuestNote[]>;
+  /**
+   * Party notes per entity, keyed `${kind}:${id}` (loaded on demand and kept in
+   * sync over the websocket). One feed serves quests, NPCs and bestiary cards.
+   */
+  entityNotes: Record<string, EntityNote[]>;
   npcs: CampaignNpc[];
   bestiary: BestiaryCreature[];
   spells: Spell[];
@@ -103,7 +107,7 @@ interface CampaignState {
   setOnlineUsers: (online: OnlineMember[]) => void;
 
   setQuests: (quests: Quest[]) => void;
-  setQuestNotes: (questId: number, notes: QuestNote[]) => void;
+  setEntityNotes: (kind: NoteEntityKind, entityId: number, notes: EntityNote[]) => void;
   setNpcs: (npcs: CampaignNpc[]) => void;
   setBestiary: (creatures: BestiaryCreature[]) => void;
   setSpells: (spells: Spell[]) => void;
@@ -165,7 +169,7 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
   learnedSpellsById: { 1: [], 2: [], 3: [] },
 
   quests: [],
-  questNotes: {},
+  entityNotes: {},
   npcs: [],
   bestiary: [],
   spells: [],
@@ -190,7 +194,7 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
         charactersById: {},
         journalsById: {},
         learnedSpellsById: { 1: [], 2: [], 3: [] },
-        questNotes: {},
+        entityNotes: {},
         npcs: [],
         chatMessages: [],
         customEmojis: [],
@@ -224,13 +228,26 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
 
   setQuests: (quests) => set({ quests }),
 
-  setQuestNotes: (questId, notes) =>
-    set((s) => ({
-      questNotes: { ...s.questNotes, [questId]: notes },
-      quests: s.quests.map((q) =>
-        q.id === questId ? { ...q, notesCount: notes.length } : q
-      ),
-    })),
+  setEntityNotes: (kind, entityId, notes) =>
+    set((s) => {
+      const next: Partial<CampaignState> = {
+        entityNotes: { ...s.entityNotes, [`${kind}:${entityId}`]: notes },
+      };
+      if (kind === 'quest') {
+        next.quests = s.quests.map((q) =>
+          q.id === entityId ? { ...q, notesCount: notes.length } : q
+        );
+      } else if (kind === 'npc') {
+        next.npcs = s.npcs.map((n) =>
+          n.id === entityId ? { ...n, notesCount: notes.length } : n
+        );
+      } else {
+        next.bestiary = s.bestiary.map((b) =>
+          b.id === entityId ? { ...b, notesCount: notes.length } : b
+        );
+      }
+      return next;
+    }),
 
   setNpcs: (npcs) => set({ npcs }),
   setBestiary: (bestiary) => set({ bestiary }),

@@ -124,17 +124,27 @@ export const BestiaryTile: React.FC<BestiaryTileProps> = ({
         />
       </div>
 
-      <div className="space-y-0.5">
-        <h3 className="font-medium text-base text-text leading-snug">
+      <div className="space-y-0.5 min-w-0 w-full">
+        <h3 className="font-medium text-base text-text leading-snug truncate">
           {creature.name}
         </h3>
-        <div className="text-xs text-secondary">{creature.creatureType}</div>
+        <div className="text-xs text-secondary truncate">{creature.creatureType}</div>
+        {creature.sourceTitle && (
+          <div className="text-[10px] text-muted font-mono truncate" title={creature.sourceTitle}>
+            {creature.sourceTitle}
+          </div>
+        )}
+        {creature.notesCount > 0 && (
+          <div className="text-[10px] text-primary/80 font-mono tabular-nums">
+            заметки · {creature.notesCount}
+          </div>
+        )}
       </div>
 
       <div className="w-full pt-3 border-t border-border flex items-center justify-center gap-4 font-mono text-xs text-secondary tabular-nums">
         <span>КД {creature.ac}</span>
         <span className="text-muted">·</span>
-        <span>Хиты {creature.hp}</span>
+        <span className="truncate">Хиты {creature.hp}</span>
       </div>
     </div>
   );

@@ -17,17 +17,20 @@ import {
   confirmPollOptionAsNextSession,
   createChatMessage,
   createChatPollWithMessage,
-  createQuestNote,
+  createEntityNote,
   createCustomCampaignEmoji,
   deleteChatMessage,
   deleteCustomCampaignEmoji,
-  deleteQuestNote,
+  deleteEntityNote,
+  getBestiaryCreature,
+  getBestiaryImportStatus,
+  type CompendiumCreatureInput,
   getCharacterProfile,
   getChatMessageById,
+  getEntityNoteMeta,
   getJournalEntry,
   getNextSessionBanner,
   getNpcById,
-  getQuestNoteAuthor,
   getTalentsState,
   getUserByEmail,
   getUserById,
@@ -40,12 +43,13 @@ import {
   listCustomCampaignEmojis,
   listDmManagedAccounts,
   listLearnedSpellsForPlayer,
+  listEntityNotes,
   listNpcs,
-  listQuestNotes,
   listQuests,
   listRecentRolls,
   listSpells,
   mapUserRowToAuthUser,
+  NOTE_MAX_LENGTH,
   nextCustomSpellId,
   normalizeNpcAttitude,
   parseCrToNumeric,
@@ -58,12 +62,13 @@ import {
   unlockTalentForParty,
   updateAccountPassword,
   updateChatMessageContent,
-  updateQuestNote,
+  updateEntityNote,
   updateLearnedSpellMeta,
   upsertNextSessionBanner,
   upsertUserTheme,
   setUserAvatarKey,
   getUserAvatarUrl,
+  upsertCompendiumCreatures,
   withCharacterAvatars,
   withUserAvatars,
 } from '../../src/lib/db';
@@ -84,11 +89,13 @@ import type {
   AuthUser,
   ChatAttachment,
   ChatPollKind,
+  NoteEntityKind,
   PlayerId,
   QuestStatus,
   Spell,
   SpellCastMode,
   ThemeVariables,
+  UserRole,
 } from '../../src/lib/types';
 
 export interface Env {
@@ -989,74 +996,125 @@ app.delete('/dm/quests/:id', async (c) => {
 });
 
 // ---------------------------------------------------------------------------
-// Quest notes — party members write in their own name, everyone sees them
+// Party notes — quests, NPCs and bestiary monsters share one attributed feed
 // ---------------------------------------------------------------------------
 
-const QUEST_NOTE_LIMIT = 2000;
+const NOTE_COLLECTION_TO_KIND: Record<string, NoteEntityKind> = {
+  quests: 'quest',
+  npcs: 'npc',
+  bestiary: 'creature',
+};
 
-async function broadcastQuestNotes(env: Env, questId: number, senderId?: number) {
-  const notes = await listQuestNotes(env.DB, questId);
-  await broadcastCampaignEvent(env, 'quest_notes:updated', { questId, notes }, senderId);
+const NOTE_KIND_TO_TABLE: Record<NoteEntityKind, string> = {
+  quest: 'quests',
+  npc: 'campaign_npcs',
+  creature: 'bestiary',
+};
+
+async function isNoteEntityVisibleToPlayers(
+  env: Env,
+  kind: NoteEntityKind,
+  entityId: number
+): Promise<boolean> {
+  if (kind === 'quest') return true;
+  const table = NOTE_KIND_TO_TABLE[kind];
+  const row = await env.DB.prepare(`SELECT is_revealed FROM ${table} WHERE id = ?`)
+    .bind(entityId)
+    .first<{ is_revealed: number }>();
+  return Boolean(row?.is_revealed);
+}
+
+async function broadcastEntityNotes(
+  env: Env,
+  kind: NoteEntityKind,
+  entityId: number,
+  senderId?: number
+) {
+  const notes = await listEntityNotes(env.DB, kind, entityId);
+  // Notes on a still-hidden NPC / monster would be a spoiler broadcast to every
+  // connected player, so those stay DM-local (the response still has them).
+  if (await isNoteEntityVisibleToPlayers(env, kind, entityId)) {
+    await broadcastCampaignEvent(env, 'notes:updated', { kind, entityId, notes }, senderId);
+  }
   return notes;
 }
 
-async function questExists(env: Env, questId: number): Promise<boolean> {
-  const row = await env.DB.prepare(`SELECT id FROM quests WHERE id = ?`)
-    .bind(questId)
-    .first<{ id: number }>();
-  return Boolean(row);
+/**
+ * Notes on hidden NPCs / monsters stay invisible to players — they cannot read
+ * or write them until the DM reveals the card.
+ */
+async function canAccessNoteEntity(
+  env: Env,
+  kind: NoteEntityKind,
+  entityId: number,
+  role: UserRole
+): Promise<boolean> {
+  if (kind === 'quest') {
+    const row = await env.DB.prepare(`SELECT id FROM quests WHERE id = ?`)
+      .bind(entityId)
+      .first<{ id: number }>();
+    return Boolean(row);
+  }
+  const table = NOTE_KIND_TO_TABLE[kind];
+  const row = await env.DB.prepare(`SELECT is_revealed FROM ${table} WHERE id = ?`)
+    .bind(entityId)
+    .first<{ is_revealed: number }>();
+  if (!row) return false;
+  return role === 'dm' || Boolean(row.is_revealed);
 }
 
-app.get('/quests/:id/notes', async (c) => {
-  const user = c.get('user');
-  if (!user) return c.json({ error: 'Необходима авторизация' }, 401);
+function parsePositiveInt(raw: string | undefined): number | null {
+  const value = Number.parseInt(raw ?? '', 10);
+  return Number.isFinite(value) && value > 0 ? value : null;
+}
 
-  const questId = Number.parseInt(c.req.param('id'), 10);
-  if (!Number.isFinite(questId) || questId <= 0) {
-    return c.json({ error: 'Некорректный id квеста' }, 400);
-  }
+for (const collection of Object.keys(NOTE_COLLECTION_TO_KIND)) {
+  const kind = NOTE_COLLECTION_TO_KIND[collection];
 
-  const notes = await listQuestNotes(c.env.DB, questId);
-  return c.json({ notes });
-});
+  app.get(`/${collection}/:id/notes`, async (c) => {
+    const user = c.get('user');
+    if (!user) return c.json({ error: 'Необходима авторизация' }, 401);
 
-app.post('/quests/:id/notes', async (c) => {
+    const entityId = parsePositiveInt(c.req.param('id'));
+    if (!entityId) return c.json({ error: 'Некорректный id' }, 400);
+    if (!(await canAccessNoteEntity(c.env, kind, entityId, user.role))) {
+      return c.json({ error: 'Запись не найдена' }, 404);
+    }
+
+    const notes = await listEntityNotes(c.env.DB, kind, entityId);
+    return c.json({ notes });
+  });
+
+  app.post(`/${collection}/:id/notes`, async (c) => {
+    const user = c.get('user')!;
+    const entityId = parsePositiveInt(c.req.param('id'));
+    if (!entityId) return c.json({ error: 'Некорректный id' }, 400);
+    if (!(await canAccessNoteEntity(c.env, kind, entityId, user.role))) {
+      return c.json({ error: 'Запись не найдена' }, 404);
+    }
+
+    const body = await c.req
+      .json<{ body?: string }>()
+      .catch((): { body?: string } => ({}));
+    const text = (body.body || '').trim();
+    if (!text) return c.json({ error: 'Заметка не может быть пустой' }, 400);
+    if (text.length > NOTE_MAX_LENGTH) {
+      return c.json({ error: `Заметка длиннее ${NOTE_MAX_LENGTH} символов` }, 400);
+    }
+
+    await createEntityNote(c.env.DB, kind, entityId, user.id, text);
+    const notes = await broadcastEntityNotes(c.env, kind, entityId, user.id);
+    return c.json({ notes });
+  });
+}
+
+app.put('/notes/:noteId', async (c) => {
   const user = c.get('user')!;
-  const questId = Number.parseInt(c.req.param('id'), 10);
-  if (!Number.isFinite(questId) || questId <= 0) {
-    return c.json({ error: 'Некорректный id квеста' }, 400);
-  }
-  if (!(await questExists(c.env, questId))) {
-    return c.json({ error: 'Квест не найден' }, 404);
-  }
+  const noteId = parsePositiveInt(c.req.param('noteId'));
+  if (!noteId) return c.json({ error: 'Некорректный id заметки' }, 400);
 
-  const body = await c.req
-    .json<{ body?: string }>()
-    .catch((): { body?: string } => ({}));
-  const text = (body.body || '').trim();
-
-  if (!text) return c.json({ error: 'Заметка не может быть пустой' }, 400);
-  if (text.length > QUEST_NOTE_LIMIT) {
-    return c.json({ error: `Заметка длиннее ${QUEST_NOTE_LIMIT} символов` }, 400);
-  }
-
-  await createQuestNote(c.env.DB, questId, user.id, text);
-  const notes = await broadcastQuestNotes(c.env, questId, user.id);
-  return c.json({ notes });
-});
-
-app.put('/quests/:id/notes/:noteId', async (c) => {
-  const user = c.get('user')!;
-  const questId = Number.parseInt(c.req.param('id'), 10);
-  const noteId = Number.parseInt(c.req.param('noteId'), 10);
-  if (!Number.isFinite(questId) || !Number.isFinite(noteId)) {
-    return c.json({ error: 'Некорректный id заметки' }, 400);
-  }
-
-  const note = await getQuestNoteAuthor(c.env.DB, noteId);
-  if (!note || note.questId !== questId) {
-    return c.json({ error: 'Заметка не найдена' }, 404);
-  }
+  const note = await getEntityNoteMeta(c.env.DB, noteId);
+  if (!note) return c.json({ error: 'Заметка не найдена' }, 404);
   if (note.authorId !== user.id && user.role !== 'dm') {
     return c.json({ error: 'Можно редактировать только свои заметки' }, 403);
   }
@@ -1066,38 +1124,33 @@ app.put('/quests/:id/notes/:noteId', async (c) => {
     .catch((): { body?: string } => ({}));
   const text = (body.body || '').trim();
   if (!text) return c.json({ error: 'Заметка не может быть пустой' }, 400);
-  if (text.length > QUEST_NOTE_LIMIT) {
-    return c.json({ error: `Заметка длиннее ${QUEST_NOTE_LIMIT} символов` }, 400);
+  if (text.length > NOTE_MAX_LENGTH) {
+    return c.json({ error: `Заметка длиннее ${NOTE_MAX_LENGTH} символов` }, 400);
   }
 
-  await updateQuestNote(c.env.DB, noteId, text);
-  const notes = await broadcastQuestNotes(c.env, questId, user.id);
+  await updateEntityNote(c.env.DB, noteId, text);
+  const notes = await broadcastEntityNotes(c.env, note.kind, note.entityId, user.id);
   return c.json({ notes });
 });
 
-app.delete('/quests/:id/notes/:noteId', async (c) => {
+app.delete('/notes/:noteId', async (c) => {
   const user = c.get('user')!;
-  const questId = Number.parseInt(c.req.param('id'), 10);
-  const noteId = Number.parseInt(c.req.param('noteId'), 10);
-  if (!Number.isFinite(questId) || !Number.isFinite(noteId)) {
-    return c.json({ error: 'Некорректный id заметки' }, 400);
-  }
+  const noteId = parsePositiveInt(c.req.param('noteId'));
+  if (!noteId) return c.json({ error: 'Некорректный id заметки' }, 400);
 
-  const note = await getQuestNoteAuthor(c.env.DB, noteId);
-  if (!note || note.questId !== questId) {
-    return c.json({ error: 'Заметка не найдена' }, 404);
-  }
+  const note = await getEntityNoteMeta(c.env.DB, noteId);
+  if (!note) return c.json({ error: 'Заметка не найдена' }, 404);
   if (note.authorId !== user.id && user.role !== 'dm') {
     return c.json({ error: 'Можно удалять только свои заметки' }, 403);
   }
 
-  await deleteQuestNote(c.env.DB, noteId);
-  const notes = await broadcastQuestNotes(c.env, questId, user.id);
+  await deleteEntityNote(c.env.DB, noteId);
+  const notes = await broadcastEntityNotes(c.env, note.kind, note.entityId, user.id);
   return c.json({ notes });
 });
 
 // ============================================================================
-// Tab 3: Bestiary (Role-masked read, CR sorting, DM CRUD)
+// Tab 3: Bestiary (Role-masked read, CR sorting, DM CRUD + dnd.su compendium)
 // ============================================================================
 
 app.get('/bestiary', async (c) => {
@@ -1108,12 +1161,86 @@ app.get('/bestiary', async (c) => {
   return c.json({ creatures });
 });
 
+app.get('/bestiary/:id', async (c) => {
+  const user = c.get('user');
+  if (!user) return c.json({ error: 'Необходима авторизация' }, 401);
+
+  const id = parsePositiveInt(c.req.param('id'));
+  if (!id) return c.json({ error: 'Некорректный id существа' }, 400);
+
+  const creature = await getBestiaryCreature(c.env.DB, id, user.role);
+  if (!creature) return c.json({ error: 'Существо не найдено' }, 404);
+
+  return c.json({ creature });
+});
+
+app.get('/dm/bestiary/import-status', async (c) => {
+  const user = c.get('user');
+  if (!user) return c.json({ error: 'Необходима авторизация' }, 401);
+  if (user.role !== 'dm') return c.json({ error: 'Недостаточно прав' }, 403);
+
+  const status = await getBestiaryImportStatus(c.env.DB);
+  return c.json({ status });
+});
+
+app.post('/dm/bestiary/import', async (c) => {
+  const user = c.get('user')!;
+  if (user.role !== 'dm') return c.json({ error: 'Недостаточно прав' }, 403);
+
+  const body = await c.req
+    .json<{ items?: CompendiumCreatureInput[] }>()
+    .catch((): { items?: CompendiumCreatureInput[] } => ({}));
+  const items = Array.isArray(body.items) ? body.items : [];
+
+  if (!items.length) return c.json({ error: 'Пустой список существ' }, 400);
+  if (items.length > 250) {
+    return c.json({ error: 'Слишком большой пакет — импортируйте частями' }, 400);
+  }
+
+  // Everything lands hidden: the DM reveals monsters one by one
+  const imported = await upsertCompendiumCreatures(
+    c.env.DB,
+    items.filter((item) => item && typeof item.importKey === 'string' && item.importKey)
+  );
+
+  // Hidden monsters are invisible to players, so no table-wide invalidation is
+  // needed here — the importing DM refreshes their own list when done.
+  const status = await getBestiaryImportStatus(c.env.DB);
+  return c.json({ imported, status });
+});
+
+app.patch('/dm/bestiary/:id/reveal', async (c) => {
+  const user = c.get('user')!;
+  const id = parsePositiveInt(c.req.param('id'));
+  if (!id) return c.json({ error: 'Некорректный id существа' }, 400);
+
+  const body = await c.req
+    .json<{ isRevealed?: boolean }>()
+    .catch((): { isRevealed?: boolean } => ({}));
+
+  const existing = await c.env.DB.prepare(`SELECT id FROM bestiary WHERE id = ?`)
+    .bind(id)
+    .first<{ id: number }>();
+  if (!existing) return c.json({ error: 'Существо не найдено' }, 404);
+
+  const revealed = body.isRevealed ? 1 : 0;
+  await c.env.DB.prepare(`UPDATE bestiary SET is_revealed = ? WHERE id = ?`)
+    .bind(revealed, id)
+    .run();
+
+  await broadcastCampaignEvent(c.env, 'bestiary:updated', { updatedAt: Date.now() }, user.id);
+  return c.json({ id, isRevealed: Boolean(revealed) });
+});
+
 app.post('/dm/bestiary', async (c) => {
   const user = c.get('user')!;
+  if (user.role !== 'dm') return c.json({ error: 'Недостаточно прав' }, 403);
   const body = await c.req.json<{
     name: string;
     cr: string;
     creatureType?: string;
+    size?: string;
+    alignment?: string;
     ac?: number;
     hp?: string;
     description?: string;
@@ -1130,14 +1257,18 @@ app.post('/dm/bestiary', async (c) => {
   const crNumeric = parseCrToNumeric(crStr);
 
   await c.env.DB.prepare(
-    `INSERT INTO bestiary (name, cr, cr_numeric, creature_type, ac, hp, description, image_key, is_revealed, sort_order)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO bestiary
+       (name, cr, cr_numeric, creature_type, size, alignment, ac, hp, description, image_key,
+        is_revealed, sort_order)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   )
     .bind(
       body.name.trim(),
       crStr,
       crNumeric,
       (body.creatureType || 'Чудовище').trim(),
+      (body.size || '').trim(),
+      (body.alignment || '').trim(),
       Math.max(1, Math.trunc(body.ac ?? 13)),
       (body.hp || '27 (5d8 + 5)').trim(),
       (body.description || '').trim(),
@@ -1149,17 +1280,19 @@ app.post('/dm/bestiary', async (c) => {
 
   // Send invalidation signal without unmasked spoilers so players re-fetch masked view
   await broadcastCampaignEvent(c.env, 'bestiary:updated', { updatedAt: Date.now() }, user.id);
-  const creatures = await listBestiary(c.env.DB, 'dm');
-  return c.json({ creatures });
+  return c.json({ ok: true });
 });
 
 app.put('/dm/bestiary/:id', async (c) => {
   const user = c.get('user')!;
-  const id = Number.parseInt(c.req.param('id'), 10);
+  const id = parsePositiveInt(c.req.param('id'));
+  if (!id) return c.json({ error: 'Некорректный id существа' }, 400);
   const body = await c.req.json<{
     name: string;
     cr: string;
     creatureType?: string;
+    size?: string;
+    alignment?: string;
     ac?: number;
     hp?: string;
     description?: string;
@@ -1167,6 +1300,10 @@ app.put('/dm/bestiary/:id', async (c) => {
     isRevealed?: boolean;
     sortOrder?: number;
   }>();
+
+  if (!body.name?.trim()) {
+    return c.json({ error: 'Укажите имя существа' }, 400);
+  }
 
   const crStr = (body.cr || '1').trim();
   const crNumeric = parseCrToNumeric(crStr);
@@ -1177,6 +1314,8 @@ app.put('/dm/bestiary/:id', async (c) => {
          cr = ?,
          cr_numeric = ?,
          creature_type = ?,
+         size = ?,
+         alignment = ?,
          ac = ?,
          hp = ?,
          description = ?,
@@ -1190,6 +1329,8 @@ app.put('/dm/bestiary/:id', async (c) => {
       crStr,
       crNumeric,
       (body.creatureType || 'Чудовище').trim(),
+      (body.size || '').trim(),
+      (body.alignment || '').trim(),
       Math.max(1, Math.trunc(body.ac ?? 13)),
       (body.hp || '27 (5d8 + 5)').trim(),
       (body.description || '').trim(),
@@ -1201,18 +1342,22 @@ app.put('/dm/bestiary/:id', async (c) => {
     .run();
 
   await broadcastCampaignEvent(c.env, 'bestiary:updated', { updatedAt: Date.now() }, user.id);
-  const creatures = await listBestiary(c.env.DB, 'dm');
-  return c.json({ creatures });
+  return c.json({ ok: true });
 });
 
 app.delete('/dm/bestiary/:id', async (c) => {
   const user = c.get('user')!;
-  const id = Number.parseInt(c.req.param('id'), 10);
-  await c.env.DB.prepare(`DELETE FROM bestiary WHERE id = ?`).bind(id).run();
+  const id = parsePositiveInt(c.req.param('id'));
+  if (!id) return c.json({ error: 'Некорректный id существа' }, 400);
+  await c.env.DB.batch([
+    c.env.DB.prepare(
+      `DELETE FROM entity_notes WHERE entity_type = 'creature' AND entity_id = ?`
+    ).bind(id),
+    c.env.DB.prepare(`DELETE FROM bestiary WHERE id = ?`).bind(id),
+  ]);
 
   await broadcastCampaignEvent(c.env, 'bestiary:updated', { updatedAt: Date.now() }, user.id);
-  const creatures = await listBestiary(c.env.DB, 'dm');
-  return c.json({ creatures });
+  return c.json({ ok: true });
 });
 
 // ============================================================================
@@ -1365,7 +1510,10 @@ app.delete('/dm/npcs/:id', async (c) => {
   const id = Number.parseInt(c.req.param('id'), 10);
   if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Некорректный id NPC' }, 400);
 
-  await c.env.DB.prepare(`DELETE FROM campaign_npcs WHERE id = ?`).bind(id).run();
+  await c.env.DB.batch([
+    c.env.DB.prepare(`DELETE FROM entity_notes WHERE entity_type = 'npc' AND entity_id = ?`).bind(id),
+    c.env.DB.prepare(`DELETE FROM campaign_npcs WHERE id = ?`).bind(id),
+  ]);
   await broadcastNpcUpdate(c.env, user.id);
   const npcs = await listNpcs(c.env.DB, 'dm');
   return c.json({ npcs });

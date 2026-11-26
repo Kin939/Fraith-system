@@ -3,11 +3,11 @@ import { Eye, EyeOff, Plus, Save, Trash2, Upload } from 'lucide-react';
 import { apiFetch, uploadImageAsset } from '../../lib/api';
 import { resolveImageUrl } from '../../lib/artwork';
 import { useCampaignStore } from '../../lib/store';
-import type { BestiaryCreature } from '../../lib/types';
+import type { BestiaryCreature, BestiaryCreatureDetail } from '../../lib/types';
 
 export const BestiaryEditor: React.FC = () => {
   const creatures = useCampaignStore((s) => s.bestiary);
-  const setBestiary = useCampaignStore((s) => s.setBestiary);
+  const refreshBestiary = useCampaignStore((s) => s.refreshBestiary);
   const pushToast = useCampaignStore((s) => s.pushToast);
 
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -17,11 +17,17 @@ export const BestiaryEditor: React.FC = () => {
   const [ac, setAc] = useState(14);
   const [hp, setHp] = useState('45 (6d10 + 12)');
   const [description, setDescription] = useState('');
+  const [speed, setSpeed] = useState('');
+  const [senses, setSenses] = useState('');
+  const [languages, setLanguages] = useState('');
   const [imageKey, setImageKey] = useState<string | null>(null);
   const [isRevealed, setIsRevealed] = useState(false);
   const [sortOrder, setSortOrder] = useState(0);
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [search, setSearch] = useState('');
+  const [revealFilter, setRevealFilter] = useState<'all' | 'revealed' | 'hidden'>('all');
+  const [loadingDetail, setLoadingDetail] = useState(false);
 
   const selectCreature = (c: BestiaryCreature | null) => {
     if (!c) {
@@ -32,6 +38,9 @@ export const BestiaryEditor: React.FC = () => {
       setAc(14);
       setHp('45 (6d10 + 12)');
       setDescription('');
+      setSpeed('');
+      setSenses('');
+      setLanguages('');
       setImageKey(null);
       setIsRevealed(false);
       setSortOrder(0);
@@ -43,10 +52,39 @@ export const BestiaryEditor: React.FC = () => {
     setCreatureType(c.creatureType);
     setAc(c.ac);
     setHp(c.hp);
-    setDescription(c.description);
+    setDescription('');
+    setSpeed('');
+    setSenses('');
+    setLanguages('');
     setImageKey(c.imageKey);
     setIsRevealed(c.isRevealed);
     setSortOrder(c.sortOrder);
+
+    // Statblock text is not part of the list payload — load it per creature
+    setLoadingDetail(true);
+    void apiFetch<{ creature: BestiaryCreatureDetail }>(`/api/bestiary/${c.id}`)
+      .then((res) => {
+        setName(res.creature.name);
+        setCr(res.creature.cr);
+        setCreatureType(res.creature.creatureType);
+        setAc(res.creature.ac);
+        setHp(res.creature.hp);
+        setDescription(res.creature.description);
+        setSpeed(res.creature.speed);
+        setSenses(res.creature.senses);
+        setLanguages(res.creature.languages);
+        setImageKey(res.creature.imageKey);
+        setIsRevealed(res.creature.isRevealed);
+        setSortOrder(res.creature.sortOrder);
+      })
+      .catch(() => {
+        pushToast({
+          title: 'Не удалось загрузить статблок',
+          message: 'Запись бестиария откроется без описания',
+          variant: 'error',
+        });
+      })
+      .finally(() => setLoadingDetail(false));
   };
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -83,20 +121,25 @@ export const BestiaryEditor: React.FC = () => {
         ac,
         hp,
         description,
+        speed,
+        senses,
+        languages,
         imageKey,
         isRevealed,
         sortOrder,
       };
-      const res = editingId
-        ? await apiFetch<{ creatures: BestiaryCreature[] }>(`/api/dm/bestiary/${editingId}`, {
-            method: 'PUT',
-            body: JSON.stringify(payload),
-          })
-        : await apiFetch<{ creatures: BestiaryCreature[] }>('/api/dm/bestiary', {
-            method: 'POST',
-            body: JSON.stringify(payload),
-          });
-      setBestiary(res.creatures);
+      if (editingId) {
+        await apiFetch<{ ok: boolean }>(`/api/dm/bestiary/${editingId}`, {
+          method: 'PUT',
+          body: JSON.stringify(payload),
+        });
+      } else {
+        await apiFetch<{ ok: boolean }>('/api/dm/bestiary', {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        });
+      }
+      await refreshBestiary();
       pushToast({
         title: editingId ? 'Запись бестиария обновлена' : 'Существо добавлено',
         message: 'Бестиарий синхронизирован у всех участников',
@@ -115,30 +158,42 @@ export const BestiaryEditor: React.FC = () => {
   };
 
   const quickToggleReveal = async (c: BestiaryCreature) => {
-    const res = await apiFetch<{ creatures: BestiaryCreature[] }>(`/api/dm/bestiary/${c.id}`, {
-      method: 'PUT',
-      body: JSON.stringify({
-        ...c,
-        isRevealed: !c.isRevealed,
-      }),
+    await apiFetch<{ id: number; isRevealed: boolean }>(`/api/dm/bestiary/${c.id}/reveal`, {
+      method: 'PATCH',
+      body: JSON.stringify({ isRevealed: !c.isRevealed }),
     });
-    setBestiary(res.creatures);
     if (editingId === c.id) setIsRevealed(!c.isRevealed);
+    await refreshBestiary();
   };
 
   const handleDelete = async (id: number) => {
-    const res = await apiFetch<{ creatures: BestiaryCreature[] }>(`/api/dm/bestiary/${id}`, {
-      method: 'DELETE',
-    });
-    setBestiary(res.creatures);
+    if (!window.confirm('Удалить это существо из бестиария?')) return;
+    await apiFetch<{ ok: boolean }>(`/api/dm/bestiary/${id}`, { method: 'DELETE' });
+    await refreshBestiary();
     if (editingId === id) selectCreature(null);
   };
+
+  const visibleCreatures = creatures
+    .filter((c) => {
+      if (revealFilter === 'revealed' && !c.isRevealed) return false;
+      if (revealFilter === 'hidden' && c.isRevealed) return false;
+      const needle = search.trim().toLowerCase();
+      if (!needle) return true;
+      return (
+        c.name.toLowerCase().includes(needle) ||
+        c.nameEn.toLowerCase().includes(needle) ||
+        c.creatureType.toLowerCase().includes(needle)
+      );
+    })
+    .slice(0, 80);
 
   return (
     <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
       <div className="xl:col-span-5 glass-panel hud-cut p-5 space-y-4">
-        <div className="flex items-center justify-between">
-          <h4 className="font-medium text-sm text-text">Существа по опасности ({creatures.length})</h4>
+        <div className="flex items-center justify-between gap-2">
+          <h4 className="font-medium text-sm text-text">
+            Существа ({creatures.length})
+          </h4>
           <button
             type="button"
             onClick={() => selectCreature(null)}
@@ -149,8 +204,32 @@ export const BestiaryEditor: React.FC = () => {
           </button>
         </div>
 
+        <div className="flex items-center gap-2">
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Поиск среди всех существ…"
+            className="anime-input flex-1 h-8 px-2 text-xs"
+          />
+          <select
+            value={revealFilter}
+            onChange={(e) =>
+              setRevealFilter(e.target.value as 'all' | 'revealed' | 'hidden')
+            }
+            className="anime-input h-8 px-2 text-xs"
+          >
+            <option value="all">Все</option>
+            <option value="revealed">Открытые</option>
+            <option value="hidden">Скрытые</option>
+          </select>
+        </div>
+
+        <div className="text-[11px] text-muted font-mono tabular-nums">
+          показано {visibleCreatures.length} из {creatures.length}
+        </div>
+
         <div className="space-y-2 max-h-[480px] overflow-y-auto pr-1">
-          {creatures.map((c) => (
+          {visibleCreatures.map((c) => (
             <div
               key={c.id}
               onClick={() => selectCreature(c)}
@@ -167,7 +246,10 @@ export const BestiaryEditor: React.FC = () => {
                   </span>
                   <span className="text-sm font-medium text-text truncate">{c.name}</span>
                 </div>
-                <div className="text-xs text-muted mt-1">{c.creatureType}</div>
+                <div className="text-xs text-muted mt-1 truncate">
+                  {c.creatureType}
+                  {c.sourceTitle ? ` · ${c.sourceTitle}` : ''}
+                </div>
               </div>
 
               <div className="flex items-center gap-1 shrink-0">
@@ -208,9 +290,12 @@ export const BestiaryEditor: React.FC = () => {
         onSubmit={handleSubmit}
         className="xl:col-span-7 glass-panel hud-cut p-6 space-y-4"
       >
-        <h4 className="font-medium text-base text-text">
-          {editingId ? `Редактирование существа #${editingId}` : 'Новое существо бестиария'}
-        </h4>
+        <div className="flex items-center justify-between gap-2">
+          <h4 className="font-medium text-base text-text">
+            {editingId ? `Редактирование существа #${editingId}` : 'Новое существо бестиария'}
+          </h4>
+          {loadingDetail && <span className="text-[11px] text-muted">загрузка статблока…</span>}
+        </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div className="sm:col-span-2">
@@ -262,6 +347,37 @@ export const BestiaryEditor: React.FC = () => {
               className="anime-input w-full h-9 text-sm font-mono"
             />
           </div>
+
+          <div className="sm:col-span-3">
+            <label className="block text-xs text-secondary mb-1.5">Скорость</label>
+            <input
+              value={speed}
+              onChange={(e) => setSpeed(e.target.value)}
+              placeholder="30 футов, летая 60 футов"
+              className="anime-input w-full h-9 text-sm"
+            />
+          </div>
+
+          <div className="sm:col-span-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs text-secondary mb-1.5">Чувства</label>
+              <input
+                value={senses}
+                onChange={(e) => setSenses(e.target.value)}
+                placeholder="тёмное зрение 60 футов, пассивное Восприятие 12"
+                className="anime-input w-full h-9 text-sm"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-secondary mb-1.5">Языки</label>
+              <input
+                value={languages}
+                onChange={(e) => setLanguages(e.target.value)}
+                placeholder="Общий, Драконий"
+                className="anime-input w-full h-9 text-sm"
+              />
+            </div>
+          </div>
         </div>
 
         <label className="flex items-center gap-2.5 p-3 bg-bg border border-border cursor-pointer text-xs text-secondary">
@@ -312,7 +428,7 @@ export const BestiaryEditor: React.FC = () => {
         <div className="flex justify-end">
           <button
             type="submit"
-            disabled={saving}
+            disabled={saving || loadingDetail}
             className="anime-btn-primary h-10 px-5 text-xs inline-flex items-center gap-2"
           >
             <Save className="w-4 h-4" strokeWidth={1.5} />

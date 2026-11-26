@@ -153,13 +153,16 @@ export interface Quest {
   notesCount: number;
 }
 
+export type NoteEntityKind = 'quest' | 'npc' | 'creature';
+
 /**
- * A quest note written in first person by a member of the table.
- * Notes are always visible to the whole party (players + DM).
+ * A note written in first person by a member of the table — on a quest, an NPC
+ * or a bestiary monster. Notes are always visible to the whole party.
  */
-export interface QuestNote {
+export interface EntityNote {
   id: number;
-  questId: number;
+  kind: NoteEntityKind;
+  entityId: number;
   authorId: number;
   /** Account display name */
   authorName: string;
@@ -172,6 +175,9 @@ export interface QuestNote {
   createdAt: string;
   updatedAt: string | null;
 }
+
+/** @deprecated kept as an alias for older imports */
+export type QuestNote = EntityNote;
 
 export type NpcAttitude = 'friendly' | 'neutral' | 'wary' | 'hostile' | 'unknown';
 
@@ -194,22 +200,53 @@ export interface CampaignNpc {
   imageKey: string | null;
   isRevealed: boolean;
   sortOrder: number;
+  /** Number of party notes attached to this contact */
+  notesCount: number;
   createdAt: string;
   updatedAt: string | null;
 }
 
+/**
+ * Bestiary list entry. Heavy statblock text lives in {@link BestiaryCreatureDetail}
+ * and is fetched on demand so a 3 000-monster compendium stays lightweight.
+ */
 export interface BestiaryCreature {
   id: number;
   name: string;
+  /** English name from dnd.su (used for search) */
+  nameEn: string;
   cr: string;
   crNumeric: number;
   creatureType: string;
+  size: string;
+  alignment: string;
   ac: number;
   hp: string;
-  description: string;
   imageKey: string | null;
   isRevealed: boolean;
   sortOrder: number;
+  /** Book / adventure the monster comes from */
+  sourceTitle: string;
+  /** Link to the original dnd.su card */
+  sourceUrl: string;
+  /** True for monsters seeded from the dnd.su compendium */
+  isCompendium: boolean;
+  notesCount: number;
+}
+
+export interface BestiaryCreatureDetail extends BestiaryCreature {
+  description: string;
+  speed: string;
+  senses: string;
+  languages: string;
+  /** dnd.su slug — makes compendium imports idempotent */
+  importKey: string | null;
+}
+
+export interface BestiaryImportStatus {
+  total: number;
+  compendium: number;
+  revealed: number;
 }
 
 export type MagicSchool =
@@ -345,7 +382,7 @@ export type CampaignWsEventType =
   | 'connected'
   | 'presence:update'
   | 'quests:updated'
-  | 'quest_notes:updated'
+  | 'notes:updated'
   | 'npcs:updated'
   | 'bestiary:updated'
   | 'spells:updated'

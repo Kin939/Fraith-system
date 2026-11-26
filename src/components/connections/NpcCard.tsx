@@ -1,15 +1,17 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Eye,
   EyeOff,
   Landmark,
   Lock,
   MapPin,
+  MessageSquare,
   Pencil,
   Trash2,
   UserRound,
 } from 'lucide-react';
 import { resolveImageUrl } from '../../lib/artwork';
+import { EntityNotes } from '../common/EntityNotes';
 import { npcInitials, resolveNpcAttitude } from '../../lib/npc';
 import type { CampaignNpc } from '../../lib/types';
 
@@ -28,6 +30,7 @@ export const NpcCard: React.FC<NpcCardProps> = ({
   onToggleReveal,
   onDelete,
 }) => {
+  const [showNotes, setShowNotes] = useState(false);
   const attitude = resolveNpcAttitude(npc.attitude);
   const portraitUrl = npc.imageKey ? resolveImageUrl(npc.imageKey, 'crown') : null;
   const hidden = !npc.isRevealed;
@@ -116,6 +119,32 @@ export const NpcCard: React.FC<NpcCardProps> = ({
       ) : (
         <p className="text-xs text-muted italic">Описание пока не заполнено</p>
       )}
+
+      {/* Party notes, attributed to the character (or DM) who wrote them */}
+      <div className="space-y-2">
+        <button
+          type="button"
+          onClick={() => setShowNotes((prev) => !prev)}
+          className={`h-7 px-2 text-[11px] inline-flex items-center gap-1.5 border transition-colors ${
+            showNotes
+              ? 'border-primary/50 text-primary bg-primary/10'
+              : 'border-border text-secondary hover:text-text hover:bg-raised'
+          }`}
+          title="Заметки отряда об этом NPC"
+        >
+          <MessageSquare className="w-3.5 h-3.5" strokeWidth={1.6} />
+          <span>Заметки</span>
+          {npc.notesCount > 0 && (
+            <span className="font-mono tabular-nums text-muted">· {npc.notesCount}</span>
+          )}
+        </button>
+
+        {showNotes && (
+          <div className="p-2.5 bg-bg border border-border">
+            <EntityNotes kind="npc" entityId={npc.id} />
+          </div>
+        )}
+      </div>
 
       {/* DM-only intel */}
       {isDm && npc.secretNotes && (
