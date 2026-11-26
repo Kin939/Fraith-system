@@ -1,9 +1,11 @@
 import React, { useCallback } from 'react';
 import { LearnedSpells } from '../components/character/LearnedSpells';
 import { LssSheetEmbed } from '../components/character/LssSheetEmbed';
+import { AvatarUploader } from '../components/common/AvatarUploader';
 import { PlayerSwitcher } from '../components/dm/PlayerSwitcher';
 import { useLssSync } from '../hooks/useLssSync';
 import { useCampaignStore } from '../lib/store';
+import { getSlotTheme, getUserThemeSlot } from '../lib/theme';
 import type { PlayerId } from '../lib/types';
 
 export const CharacterPage: React.FC = () => {
@@ -49,9 +51,21 @@ export const CharacterPage: React.FC = () => {
     );
   }
 
+  const slotAccent = getSlotTheme(
+    getUserThemeSlot({ role: 'player', playerId: activePlayerId })
+  ).primary;
+
   return (
     <div className="space-y-6">
       {isDm && <PlayerSwitcher />}
+
+      <AvatarUploader
+        playerId={activePlayerId}
+        displayName={profile.characterName || `Игрок ${activePlayerId}`}
+        avatarUrl={profile.avatarUrl}
+        accentColor={slotAccent}
+        canEdit={isDm || user?.playerId === activePlayerId}
+      />
 
       <LssSheetEmbed
         key={`lss-embed-${activePlayerId}`}

@@ -1,17 +1,23 @@
-import React, { useEffect, useState } from 'react';
-import { Crown } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Crown, Star } from 'lucide-react';
 import { QuestDetail } from '../components/quests/QuestDetail';
 import { QuestTile } from '../components/quests/QuestTile';
+import { patchQuestTile } from '../lib/api';
 import { useCampaignStore } from '../lib/store';
 import type { Quest } from '../lib/types';
+
+type QuestStatusFilter = 'all' | 'active' | 'completed' | 'important';
 
 export const QuestsPage: React.FC = () => {
   const user = useCampaignStore((s) => s.user);
   const quests = useCampaignStore((s) => s.quests);
+  const setQuests = useCampaignStore((s) => s.setQuests);
   const setActiveTab = useCampaignStore((s) => s.setActiveTab);
+  const focusQuestInDm = useCampaignStore((s) => s.focusQuestInDm);
+  const pushToast = useCampaignStore((s) => s.pushToast);
 
   const [selectedId, setSelectedId] = useState<number | null>(quests[0]?.id ?? null);
-  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [statusFilter, setStatusFilter] = useState<QuestStatusFilter>('all');
 
   useEffect(() => {
     if (quests.length > 0 && (selectedId === null || !quests.some((q) => q.id === selectedId))) {
@@ -19,13 +25,45 @@ export const QuestsPage: React.FC = () => {
     }
   }, [quests, selectedId]);
 
-  const filteredQuests =
-    statusFilter === 'all' ? quests : quests.filter((q) => q.status === statusFilter);
+  const filteredQuests = useMemo(() => {
+    if (statusFilter === 'all') return quests;
+    if (statusFilter === 'important') return quests.filter((q) => q.tileStyle?.isImportant);
+    return quests.filter((q) => q.status === statusFilter);
+  }, [quests, statusFilter]);
+
+  const importantCount = useMemo(
+    () => quests.filter((q) => q.tileStyle?.isImportant).length,
+    [quests]
+  );
 
   const selectedQuest: Quest | null =
     quests.find((q) => q.id === selectedId) ?? filteredQuests[0] ?? null;
 
   const isDm = user?.role === 'dm';
+
+  const handleToggleImportant = async (quest: Quest) => {
+    try {
+      const updated = await patchQuestTile(quest.id, {
+        isImportant: !quest.tileStyle?.isImportant,
+      });
+      setQuests(updated);
+      pushToast({
+        title: quest.tileStyle?.isImportant ? 'Метка снята' : 'Квест отмечен важным',
+        message: quest.title,
+        variant: 'success',
+      });
+    } catch (err) {
+      pushToast({
+        title: 'Не удалось обновить плитку',
+        message: err instanceof Error ? err.message : 'Попробуйте ещё раз',
+        variant: 'error',
+      });
+    }
+  };
+
+  const handleEditStyle = (quest: Quest) => {
+    focusQuestInDm(quest.id);
+  };
 
   return (
     <div className="space-y-6">
@@ -45,18 +83,23 @@ export const QuestsPage: React.FC = () => {
                 { id: 'all', label: 'Все' },
                 { id: 'active', label: 'Активные' },
                 { id: 'completed', label: 'Завершённые' },
+                {
+                  id: 'important',
+                  label: importantCount > 0 ? `★ Важные · ${importantCount}` : '★ Важные',
+                },
               ] as const
             ).map((f) => (
               <button
                 key={f.id}
                 type="button"
                 onClick={() => setStatusFilter(f.id)}
-                className={`h-8 px-3 text-xs transition-colors ${
+                className={`h-8 px-3 text-xs transition-colors inline-flex items-center gap-1 ${
                   statusFilter === f.id
                     ? 'bg-raised text-text font-medium shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]'
                     : 'text-secondary hover:text-text'
-                }`}
+                } ${f.id === 'important' && importantCount > 0 ? 'text-[#f59e0b]' : ''}`}
               >
+                {f.id === 'important' && <Star className="w-3 h-3" strokeWidth={1.8} fill="currentColor" />}
                 {f.label}
               </button>
             ))}
@@ -89,6 +132,9 @@ export const QuestsPage: React.FC = () => {
                 quest={quest}
                 selected={selectedQuest?.id === quest.id}
                 onSelect={() => setSelectedId(quest.id)}
+                canToggleImportant={Boolean(isDm)}
+                onToggleImportant={(q) => void handleToggleImportant(q)}
+                onEditStyle={isDm ? (q) => handleEditStyle(q) : undefined}
               />
             ))
           )}
@@ -99,6 +145,7 @@ export const QuestsPage: React.FC = () => {
             quest={selectedQuest}
             isDm={Boolean(isDm)}
             onEditQuest={() => setActiveTab('dm')}
+            onToggleImportant={isDm ? (q) => void handleToggleImportant(q) : undefined}
           />
         </div>
       </div>

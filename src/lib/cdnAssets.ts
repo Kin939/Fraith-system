@@ -7,8 +7,11 @@ const PUBLIC_CDN_MIRRORS = [
 ];
 
 export function isLocalOrSandboxHost(): boolean {
-  if (typeof window === 'undefined') return true;
-  const h = window.location.hostname;
+  // `globalThis.location` keeps this helper usable from both the browser bundle
+  // and the Cloudflare Worker (where the DOM lib is not available).
+  const loc = (globalThis as { location?: { hostname?: string } }).location;
+  if (!loc?.hostname) return true;
+  const h = loc.hostname;
   return (
     h === 'localhost' ||
     h === '127.0.0.1' ||

@@ -4,7 +4,6 @@ import {
   BarChart3,
   CalendarCheck2,
   CalendarClock,
-  Crown,
   Download,
   ExternalLink,
   FileArchive,
@@ -27,6 +26,7 @@ import {
   UploadCloud,
   X,
 } from 'lucide-react';
+import { PlayerAvatar } from '../components/common/PlayerAvatar';
 import {
   CustomEmojiGlyph,
   RichEmojiText,
@@ -1058,19 +1058,16 @@ export const MessengerPage: React.FC = () => {
                         {formatMessageTime(msg.createdAt)}
                       </div>
                     ) : (
-                      <div
-                        className="w-8 h-8 shrink-0 bg-deep border flex items-center justify-center text-xs font-medium select-none mt-0.5"
-                        style={{
-                          borderColor: `${accentColor}55`,
-                          color: accentColor,
-                        }}
-                      >
-                        {msg.senderRole === 'dm' ? (
-                          <Crown className="w-3.5 h-3.5" strokeWidth={1.5} />
-                        ) : (
-                          msg.senderDisplayName.slice(0, 1).toUpperCase()
-                        )}
-                      </div>
+                      <PlayerAvatar
+                        avatarUrl={msg.senderAvatarUrl}
+                        displayName={msg.senderDisplayName}
+                        role={msg.senderRole}
+                        playerId={msg.senderPlayerId}
+                        size="sm"
+                        accentColor={accentColor}
+                        className="mt-0.5"
+                        title={`${msg.senderDisplayName} · портрет персонажа`}
+                      />
                     )}
 
                     {/* Message Body */}
@@ -1106,8 +1103,16 @@ export const MessengerPage: React.FC = () => {
                         <button
                           type="button"
                           onClick={() => jumpToMessage(msg.replyPreview!.id)}
-                          className="flex items-start gap-2 pl-2.5 pr-3 py-1 bg-deep border-l-2 border-l-primary text-left max-w-xl hover:bg-raised transition-colors"
+                          className="flex items-center gap-2 pl-2 pr-3 py-1 bg-deep border-l-2 border-l-primary text-left max-w-xl hover:bg-raised transition-colors"
                         >
+                          <PlayerAvatar
+                            avatarUrl={msg.replyPreview.senderAvatarUrl}
+                            displayName={msg.replyPreview.senderDisplayName}
+                            role={msg.replyPreview.senderRole}
+                            playerId={msg.replyPreview.senderPlayerId}
+                            size="xs"
+                            showRoleBadge={false}
+                          />
                           <div className="min-w-0">
                             <div className="text-[11px] font-medium text-primary">
                               {msg.replyPreview.senderDisplayName}

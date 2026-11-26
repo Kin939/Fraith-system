@@ -45,12 +45,17 @@ export const PlayerSwitcherCards: React.FC<PlayerSwitcherCardsProps> = ({
   const playerIds: PlayerId[] = [1, 2, 3];
 
   const avatarsByPid = useMemo(() => {
+    const resolve = (pid: PlayerId): string | null =>
+      charactersById[pid]?.avatarUrl || extractLssAvatar(charactersById[pid]?.rawLssJson);
     return {
-      1: extractLssAvatar(charactersById[1]?.rawLssJson),
-      2: extractLssAvatar(charactersById[2]?.rawLssJson),
-      3: extractLssAvatar(charactersById[3]?.rawLssJson),
+      1: resolve(1),
+      2: resolve(2),
+      3: resolve(3),
     };
   }, [
+    charactersById[1]?.avatarUrl,
+    charactersById[2]?.avatarUrl,
+    charactersById[3]?.avatarUrl,
     charactersById[1]?.rawLssJson,
     charactersById[2]?.rawLssJson,
     charactersById[3]?.rawLssJson,

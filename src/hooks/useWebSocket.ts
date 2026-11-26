@@ -206,6 +206,17 @@ export function useWebSocket() {
             store.setNextSessionInStore(p?.nextSession ?? null);
             break;
           }
+          case 'party:avatars_updated': {
+            const p = msg.payload as {
+              userId?: number;
+              playerId?: PlayerId | null;
+              avatarUrl?: string | null;
+            };
+            if (p?.playerId) {
+              store.applyPlayerAvatar(p.playerId, p.avatarUrl ?? null, p.userId ?? null);
+            }
+            break;
+          }
           case 'chat:emojis_updated': {
             const p = msg.payload as { customEmojis?: CustomCampaignEmoji[] };
             if (Array.isArray(p?.customEmojis)) {

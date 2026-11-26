@@ -20,6 +20,8 @@ export interface AuthUser {
   role: UserRole;
   playerId: PlayerId | null;
   avatarKey?: string | null;
+  /** Resolved portrait URL (uploaded avatar or character-sheet portrait) */
+  avatarUrl?: string | null;
   theme: ThemeVariables;
 }
 
@@ -60,6 +62,8 @@ export interface CharacterProfile {
   hasRawLssJson: boolean;
   rawLssJson?: string | null;
   lastSyncedAt: string | null;
+  /** Resolved portrait URL used for messenger avatars & roster cards */
+  avatarUrl?: string | null;
 }
 
 export interface JournalEntry {
@@ -70,6 +74,17 @@ export interface JournalEntry {
 }
 
 export type QuestStatus = 'active' | 'completed' | 'failed' | 'available';
+
+export type QuestTilePattern = 'none' | 'runes' | 'grid' | 'hazard' | 'stars' | 'scanlines';
+
+export interface QuestTileStyle {
+  /** Hex accent used for the tile rim, glow & progress bar */
+  accent: string | null;
+  /** HUD emblem key (dice, dragon, skull, crown, …) */
+  emblem: string | null;
+  pattern: QuestTilePattern;
+  isImportant: boolean;
+}
 
 export interface QuestParameters {
   location?: string;
@@ -91,6 +106,7 @@ export interface Quest {
   imageKey: string | null;
   status: QuestStatus;
   createdAt: string;
+  tileStyle: QuestTileStyle;
 }
 
 export interface BestiaryCreature {
@@ -253,6 +269,7 @@ export type CampaignWsEventType =
   | 'chat:poll_updated'
   | 'chat:session_updated'
   | 'chat:emojis_updated'
+  | 'party:avatars_updated'
   | 'chat:typing';
 
 export interface CustomCampaignEmoji {
@@ -281,6 +298,7 @@ export interface ChatParticipantBadge {
   displayName: string;
   role: UserRole;
   playerId: PlayerId | null;
+  avatarUrl?: string | null;
 }
 
 export interface ChatReactionSummary {
@@ -324,6 +342,7 @@ export interface ChatReplyPreview {
   senderDisplayName: string;
   senderRole: UserRole;
   senderPlayerId: PlayerId | null;
+  senderAvatarUrl?: string | null;
   content: string;
   hasAttachments: boolean;
   hasPoll: boolean;
@@ -336,6 +355,8 @@ export interface ChatMessage {
   senderDisplayName: string;
   senderRole: UserRole;
   senderPlayerId: PlayerId | null;
+  /** Portrait of the author's character — drives the messenger avatar gutter */
+  senderAvatarUrl?: string | null;
   content: string;
   replyToId: number | null;
   replyPreview: ChatReplyPreview | null;

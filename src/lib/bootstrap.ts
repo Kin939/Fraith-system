@@ -30,6 +30,26 @@ async function ensureUsersColumns(db: D1Database): Promise<void> {
   }
 }
 
+async function ensureQuestStyleColumns(db: D1Database): Promise<void> {
+  const { results } = await db
+    .prepare(`PRAGMA table_info(quests)`)
+    .all<{ name: string }>();
+  const existingCols = new Set(results.map((r) => r.name));
+
+  const extraColumns: Array<[string, string]> = [
+    ['tile_accent', 'TEXT'],
+    ['tile_emblem', 'TEXT'],
+    ['tile_pattern', `TEXT NOT NULL DEFAULT 'none'`],
+    ['is_important', 'INTEGER NOT NULL DEFAULT 0'],
+  ];
+
+  for (const [col, def] of extraColumns) {
+    if (!existingCols.has(col)) {
+      await db.prepare(`ALTER TABLE quests ADD COLUMN ${col} ${def}`).run();
+    }
+  }
+}
+
 async function ensureTalentTreeColumns(db: D1Database): Promise<void> {
   const { results } = await db
     .prepare(`PRAGMA table_info(talent_tree)`)
@@ -195,7 +215,11 @@ async function runBootstrap(db: D1Database): Promise<void> {
       progress_target INTEGER NOT NULL DEFAULT 1,
       image_key TEXT,
       status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'completed', 'failed', 'available')),
-      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      tile_accent TEXT,
+      tile_emblem TEXT,
+      tile_pattern TEXT NOT NULL DEFAULT 'none',
+      is_important INTEGER NOT NULL DEFAULT 0
     )`,
     `CREATE TABLE IF NOT EXISTS bestiary (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -358,6 +382,7 @@ async function runBootstrap(db: D1Database): Promise<void> {
 
   await db.batch(schemaStatements.map((sql) => db.prepare(sql)));
   await ensureUsersColumns(db);
+  await ensureQuestStyleColumns(db);
   await ensureTalentTreeColumns(db);
   await ensureCharacterProfileColumns(db);
   await ensureSpellsDndsuColumns(db);

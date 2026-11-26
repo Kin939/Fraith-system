@@ -479,3 +479,221 @@ a.dndsu-source-plaque:hover {
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(238, 240, 245, 0.24);
 }
+
+/* ==========================================================================
+   QUEST TILES — accent rims, HUD emblems & decorative patterns
+   ========================================================================== */
+.quest-tile {
+  position: relative;
+  isolation: isolate;
+  --q-accent: var(--primary);
+  --q-accent-soft: rgba(0, 229, 255, 0.18);
+  --q-accent-strong: rgba(0, 229, 255, 0.5);
+  --q-glow: transparent;
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  clip-path: polygon(
+    0 0,
+    calc(100% - 12px) 0,
+    100% 12px,
+    100% 100%,
+    12px 100%,
+    0 calc(100% - 12px)
+  );
+  transition: border-color 160ms var(--ease-out-ui), background-color 160ms var(--ease-out-ui),
+    box-shadow 200ms var(--ease-out-ui), transform 160ms var(--ease-out-ui);
+}
+
+.quest-tile::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(118deg, var(--q-accent-soft) 0%, transparent 46%),
+    radial-gradient(120% 90% at 100% 0%, var(--q-accent-soft) 0%, transparent 58%);
+  opacity: 0.55;
+  transition: opacity 160ms var(--ease-out-ui);
+}
+
+.quest-tile:hover::before {
+  opacity: 0.85;
+}
+
+.quest-tile:hover {
+  border-color: var(--q-accent-strong);
+  transform: translatey(-1px);
+}
+
+.quest-tile--selected {
+  background-color: var(--surface-raised);
+  border-color: var(--q-accent) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.07),
+    0 0 0 1px var(--q-accent-soft),
+    0 10px 30px -18px var(--q-accent);
+}
+
+.quest-tile--important {
+  border-color: var(--q-accent-strong);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.07),
+    0 0 22px -8px var(--q-glow);
+}
+
+.quest-tile__rail {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: linear-gradient(
+    to bottom,
+    var(--q-accent),
+    color-mix(in srgb, var(--q-accent) 25%, transparent)
+  );
+  z-index: 2;
+}
+
+.quest-tile__pattern {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.5;
+  mix-blend-mode: screen;
+}
+
+/* — Patterns — */
+.quest-pattern--runes {
+  background-image:
+    radial-gradient(circle at 18% 26%, var(--q-accent-soft) 0 1.5px, transparent 2px),
+    radial-gradient(circle at 72% 62%, var(--q-accent-soft) 0 1px, transparent 1.5px),
+    repeating-linear-gradient(
+      45deg,
+      transparent 0 22px,
+      var(--q-accent-soft) 22px 22.6px,
+      transparent 22.6px 30px
+    );
+  opacity: 0.35;
+}
+
+.quest-pattern--grid {
+  background-image:
+    linear-gradient(to right, var(--q-accent-soft) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--q-accent-soft) 1px, transparent 1px);
+  background-size: 22px 22px;
+  opacity: 0.22;
+}
+
+.quest-pattern--hazard {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    var(--q-accent-soft) 0 10px,
+    transparent 10px 24px
+  );
+  opacity: 0.2;
+}
+
+.quest-pattern--stars {
+  background-image:
+    radial-gradient(1px 1px at 12% 22%, var(--q-accent) 50%, transparent 51%),
+    radial-gradient(1px 1px at 68% 12%, var(--q-accent) 50%, transparent 51%),
+    radial-gradient(1.5px 1.5px at 38% 68%, var(--q-accent) 50%, transparent 51%),
+    radial-gradient(1px 1px at 84% 54%, var(--q-accent) 50%, transparent 51%),
+    radial-gradient(1px 1px at 56% 88%, var(--q-accent) 50%, transparent 51%);
+  background-size: 160px 160px;
+  opacity: 0.5;
+}
+
+.quest-pattern--scanlines {
+  background-image: repeating-linear-gradient(
+    to bottom,
+    var(--q-accent-soft) 0 1px,
+    transparent 1px 4px
+  );
+  opacity: 0.25;
+}
+
+/* — Important shimmer — */
+.quest-tile--important::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    100deg,
+    transparent 30%,
+    var(--q-accent-soft) 45%,
+    transparent 60%
+  );
+  background-size: 260% 100%;
+  opacity: 0.35;
+  animation: quest-tile-shimmer 7s linear infinite;
+}
+
+@keyframes quest-tile-shimmer {
+  0% {
+    background-position: 160% 0;
+  }
+  60%,
+  100% {
+    background-position: -60% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .quest-tile--important::after {
+    animation: none;
+  }
+  .quest-tile:hover {
+    transform: none;
+  }
+}
+
+.quest-tile__emblem {
+  filter: drop-shadow(0 0 6px var(--q-accent-strong));
+  opacity: 0.92;
+}
+
+.quest-tile__badge {
+  background: color-mix(in srgb, var(--q-accent) 18%, var(--bg-deep));
+  border: 1px solid var(--q-accent-strong);
+  color: var(--q-accent);
+}
+
+.quest-tile__progress-lit {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--q-accent) 65%, #ffffff 6%),
+    var(--q-accent)
+  );
+  box-shadow: 0 0 8px -2px var(--q-accent);
+}
+
+/* ==========================================================================
+   PLAYER AVATARS — character portraits in messenger / roster
+   ========================================================================== */
+.player-avatar {
+  --pa-accent: var(--primary);
+  --pa-accent-soft: rgba(0, 229, 255, 0.25);
+}
+
+.player-avatar::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  clip-path: polygon(0 0, calc(100% - 7px) 0, 100% 7px, 100% 100%, 7px 100%, 0 calc(100% - 7px));
+  box-shadow: inset 0 0 0 1px var(--pa-accent-soft);
+}
+
+.player-avatar img {
+  transition: transform 200ms var(--ease-out-ui), filter 200ms var(--ease-out-ui);
+}
+
+.group:hover .player-avatar img {
+  transform: scale(1.04);
+}
