@@ -109,13 +109,18 @@ function fraithCdnBootstrapPlugin(): Plugin {
     return;
   }
 
+  // Порядок важен: сначала неизменяемый тег текущей сборки, затем origin
+  // (там гарантированно лежит именно эта сборка) и только последним —
+  // ветка gh-pages, которую jsDelivr кэширует на часы и может отдавать старый бандл.
   var bases = [];
   if (TAG) {
     bases.push("https://gcore.jsdelivr.net/gh/" + REPO + "@" + TAG + "/");
     bases.push("https://fastly.jsdelivr.net/gh/" + REPO + "@" + TAG + "/");
   }
+  bases.push("./");
   bases.push("https://gcore.jsdelivr.net/gh/" + REPO + "@gh-pages/");
   bases.push("https://fastly.jsdelivr.net/gh/" + REPO + "@gh-pages/");
+
 
   function tryManifestThenOrigin() {
     var ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
@@ -123,6 +128,8 @@ function fraithCdnBootstrapPlugin(): Plugin {
     fetch("https://gcore.jsdelivr.net/gh/" + REPO + "@gh-pages/cdn-manifest.json?t=" + Date.now(), ctrl ? { signal: ctrl.signal } : {})
       .then(function (r) { clearTimeout(t); return r.ok ? r.json() : Promise.reject(); })
       .then(function (m) {
+        // Манифест ветки может быть устаревшим (jsDelivr кэширует gh-pages часами),
+        // поэтому он используется только как последний шанс — после origin.
         if (m && m.js) {
           loadBundle("https://gcore.jsdelivr.net/gh/" + REPO + "@gh-pages/", m.js, m.css || "", 6000, tryOrigin);
         } else {
@@ -136,7 +143,7 @@ function fraithCdnBootstrapPlugin(): Plugin {
   }
 
   function tryOrigin() {
-    loadBundle("./", ENTRY_JS, ENTRY_CSS, 8000, function () {
+    loadBundle("./", ENTRY_JS, ENTRY_CSS, 6000, function () {
       if (!window.__FRAITH_MOUNTED__) {
         setStatus(
           "Не удалось загрузить скрипты портала.<br/><br/>" +
