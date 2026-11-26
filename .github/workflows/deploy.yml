@@ -31,6 +31,9 @@ jobs:
 
       - name: Verify Wrangler bundle & build
         run: npx wrangler deploy --dry-run
+        env:
+          # Ключ лицензии tldraw SDK для production-сборки (см. README → «Доска»)
+          VITE_TLDRAW_LICENSE_KEY: ${{ secrets.TLDRAW_LICENSE_KEY }}
 
   publish-cdn-mirror:
     name: Publish Static JS/CSS Mirror for RU Players (jsDelivr G-Core CDN)
@@ -51,6 +54,8 @@ jobs:
         run: |
           npm ci
           npm run build
+        env:
+          VITE_TLDRAW_LICENSE_KEY: ${{ secrets.TLDRAW_LICENSE_KEY }}
 
       - name: Publish dist/ to gh-pages & immutable commit tag
         run: |
@@ -111,3 +116,5 @@ jobs:
       - name: Deploy Worker, Static Assets, D1 & Durable Object
         if: steps.check_secrets.outputs.configured == 'true'
         run: npx wrangler deploy
+        env:
+          VITE_TLDRAW_LICENSE_KEY: ${{ secrets.TLDRAW_LICENSE_KEY }}

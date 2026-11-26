@@ -2,6 +2,7 @@ import React from 'react';
 import {
   BookOpen,
   Crown,
+  LayoutDashboard,
   LogOut,
   MessageSquare,
   Network,
@@ -55,6 +56,13 @@ export const TabBar: React.FC<TabBarProps> = ({ onLogout }) => {
       badge: unreadChatCount > 0 ? unreadChatCount : undefined,
     },
   ];
+
+  // «Доска» — строго после «Мессенджера» и перед «Мастером»
+  tabs.push({
+    id: 'board',
+    label: 'Доска',
+    icon: <LayoutDashboard className="w-4 h-4" strokeWidth={1.5} />,
+  });
 
   if (isDm) {
     tabs.push({ id: 'dm', label: 'Мастер', icon: <Crown className="w-4 h-4" strokeWidth={1.5} /> });

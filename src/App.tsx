@@ -29,6 +29,9 @@ const ConnectionsPage = lazy(() =>
 const MessengerPage = lazy(() =>
   import('./pages/MessengerPage').then((m) => ({ default: m.MessengerPage }))
 );
+const BoardPage = lazy(() =>
+  import('./pages/BoardPage').then((m) => ({ default: m.BoardPage }))
+);
 const DmPage = lazy(() =>
   import('./pages/DmPage').then((m) => ({ default: m.DmPage }))
 );
@@ -120,6 +123,7 @@ export const App: React.FC = () => {
             {activeTab === 'connections' && <ConnectionsPage />}
             {activeTab === 'talents' && <TalentsPage />}
             {activeTab === 'chat' && <MessengerPage />}
+            {activeTab === 'board' && <BoardPage />}
             {activeTab === 'dm' && <DmPage />}
           </Suspense>
         </PageErrorBoundary>

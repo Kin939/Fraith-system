@@ -36,6 +36,16 @@ class_name = "CampaignRoom"
 tag = "v1"
 new_sqlite_classes = ["CampaignRoom"]
 
+# Вкладка «Доска»: отдельный Durable Object на каждую доску (холст + presence + комментарии).
+# Не пересекается с CampaignRoom, поэтому realtime мессенджера/квестов не блокируется.
+[[durable_objects.bindings]]
+name = "BOARD_ROOM"
+class_name = "BoardRoom"
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["BoardRoom"]
+
 # Optional Cloudflare R2 Object Storage:
 # Uncomment after enabling R2 in your Cloudflare Dashboard (or bind `BUCKET` in Worker Settings -> Bindings).
 # Until enabled, uploaded quest/bestiary/talent images automatically fall back to D1 storage.
