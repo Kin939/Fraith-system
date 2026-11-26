@@ -1,0 +1,28 @@
+/*
+ * Типографика доски.
+ *
+ * tldraw задаёт --tl-font-draw / --tl-font-sans / --tl-font-serif / --tl-font-mono
+ * на .tl-container. Мы переопределяем их своим классом-пресетом (специфичность
+ * выше), поэтому все четыре кнопки шрифта в панели стилей начинают работать и для
+ * кириллицы, и для латиницы — в каждом пресете свой набор шрифтов.
+ */
+
+.board-fonts--classic .tl-container {
+  --tl-font-draw: 'Caveat', 'Segoe Print', 'Comic Sans MS', cursive;
+  --tl-font-sans: 'Inter', 'Segoe UI', system-ui, sans-serif;
+  --tl-font-serif: 'PT Serif', 'Times New Roman', Georgia, serif;
+  --tl-font-mono: 'JetBrains Mono', 'Courier New', ui-monospace, monospace;
+}
+
+.board-fonts--modern .tl-container {
+  --tl-font-draw: 'Neucha', 'Segoe Print', cursive;
+  --tl-font-sans: 'Manrope', 'Segoe UI', system-ui, sans-serif;
+  --tl-font-serif: 'Lora', 'PT Serif', Georgia, serif;
+  --tl-font-mono: 'Fira Code', 'JetBrains Mono', ui-monospace, monospace;
+}
+
+/* Синтетическая жирность для шрифтов, у которых подключается только Regular. */
+.tl-container .tl-rich-text strong,
+.tl-container .tl-rich-text b {
+  font-synthesis: weight;
+}

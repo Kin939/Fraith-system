@@ -226,6 +226,22 @@ async function migrateQuestNotesToEntityNotes(db: D1Database): Promise<void> {
     .run();
 }
 
+async function ensureBoardColumns(db: D1Database): Promise<void> {
+  const { results } = await db.prepare(`PRAGMA table_info(board_settings)`).all<{ name: string }>();
+  const existing = new Set((results ?? []).map((row) => row.name));
+  if (existing.size === 0) return; // таблицы ещё нет — её создаст batch ниже
+  if (!existing.has('font_preset')) {
+    await db
+      .prepare(`ALTER TABLE board_settings ADD COLUMN font_preset TEXT NOT NULL DEFAULT 'classic'`)
+      .run();
+  }
+  if (!existing.has('bg_color')) {
+    await db
+      .prepare(`ALTER TABLE board_settings ADD COLUMN bg_color TEXT NOT NULL DEFAULT ''`)
+      .run();
+  }
+}
+
 async function runBootstrap(db: D1Database): Promise<void> {
   const schemaStatements = [
     `CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -536,7 +552,9 @@ async function runBootstrap(db: D1Database): Promise<void> {
     `CREATE TABLE IF NOT EXISTS board_settings (
       board_id TEXT PRIMARY KEY REFERENCES boards(id) ON DELETE CASCADE,
       background TEXT NOT NULL DEFAULT 'dots' CHECK (background IN ('dots', 'lines', 'squares', 'plain')),
-      grid_size INTEGER NOT NULL DEFAULT 24
+      grid_size INTEGER NOT NULL DEFAULT 24,
+      font_preset TEXT NOT NULL DEFAULT 'classic',
+      bg_color TEXT NOT NULL DEFAULT ''
     )`,
     `CREATE INDEX IF NOT EXISTS idx_board_access_user ON board_access(user_id)`,
     `CREATE INDEX IF NOT EXISTS idx_board_templates_board ON board_templates(board_id)`,
@@ -551,6 +569,7 @@ async function runBootstrap(db: D1Database): Promise<void> {
   await ensureLearnedSpellsColumns(db);
   await ensureBestiaryColumns(db);
   await migrateQuestNotesToEntityNotes(db);
+  await ensureBoardColumns(db);
 
   const existingUser = await db
     .prepare(`SELECT id FROM users LIMIT 1`)

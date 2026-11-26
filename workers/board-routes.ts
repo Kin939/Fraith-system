@@ -2,6 +2,7 @@ import type { Hono } from 'hono';
 import type { Env, Variables } from '../functions/api/[[route]]';
 import type { AuthUser } from '../src/lib/types';
 import { uploadChatAttachmentToR2 } from '../src/lib/r2';
+import { getUserAvatarUrl } from '../src/lib/db';
 
 /**
  * HTTP-слой вкладки «Доска».
@@ -21,6 +22,8 @@ interface BoardRow {
   updated_at: string;
   background: string | null;
   grid_size: number | null;
+  font_preset: string | null;
+  bg_color: string | null;
 }
 
 interface AccessRow {
@@ -35,6 +38,8 @@ interface AccessRow {
 interface CreateBoardBody {
   name?: string;
   background?: string;
+  fontPreset?: string;
+  bgColor?: string;
   access?: Array<{ userId: number; permission: BoardPermission | null }>;
 }
 
@@ -54,7 +59,7 @@ function newId(): string {
 async function fetchBoardRow(env: Env, boardId: string): Promise<BoardRow | null> {
   return await env.DB.prepare(
     `SELECT b.id, b.name, b.created_by, b.created_at, b.updated_at,
-            s.background, s.grid_size
+            s.background, s.grid_size, s.font_preset, s.bg_color
      FROM boards b
      LEFT JOIN board_settings s ON s.board_id = b.id
      WHERE b.id = ?`
@@ -81,7 +86,7 @@ async function resolvePermission(
 async function listBoardsForUser(env: Env, user: AuthUser) {
   const rows = await env.DB.prepare(
     `SELECT b.id, b.name, b.created_by, b.created_at, b.updated_at,
-            s.background, s.grid_size,
+            s.background, s.grid_size, s.font_preset, s.bg_color,
             a.permission AS my_permission
      FROM boards b
      LEFT JOIN board_settings s ON s.board_id = b.id
@@ -92,7 +97,7 @@ async function listBoardsForUser(env: Env, user: AuthUser) {
     .all<BoardRow & { my_permission: BoardPermission | null }>();
 
   const accessByBoard = new Map<string, Array<{ userId: number; permission: BoardPermission }>>();
-  if (user.role === 'dm') {
+  {
     const accessRows = await env.DB.prepare(
       `SELECT board_id, user_id, permission FROM board_access`
     ).all<{ board_id: string; user_id: number; permission: BoardPermission }>();
@@ -112,8 +117,12 @@ async function listBoardsForUser(env: Env, user: AuthUser) {
       updatedAt: row.updated_at,
       background: row.background ?? 'dots',
       gridSize: row.grid_size ?? 24,
+      fontPreset: row.font_preset ?? 'classic',
+      bgColor: row.bg_color ?? '',
       permission: (user.role === 'dm' ? 'write' : row.my_permission) as BoardPermission | null,
-      access: user.role === 'dm' ? accessByBoard.get(row.id) ?? [] : undefined,
+      access:
+        user.role === 'dm' || row.created_by === user.id ? accessByBoard.get(row.id) ?? [] : undefined,
+      canEdit: user.role === 'dm' || row.created_by === user.id,
     }))
     .filter((b) => b.permission !== null);
 
@@ -124,12 +133,17 @@ async function listMembers(env: Env) {
   const rows = await env.DB.prepare(
     `SELECT id, username, display_name, role FROM users ORDER BY role DESC, id ASC`
   ).all<{ id: number; username: string; display_name: string; role: 'dm' | 'player' }>();
-  return (rows.results ?? []).map((r) => ({
-    id: r.id,
-    username: r.username,
-    displayName: r.display_name,
-    role: r.role,
-  }));
+
+  const members = await Promise.all(
+    (rows.results ?? []).map(async (r) => ({
+      id: r.id,
+      username: r.username,
+      displayName: r.display_name,
+      role: r.role,
+      avatarUrl: await getUserAvatarUrl(env.DB, r.id),
+    }))
+  );
+  return members;
 }
 
 async function listAccess(env: Env, boardId: string) {
@@ -166,12 +180,27 @@ async function setAccess(env: Env, boardId: string, userId: number, permission: 
     .run();
 }
 
+const FONT_PRESETS = ['classic', 'modern'] as const;
+
+function normalizePreset(raw?: string | null): string {
+  return FONT_PRESETS.includes((raw ?? '') as (typeof FONT_PRESETS)[number]) ? raw! : 'classic';
+}
+
+/** Цвет фона холста: пустая строка = цвет темы, иначе #rgb/#rrggbb. */
+function normalizeBgColor(raw?: string | null): string {
+  const value = (raw ?? '').trim();
+  if (!value) return '';
+  return /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(value) ? value.toLowerCase() : '';
+}
+
 async function createBoard(
   env: Env,
   user: AuthUser,
   name: string,
   background = 'dots',
-  access?: Array<{ userId: number; permission: BoardPermission }>
+  access?: Array<{ userId: number; permission: BoardPermission }>,
+  fontPreset = 'classic',
+  bgColor = ''
 ) {
   const id = newId();
   await env.DB.batch([
@@ -179,8 +208,8 @@ async function createBoard(
       `INSERT INTO boards (id, name, created_by) VALUES (?, ?, ?)`
     ).bind(id, name, user.id),
     env.DB.prepare(
-      `INSERT INTO board_settings (board_id, background) VALUES (?, ?)`
-    ).bind(id, background),
+      `INSERT INTO board_settings (board_id, background, font_preset, bg_color) VALUES (?, ?, ?, ?)`
+    ).bind(id, background, fontPreset, bgColor),
   ]);
 
   if (access) {
@@ -217,7 +246,7 @@ export function registerBoardRoutes(app: Hono<{ Bindings: Env; Variables: Variab
 
     await ensureDefaultBoard(c.env, user);
     const [boards, members] = await Promise.all([listBoardsForUser(c.env, user), listMembers(c.env)]);
-    return c.json({ boards, members, canManage: user.role === 'dm' });
+    return c.json({ boards, members, canManage: true, isDm: user.role === 'dm' });
   });
 
   // ------------------------------------------------------------------ создание
@@ -225,7 +254,6 @@ export function registerBoardRoutes(app: Hono<{ Bindings: Env; Variables: Variab
   app.post('/boards', async (c) => {
     const user = c.get('user');
     if (!user) return c.json({ error: 'Необходима авторизация' }, 401);
-    if (user.role !== 'dm') return c.json({ error: 'Создавать доски может только Мастер' }, 403);
 
     const body = await c.req
       .json<CreateBoardBody>()
@@ -234,20 +262,24 @@ export function registerBoardRoutes(app: Hono<{ Bindings: Env; Variables: Variab
     const name = (body.name || '').trim().slice(0, MAX_BOARD_NAME) || 'Новая доска';
     const allowedBackgrounds = ['dots', 'lines', 'squares', 'plain'];
     const background = allowedBackgrounds.includes(body.background || '') ? body.background! : 'dots';
+    const fontPreset = normalizePreset(body.fontPreset);
+    const bgColor = normalizeBgColor(body.bgColor);
 
     const members = await listMembers(c.env);
     const playerIds = members.filter((m) => m.role === 'player').map((m) => m.id);
 
+    // Мастер может раздать доступ явно; по умолчанию доска открыта всем игрокам на запись.
+    // Игрок создаёт доску для всей партии: он и остальные игроки получают write.
     const requested = (body.access ?? [])
       .filter((a) => playerIds.includes(a.userId) && (a.permission === 'read' || a.permission === 'write'))
       .map((a) => ({ userId: a.userId, permission: a.permission as BoardPermission }));
 
     const access =
-      requested.length > 0
+      user.role === 'dm' && requested.length > 0
         ? requested
         : playerIds.map((id) => ({ userId: id, permission: 'write' as BoardPermission }));
 
-    const id = await createBoard(c.env, user, name, background, access);
+    const id = await createBoard(c.env, user, name, background, access, fontPreset, bgColor);
 
     return c.json({
       board: {
@@ -258,7 +290,10 @@ export function registerBoardRoutes(app: Hono<{ Bindings: Env; Variables: Variab
         updatedAt: new Date().toISOString(),
         background,
         gridSize: 24,
+        fontPreset,
+        bgColor,
         permission: 'write' as BoardPermission,
+        canEdit: true,
       },
       access: await listAccess(c.env, id),
     });
@@ -269,11 +304,13 @@ export function registerBoardRoutes(app: Hono<{ Bindings: Env; Variables: Variab
   app.patch('/boards/:id', async (c) => {
     const user = c.get('user');
     if (!user) return c.json({ error: 'Необходима авторизация' }, 401);
-    if (user.role !== 'dm') return c.json({ error: 'Менять доску может только Мастер' }, 403);
 
     const boardId = c.req.param('id');
     const board = await fetchBoardRow(c.env, boardId);
     if (!board) return c.json({ error: 'Доска не найдена' }, 404);
+    if (user.role !== 'dm' && board.created_by !== user.id) {
+      return c.json({ error: 'Менять доску может её автор или Мастер' }, 403);
+    }
 
     const body = await c.req
       .json<CreateBoardBody>()
@@ -287,16 +324,34 @@ export function registerBoardRoutes(app: Hono<{ Bindings: Env; Variables: Variab
         .run();
     }
 
-    if (typeof body.background === 'string') {
+    const touchesSettings =
+      typeof body.background === 'string' ||
+      typeof body.fontPreset === 'string' ||
+      typeof body.bgColor === 'string';
+
+    if (touchesSettings) {
       const allowed = ['dots', 'lines', 'squares', 'plain'];
-      if (allowed.includes(body.background)) {
-        await c.env.DB.prepare(
-          `INSERT INTO board_settings (board_id, background) VALUES (?, ?)
-           ON CONFLICT(board_id) DO UPDATE SET background = excluded.background`
+      const background = allowed.includes(body.background || '') ? body.background! : null;
+      const fontPreset = typeof body.fontPreset === 'string' ? normalizePreset(body.fontPreset) : null;
+      const bgColor = typeof body.bgColor === 'string' ? normalizeBgColor(body.bgColor) : null;
+
+      await c.env.DB.prepare(
+        `INSERT INTO board_settings (board_id, background, font_preset, bg_color) VALUES (?, ?, ?, ?)
+         ON CONFLICT(board_id) DO UPDATE SET
+           background = COALESCE(?, board_settings.background),
+           font_preset = COALESCE(?, board_settings.font_preset),
+           bg_color = COALESCE(?, board_settings.bg_color)`
+      )
+        .bind(
+          boardId,
+          background ?? 'dots',
+          fontPreset ?? 'classic',
+          bgColor ?? '',
+          background,
+          fontPreset,
+          bgColor
         )
-          .bind(boardId, body.background)
-          .run();
-      }
+        .run();
     }
 
     if (Array.isArray(body.access)) {
@@ -321,7 +376,10 @@ export function registerBoardRoutes(app: Hono<{ Bindings: Env; Variables: Variab
             updatedAt: updated.updated_at,
             background: updated.background ?? 'dots',
             gridSize: updated.grid_size ?? 24,
+            fontPreset: updated.font_preset ?? 'classic',
+            bgColor: updated.bg_color ?? '',
             permission: 'write' as BoardPermission,
+            canEdit: true,
           }
         : null,
       access: await listAccess(c.env, boardId),
@@ -333,11 +391,13 @@ export function registerBoardRoutes(app: Hono<{ Bindings: Env; Variables: Variab
   app.delete('/boards/:id', async (c) => {
     const user = c.get('user');
     if (!user) return c.json({ error: 'Необходима авторизация' }, 401);
-    if (user.role !== 'dm') return c.json({ error: 'Удалять доски может только Мастер' }, 403);
 
     const boardId = c.req.param('id');
     const board = await fetchBoardRow(c.env, boardId);
     if (!board) return c.json({ error: 'Доска не найдена' }, 404);
+    if (user.role !== 'dm' && board.created_by !== user.id) {
+      return c.json({ error: 'Удалять доску может её автор или Мастер' }, 403);
+    }
 
     // Сбрасываем содержимое DO (сторадж Durable Object не удаляется вместе с D1-строкой).
     try {
@@ -390,6 +450,7 @@ export function registerBoardRoutes(app: Hono<{ Bindings: Env; Variables: Variab
     doUrl.searchParams.set('role', user.role);
     doUrl.searchParams.set('permission', permission);
     doUrl.searchParams.set('color', user.theme?.accent || '#22d3ee');
+    if (user.avatarUrl) doUrl.searchParams.set('avatar', user.avatarUrl);
 
     return stub.fetch(new Request(doUrl.toString(), c.req.raw));
   });

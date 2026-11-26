@@ -27,6 +27,7 @@ export interface PeerAttachment {
   role: 'dm' | 'player';
   permission: BoardPermission;
   color: string;
+  avatarUrl: string | null;
   connectedAt: number;
 }
 
@@ -50,6 +51,8 @@ export interface BoardComment {
   text: string;
   createdAt: number;
   resolved: boolean;
+  /** Упомянутые участники (@ник) */
+  mentions?: number[];
   replies: BoardCommentReply[];
 }
 
@@ -84,6 +87,7 @@ export interface PeerState {
   role: 'dm' | 'player';
   permission: BoardPermission;
   color: string;
+  avatarUrl: string | null;
   cursor: { x: number; y: number; pageId: string | null } | null;
   selection: string[];
   connectedAt: number;
@@ -222,6 +226,7 @@ export class BoardRoom extends DurableObject<BoardRoomEnv> {
       role: url.searchParams.get('role') === 'dm' ? 'dm' : 'player',
       permission,
       color: normalizeColor(url.searchParams.get('color')),
+      avatarUrl: normalizeAvatar(url.searchParams.get('avatar')),
       connectedAt: Date.now(),
     };
 
@@ -350,6 +355,9 @@ export class BoardRoom extends DurableObject<BoardRoomEnv> {
         text,
         createdAt: Date.now(),
         resolved: false,
+        mentions: Array.isArray(payload.mentions)
+          ? (payload.mentions as unknown[]).filter((id): id is number => Number.isFinite(Number(id))).map(Number)
+          : [],
         replies: [],
       };
       this.comments.push(comment);
@@ -506,6 +514,7 @@ export class BoardRoom extends DurableObject<BoardRoomEnv> {
         role: a?.role ?? 'player',
         permission: a?.permission ?? 'read',
         color: a?.color ?? '#22d3ee',
+        avatarUrl: a?.avatarUrl ?? null,
         cursor: this.cursors.get(userId) ?? null,
         selection: this.selections.get(userId) ?? [],
         connectedAt: a?.connectedAt ?? 0,
@@ -579,6 +588,16 @@ function safeSend(ws: WebSocket, message: unknown): void {
   } catch {
     /* socket closed mid-broadcast */
   }
+}
+
+function normalizeAvatar(raw: string | null): string | null {
+  if (!raw) return null;
+  const value = raw.trim();
+  if (!value) return null;
+  if (value.startsWith('/') || value.startsWith('https://') || value.startsWith('data:')) {
+    return value.slice(0, 600);
+  }
+  return null;
 }
 
 function normalizeColor(raw: string | null): string {

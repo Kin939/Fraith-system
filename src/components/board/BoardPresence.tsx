@@ -1,11 +1,18 @@
-import React, { useEffect, useState } from 'react';
-import { Crown, Wifi, WifiOff } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { Wifi, WifiOff } from 'lucide-react';
+import { PeerAvatar } from '../common/PeerAvatar';
 import { useValue, type Editor } from 'tldraw';
 import type { BoardPeer } from '../../lib/boardProtocol';
 import type { BoardSocketApi } from '../../hooks/useBoardSocket';
 
 /* -------------------------------------------------------------------------- */
-/*  Живые курсоры участников                                                   */
+/*  Аватар участника (везде, где показывается пользователь)                    */
+/* -------------------------------------------------------------------------- */
+
+export { PeerAvatar } from '../common/PeerAvatar';
+
+/* -------------------------------------------------------------------------- */
+/*  Живые курсоры участников (плавная интерполяция)                            */
 /* -------------------------------------------------------------------------- */
 
 interface LiveCursor {
@@ -14,6 +21,7 @@ interface LiveCursor {
   pageId: string | null;
   displayName: string;
   color: string;
+  avatarUrl?: string | null;
   at: number;
 }
 
@@ -22,6 +30,7 @@ export const BoardCursorOverlay: React.FC<{
   socket: BoardSocketApi;
   selfId: number | null;
 }> = ({ editor, socket, selfId }) => {
+  const targetsRef = useRef<Record<number, LiveCursor>>({});
   const [cursors, setCursors] = useState<Record<number, LiveCursor>>({});
   const camera = useValue('board-cursor-camera', () => editor.getCamera(), [editor]);
   const { subscribeEphemeral } = socket;
@@ -32,35 +41,69 @@ export const BoardCursorOverlay: React.FC<{
         if (message.type !== 'cursor') return;
         const payload = message.payload;
         if (payload.userId === selfId) return;
-        setCursors((prev) => ({
-          ...prev,
-          [payload.userId]: {
-            x: payload.x,
-            y: payload.y,
-            pageId: payload.pageId ?? null,
-            displayName: payload.displayName,
-            color: payload.color,
-            at: Date.now(),
-          },
-        }));
+        if (!Number.isFinite(payload.x) || !Number.isFinite(payload.y)) {
+          delete targetsRef.current[payload.userId];
+          return;
+        }
+        targetsRef.current[payload.userId] = {
+          x: payload.x,
+          y: payload.y,
+          pageId: payload.pageId ?? null,
+          displayName: payload.displayName,
+          color: payload.color,
+          at: Date.now(),
+        };
       }),
     [subscribeEphemeral, selfId]
   );
 
+  // Один rAF-цикл: плавно догоняем целевую позицию курсора (без рывков от сетевых пакетов).
   useEffect(() => {
-    const prune = setInterval(() => {
-      const cutoff = Date.now() - 15_000;
+    let raf = 0;
+    const tick = () => {
+      const targets = targetsRef.current;
+      const now = Date.now();
       setCursors((prev) => {
         const next: Record<number, LiveCursor> = {};
         let changed = false;
-        Object.entries(prev).forEach(([id, cursor]) => {
-          if (cursor.at >= cutoff) next[Number(id)] = cursor;
-          else changed = true;
-        });
-        return changed ? next : prev;
+
+        for (const [rawId, target] of Object.entries(targets)) {
+          const id = Number(rawId);
+          if (now - target.at > 4000) {
+            delete targets[id];
+            changed = true;
+            continue;
+          }
+          const current = prev[id];
+          if (!current) {
+            next[id] = { ...target };
+            changed = true;
+            continue;
+          }
+          const dx = target.x - current.x;
+          const dy = target.y - current.y;
+          if (Math.abs(dx) < 0.4 && Math.abs(dy) < 0.4) {
+            next[id] = current;
+            continue;
+          }
+          next[id] = {
+            ...current,
+            x: current.x + dx * 0.28,
+            y: current.y + dy * 0.28,
+            at: target.at,
+            displayName: target.displayName,
+            color: target.color,
+          };
+          changed = true;
+        }
+
+        if (!changed && Object.keys(prev).length === Object.keys(next).length) return prev;
+        return next;
       });
-    }, 5000);
-    return () => clearInterval(prune);
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
   }, []);
 
   const pageId = editor.getCurrentPageId();
@@ -69,17 +112,20 @@ export const BoardCursorOverlay: React.FC<{
   );
 
   return (
-    <div className="absolute inset-0 pointer-events-none z-[2] overflow-hidden" data-camera={camera.x + camera.y + camera.z}>
+    <div
+      className="absolute inset-0 pointer-events-none z-[2] overflow-hidden"
+      data-camera={camera.x + camera.y + camera.z}
+    >
       {visible.map(([id, cursor]) => {
         const point = editor.pageToViewport({ x: cursor.x, y: cursor.y });
-        if (point.x < -60 || point.y < -60) return null;
+        if (point.x < -80 || point.y < -80) return null;
         return (
           <div
             key={id}
-            className="absolute flex items-start gap-1 transition-transform duration-75 ease-linear will-change-transform"
+            className="absolute flex items-start gap-1 will-change-transform"
             style={{ transform: `translate3d(${point.x}px, ${point.y}px, 0)` }}
           >
-            <svg width="18" height="22" viewBox="0 0 18 22" fill="none" aria-hidden="true">
+            <svg width="16" height="20" viewBox="0 0 18 22" fill="none" aria-hidden="true">
               <path
                 d="M1 1L16 11.2L8.9 12.4L5.6 20L1 1Z"
                 fill={cursor.color}
@@ -88,15 +134,25 @@ export const BoardCursorOverlay: React.FC<{
               />
             </svg>
             <span
-              className="mt-4 px-1.5 py-0.5 text-[10px] font-medium whitespace-nowrap max-w-[160px] truncate border"
+              className="mt-3.5 flex items-center gap-1 pl-0.5 pr-1.5 py-0.5 text-[10px] font-medium whitespace-nowrap max-w-[170px] border"
               style={{
-                backgroundColor: 'rgba(8,10,20,0.88)',
+                backgroundColor: 'rgba(8,10,20,0.9)',
                 borderColor: cursor.color,
                 color: cursor.color,
                 boxShadow: `0 0 12px ${cursor.color}55`,
               }}
             >
-              {cursor.displayName}
+              {cursor.avatarUrl && (
+                <img
+                  src={cursor.avatarUrl}
+                  alt=""
+                  className="w-3.5 h-3.5 object-cover rounded-full"
+                  onError={(event) => {
+                    event.currentTarget.style.display = 'none';
+                  }}
+                />
+              )}
+              <span className="truncate">{cursor.displayName}</span>
             </span>
           </div>
         );
@@ -109,12 +165,19 @@ export const BoardCursorOverlay: React.FC<{
 /*  Выделения других участников                                                */
 /* -------------------------------------------------------------------------- */
 
+interface PeerSelection {
+  ids: string[];
+  color: string;
+  displayName: string;
+  avatarUrl?: string | null;
+}
+
 export const BoardSelectionOverlay: React.FC<{
   editor: Editor;
   socket: BoardSocketApi;
   selfId: number | null;
 }> = ({ editor, socket, selfId }) => {
-  const [selections, setSelections] = useState<Record<number, { ids: string[]; color: string; displayName: string }>>({});
+  const [selections, setSelections] = useState<Record<number, PeerSelection>>({});
   const camera = useValue('board-selection-camera', () => editor.getCamera(), [editor]);
   const { subscribeEphemeral } = socket;
 
@@ -123,6 +186,15 @@ export const BoardSelectionOverlay: React.FC<{
       subscribeEphemeral((message) => {
         if (message.type !== 'selection') return;
         if (message.payload.userId === selfId) return;
+        if (message.payload.ids.length === 0) {
+          setSelections((prev) => {
+            if (!prev[message.payload.userId]) return prev;
+            const next = { ...prev };
+            delete next[message.payload.userId];
+            return next;
+          });
+          return;
+        }
         setSelections((prev) => ({
           ...prev,
           [message.payload.userId]: {
@@ -135,31 +207,85 @@ export const BoardSelectionOverlay: React.FC<{
     [subscribeEphemeral, selfId]
   );
 
+  // Аватары участников подтягиваем из presence-снимка.
+  useEffect(() => {
+    if (socket.peers.length === 0) return;
+    setSelections((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const peer of socket.peers) {
+        const entry = next[peer.userId];
+        if (entry && entry.avatarUrl !== peer.avatarUrl) {
+          next[peer.userId] = { ...entry, avatarUrl: peer.avatarUrl };
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [socket.peers]);
+
   return (
     <div className="absolute inset-0 pointer-events-none z-[2] overflow-hidden" data-camera={camera.z}>
-      {Object.entries(selections).flatMap(([userId, selection]) =>
-        selection.ids.slice(0, 40).map((shapeId) => {
-          const bounds = editor.getShapePageBounds(shapeId as never);
-          if (!bounds) return null;
-          const topLeft = editor.pageToViewport({ x: bounds.minX, y: bounds.minY });
-          const bottomRight = editor.pageToViewport({ x: bounds.maxX, y: bounds.maxY });
-          return (
+      {Object.entries(selections).map(([rawId, selection]) => {
+        const boxes = selection.ids
+          .slice(0, 120)
+          .map((shapeId) => editor.getShapePageBounds(shapeId as never))
+          .filter((bounds): bounds is NonNullable<typeof bounds> => Boolean(bounds));
+        if (boxes.length === 0) return null;
+
+        const minX = Math.min(...boxes.map((b) => b.minX));
+        const minY = Math.min(...boxes.map((b) => b.minY));
+        const anchor = editor.pageToViewport({ x: minX, y: minY });
+
+        return (
+          <React.Fragment key={`sel-${rawId}`}>
+            {boxes.map((bounds, index) => {
+              const topLeft = editor.pageToViewport({ x: bounds.minX, y: bounds.minY });
+              const bottomRight = editor.pageToViewport({ x: bounds.maxX, y: bounds.maxY });
+              return (
+                <div
+                  key={index}
+                  className="absolute"
+                  style={{
+                    left: topLeft.x - 3,
+                    top: topLeft.y - 3,
+                    width: Math.max(4, bottomRight.x - topLeft.x) + 6,
+                    height: Math.max(4, bottomRight.y - topLeft.y) + 6,
+                    border: `1.5px solid ${selection.color}`,
+                    borderRadius: 6,
+                    backgroundColor: `${selection.color}12`,
+                    boxShadow: `0 0 0 1px ${selection.color}22, 0 0 14px ${selection.color}55`,
+                  }}
+                />
+              );
+            })}
+
             <div
-              key={`${userId}-${shapeId}`}
-              className="absolute border-2"
+              className="absolute flex items-center gap-1 pl-0.5 pr-1.5 h-5 border"
               style={{
-                left: topLeft.x,
-                top: topLeft.y,
-                width: Math.max(2, bottomRight.x - topLeft.x),
-                height: Math.max(2, bottomRight.y - topLeft.y),
+                left: anchor.x - 3,
+                top: anchor.y - 25,
+                backgroundColor: 'rgba(8,10,20,0.92)',
                 borderColor: selection.color,
-                backgroundColor: `${selection.color}14`,
-                boxShadow: `0 0 12px ${selection.color}44`,
+                color: selection.color,
+                boxShadow: `0 0 10px ${selection.color}44`,
               }}
-            />
-          );
-        })
-      )}
+            >
+              {selection.avatarUrl ? (
+                <img
+                  src={selection.avatarUrl}
+                  alt=""
+                  className="w-3.5 h-3.5 object-cover rounded-full"
+                  onError={(event) => {
+                    event.currentTarget.style.display = 'none';
+                  }}
+                />
+              ) : null}
+              <span className="text-[9px] font-medium whitespace-nowrap">{selection.displayName}</span>
+            </div>
+          </React.Fragment>
+        );
+      })}
     </div>
   );
 };
@@ -167,14 +293,6 @@ export const BoardSelectionOverlay: React.FC<{
 /* -------------------------------------------------------------------------- */
 /*  Панель присутствия                                                         */
 /* -------------------------------------------------------------------------- */
-
-const initials = (name: string): string =>
-  name
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase() ?? '')
-    .join('') || '?';
 
 export const BoardPresenceBar: React.FC<{
   peers: BoardPeer[];
@@ -190,32 +308,34 @@ export const BoardPresenceBar: React.FC<{
         }`}
         title={online ? 'Синхронизация активна' : 'Переподключение…'}
       >
-        {online ? <Wifi className="w-3 h-3" strokeWidth={1.5} /> : <WifiOff className="w-3 h-3" strokeWidth={1.5} />}
+        {online ? (
+          <Wifi className="w-3 h-3" strokeWidth={1.5} />
+        ) : (
+          <WifiOff className="w-3 h-3" strokeWidth={1.5} />
+        )}
         <span>{online ? 'live' : 'sync'}</span>
       </div>
 
-      <div className="flex items-center -space-x-1.5">
-        {peers.slice(0, 6).map((peer) => (
+      {/* Аватары участников: строго в ряд, без наездов друг на друга */}
+      <div className="flex items-center gap-1.5">
+        {peers.slice(0, 7).map((peer) => (
           <div
             key={`${peer.userId}-${peer.connectedAt}`}
-            title={`${peer.displayName}${peer.permission === 'read' ? ' · только чтение' : ''}`}
-            className="relative w-8 h-8 flex items-center justify-center text-[11px] font-semibold border bg-deep"
-            style={{
-              borderColor: peer.color,
-              color: peer.color,
-              boxShadow: peer.userId === selfId ? `0 0 10px ${peer.color}66` : undefined,
-            }}
+            className="relative shrink-0 rounded-full ring-2 ring-deep transition-transform duration-150 hover:scale-110"
           >
-            {initials(peer.displayName)}
-            {peer.role === 'dm' && (
-              <Crown className="absolute -top-1 -right-1 w-3 h-3 text-warning" strokeWidth={1.5} />
-            )}
+            <PeerAvatar
+              name={peer.displayName}
+              color={peer.color}
+              avatarUrl={peer.avatarUrl}
+              size={26}
+              active={peer.userId === selfId}
+              crown={peer.role === 'dm'}
+              title={`${peer.displayName}${peer.permission === 'read' ? ' · только чтение' : ''}`}
+            />
           </div>
         ))}
-        {peers.length > 6 && (
-          <div className="w-8 h-8 flex items-center justify-center text-[10px] border border-border text-muted bg-deep">
-            +{peers.length - 6}
-          </div>
+        {peers.length > 7 && (
+          <span className="ml-1 text-[10px] font-mono text-muted">+{peers.length - 7}</span>
         )}
       </div>
     </div>

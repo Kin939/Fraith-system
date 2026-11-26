@@ -326,7 +326,7 @@ export function useBoardSocket({ boardId, enabled }: UseBoardSocketOptions) {
   }, []);
 
   const addComment = useCallback(
-    (input: { text: string; shapeId: string | null; x: number; y: number }) => {
+    (input: { text: string; shapeId: string | null; x: number; y: number; mentions?: number[] }) => {
       send('comment:add', input);
     },
     [send]

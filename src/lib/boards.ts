@@ -4,6 +4,7 @@ import { apiFetch } from './api';
 
 export type BoardPermission = 'read' | 'write';
 export type BoardBackground = 'dots' | 'lines' | 'squares' | 'plain';
+export type BoardFontPreset = 'classic' | 'modern';
 
 export interface BoardSummary {
   id: string;
@@ -13,6 +14,12 @@ export interface BoardSummary {
   updatedAt: string;
   background: BoardBackground;
   gridSize: number;
+  /** Пресет шрифтов доски (кириллица + латиница) */
+  fontPreset?: BoardFontPreset;
+  /** Цвет фона холста ('' = цвет темы) */
+  bgColor?: string;
+  /** Может ли текущий пользователь переименовать/удалить/настроить доску */
+  canEdit?: boolean;
   /** Право текущего пользователя на эту доску */
   permission: BoardPermission | null;
   /** Матрица доступа (только для Мастера) */
@@ -24,6 +31,7 @@ export interface BoardMember {
   username: string;
   displayName: string;
   role: 'dm' | 'player';
+  avatarUrl?: string | null;
 }
 
 export type BoardAccessMap = Record<number, BoardPermission | 'none'>;
@@ -64,6 +72,8 @@ export async function listBoards(): Promise<{
 export async function createBoard(input: {
   name: string;
   background?: BoardBackground;
+  fontPreset?: BoardFontPreset;
+  bgColor?: string;
   access?: BoardAccessPatch[];
 }): Promise<{ board: BoardSummary; access: BoardAccessEntry[] }> {
   return apiFetch('/api/boards', { method: 'POST', body: JSON.stringify(input) });
@@ -71,7 +81,13 @@ export async function createBoard(input: {
 
 export async function updateBoard(
   boardId: string,
-  input: { name?: string; background?: BoardBackground; access?: BoardAccessPatch[] }
+  input: {
+    name?: string;
+    background?: BoardBackground;
+    fontPreset?: BoardFontPreset;
+    bgColor?: string;
+    access?: BoardAccessPatch[];
+  }
 ): Promise<{ board: BoardSummary | null; access: BoardAccessEntry[] }> {
   return apiFetch(`/api/boards/${encodeURIComponent(boardId)}`, {
     method: 'PATCH',

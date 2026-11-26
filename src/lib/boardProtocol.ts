@@ -15,6 +15,7 @@ export interface BoardPeer {
   role: 'dm' | 'player';
   permission: BoardPermission;
   color: string;
+  avatarUrl?: string | null;
   cursor: BoardCursor | null;
   selection: string[];
   connectedAt: number;
@@ -39,6 +40,8 @@ export interface BoardComment {
   text: string;
   createdAt: number;
   resolved: boolean;
+  /** Упомянутые участники (@ник) */
+  mentions?: number[];
   replies: BoardCommentReply[];
 }
 
