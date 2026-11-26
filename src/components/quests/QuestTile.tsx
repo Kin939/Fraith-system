@@ -2,6 +2,7 @@ import React from 'react';
 import { AlertTriangle, CheckCircle2, Clock3, Sparkles, Star, XCircle } from 'lucide-react';
 import { resolveImageUrl } from '../../lib/artwork';
 import { questEmblemUrl, questTileCssVars, resolveQuestAccent } from '../../lib/questStyle';
+import type { TileSize } from '../../lib/tileSize';
 import type { Quest, QuestStatus } from '../../lib/types';
 
 interface QuestTileProps {
@@ -12,7 +13,10 @@ interface QuestTileProps {
   canToggleImportant?: boolean;
   onToggleImportant?: (quest: Quest) => void;
   onEditStyle?: (quest: Quest) => void;
+  /** Legacy shorthand — equals size="compact" */
   compact?: boolean;
+  /** Tile density from the shared S/M/L/XL switch */
+  size?: TileSize;
 }
 
 const STATUS_META: Record<
@@ -49,7 +53,13 @@ export const QuestTile: React.FC<QuestTileProps> = ({
   onToggleImportant,
   onEditStyle,
   compact = false,
+  size,
 }) => {
+  const tileSize: TileSize = size ?? (compact ? 'compact' : 'normal');
+  const isCompact = tileSize === 'compact';
+  const isLarge = tileSize === 'large' || tileSize === 'huge';
+  const hideDescription = isCompact;
+
   const ratio = Math.min(1, Math.max(0, quest.progressCurrent / Math.max(1, quest.progressTarget)));
   const segmentCount = quest.progressTarget === 5 ? 5 : 10;
   const filledSegments = Math.round(ratio * segmentCount);
@@ -73,8 +83,10 @@ export const QuestTile: React.FC<QuestTileProps> = ({
       }}
       style={questTileCssVars(quest)}
       className={`quest-tile group w-full text-left ${
-        compact ? 'p-3.5' : 'p-4 sm:p-5'
-      } flex flex-col justify-between gap-3.5 cursor-pointer ${
+        isCompact ? 'p-3' : isLarge ? 'p-5 sm:p-6' : 'p-4 sm:p-5'
+      } flex flex-col justify-between ${
+        isCompact ? 'gap-2.5' : 'gap-3.5'
+      } cursor-pointer ${
         selected ? 'quest-tile--selected' : ''
       } ${important ? 'quest-tile--important' : ''}`}
     >
@@ -89,7 +101,11 @@ export const QuestTile: React.FC<QuestTileProps> = ({
         <div className="flex items-start justify-between gap-2">
           <div className="flex items-start gap-2.5 min-w-0">
             {coverUrl ? (
-              <span className="relative w-9 h-9 shrink-0 overflow-hidden hud-cut-sm border border-border/80 mt-0.5">
+              <span
+                className={`relative shrink-0 overflow-hidden hud-cut-sm border border-border/80 mt-0.5 ${
+                  isCompact ? 'w-7 h-7' : isLarge ? 'w-11 h-11' : 'w-9 h-9'
+                }`}
+              >
                 <img
                   src={coverUrl}
                   alt=""
@@ -102,14 +118,16 @@ export const QuestTile: React.FC<QuestTileProps> = ({
                 src={emblem}
                 alt=""
                 draggable={false}
-                className="quest-tile__emblem w-7 h-7 object-contain shrink-0 mt-0.5"
+                className={`quest-tile__emblem object-contain shrink-0 mt-0.5 ${
+                  isCompact ? 'w-6 h-6' : isLarge ? 'w-9 h-9' : 'w-7 h-7'
+                }`}
               />
             ) : null}
 
             <div className="min-w-0">
               <h3
-                className={`font-medium text-text leading-snug line-clamp-2 ${
-                  compact ? 'text-sm' : 'text-base'
+                className={`font-medium text-text leading-snug ${
+                  isCompact ? 'text-sm line-clamp-2' : isLarge ? 'text-base sm:text-lg line-clamp-3' : 'text-base line-clamp-2'
                 }`}
               >
                 {quest.title}
@@ -156,8 +174,12 @@ export const QuestTile: React.FC<QuestTileProps> = ({
           )}
         </div>
 
-        {!compact && (
-          <p className="text-xs text-secondary line-clamp-2 leading-relaxed">
+        {!hideDescription && (
+          <p
+            className={`text-secondary leading-relaxed ${
+              isLarge ? 'text-xs sm:text-sm line-clamp-3' : 'text-xs line-clamp-2'
+            }`}
+          >
             {quest.shortDesc}
           </p>
         )}

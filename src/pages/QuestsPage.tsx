@@ -1,9 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Crown, Star } from 'lucide-react';
+import { TileSizeControl } from '../components/common/TileSizeControl';
 import { QuestDetail } from '../components/quests/QuestDetail';
 import { QuestTile } from '../components/quests/QuestTile';
 import { patchQuestTile } from '../lib/api';
 import { useCampaignStore } from '../lib/store';
+import { tileGridCols, useTileSize } from '../lib/tileSize';
 import type { Quest } from '../lib/types';
 
 type QuestStatusFilter = 'all' | 'active' | 'completed' | 'important';
@@ -18,6 +20,7 @@ export const QuestsPage: React.FC = () => {
 
   const [selectedId, setSelectedId] = useState<number | null>(quests[0]?.id ?? null);
   const [statusFilter, setStatusFilter] = useState<QuestStatusFilter>('all');
+  const [tileSize] = useTileSize('quests');
 
   useEffect(() => {
     if (quests.length > 0 && (selectedId === null || !quests.some((q) => q.id === selectedId))) {
@@ -77,6 +80,8 @@ export const QuestsPage: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
+          <TileSizeControl scope="quests" />
+
           <div className="inline-flex items-center bg-surface border border-border p-1 gap-1">
             {(
               [
@@ -120,7 +125,7 @@ export const QuestsPage: React.FC = () => {
 
       {/* Split View: Stack on mobile, 5/7 split on lg+ */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        <div className="lg:col-span-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-3">
+        <div className={`lg:col-span-5 grid gap-3 ${tileGridCols(tileSize)}`}>
           {filteredQuests.length === 0 ? (
             <div className="glass-panel hud-cut p-6 text-center text-sm text-muted">
               Квестов с выбранным статусом нет
@@ -135,6 +140,7 @@ export const QuestsPage: React.FC = () => {
                 canToggleImportant={Boolean(isDm)}
                 onToggleImportant={(q) => void handleToggleImportant(q)}
                 onEditStyle={isDm ? (q) => handleEditStyle(q) : undefined}
+                size={tileSize}
               />
             ))
           )}

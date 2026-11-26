@@ -10,20 +10,28 @@ interface TalentTreeProps {
   nodes: TalentNodeModel[];
   inspirationPoints: number;
   selectedEditorId?: number | null;
+  /** Tile edge length in px, driven by the shared tile-size switch */
+  nodeSizePx?: number;
+  /** Dim talents that are not marked as key talents */
+  onlyFeatured?: boolean;
   onRequestCreateAt?: (x: number, y: number) => void;
   onRequestEditNode?: (node: TalentNodeModel) => void;
+  onToggleFeatured?: (node: TalentNodeModel) => void;
 }
 
-const NODE_SIZE = 176; // w-44 = 176px
 const SNAP_PX = 8;
 
 export const TalentTree: React.FC<TalentTreeProps> = ({
   nodes,
   inspirationPoints,
   selectedEditorId,
+  nodeSizePx = 176,
+  onlyFeatured = false,
   onRequestCreateAt,
   onRequestEditNode,
+  onToggleFeatured,
 }) => {
+  const NODE_SIZE = nodeSizePx;
   const user = useCampaignStore((s) => s.user);
   const setTalentsBundle = useCampaignStore((s) => s.setTalentsBundle);
   const pushToast = useCampaignStore((s) => s.pushToast);
@@ -306,12 +314,15 @@ export const TalentTree: React.FC<TalentTreeProps> = ({
                   isDm={Boolean(isDm)}
                   isDragging={draggingId === node.id}
                   isSelectedInEditor={selectedEditorId === node.id}
+                  sizePx={nodeSizePx}
+                  dimmed={onlyFeatured && !node.tileStyle?.isImportant}
                   onPointerDown={handlePointerDownNode}
                   onSelect={(clicked) => {
                     if (suppressClickRef.current) return;
                     setDetailNode(clicked);
                   }}
                   onEditNode={isDm ? onRequestEditNode : undefined}
+                  onToggleFeatured={isDm ? onToggleFeatured : undefined}
                 />
               </div>
             );

@@ -71,6 +71,18 @@ async function ensureTalentTreeColumns(db: D1Database): Promise<void> {
   if (!existingCols.has('unlocked_at')) {
     await db.prepare(`ALTER TABLE talent_tree ADD COLUMN unlocked_at TEXT`).run();
   }
+
+  const styleColumns: Array<[string, string]> = [
+    ['tile_accent', 'TEXT'],
+    ['tile_emblem', 'TEXT'],
+    ['tile_pattern', `TEXT NOT NULL DEFAULT 'none'`],
+    ['is_featured', 'INTEGER NOT NULL DEFAULT 0'],
+  ];
+  for (const [col, def] of styleColumns) {
+    if (!existingCols.has(col)) {
+      await db.prepare(`ALTER TABLE talent_tree ADD COLUMN ${col} ${def}`).run();
+    }
+  }
 }
 
 async function ensureCharacterProfileColumns(db: D1Database): Promise<void> {
@@ -280,7 +292,11 @@ async function runBootstrap(db: D1Database): Promise<void> {
       position_y INTEGER NOT NULL DEFAULT 60,
       parent_id INTEGER REFERENCES talent_tree(id) ON DELETE SET NULL,
       is_unlocked INTEGER NOT NULL DEFAULT 0,
-      unlocked_at TEXT
+      unlocked_at TEXT,
+      tile_accent TEXT,
+      tile_emblem TEXT,
+      tile_pattern TEXT NOT NULL DEFAULT 'none',
+      is_featured INTEGER NOT NULL DEFAULT 0
     )`,
     `CREATE TABLE IF NOT EXISTS purchased_talents (
       player_id INTEGER NOT NULL CHECK (player_id IN (1, 2, 3)),

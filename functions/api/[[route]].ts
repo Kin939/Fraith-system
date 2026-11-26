@@ -1624,26 +1624,48 @@ app.post('/dm/inspiration', async (c) => {
   return c.json(state);
 });
 
+interface TalentMutationBody {
+  title: string;
+  description: string;
+  imageKey?: string | null;
+  cost?: number;
+  positionX?: number;
+  positionY?: number;
+  parentId?: number | null;
+  tileAccent?: string | null;
+  tileEmblem?: string | null;
+  tilePattern?: string | null;
+  isFeatured?: boolean;
+}
+
+function normalizeTalentTileStyle(body: TalentMutationBody): {
+  accent: string | null;
+  emblem: string | null;
+  pattern: string;
+  isFeatured: boolean;
+} {
+  return {
+    accent: normalizeQuestAccent(body.tileAccent),
+    emblem: isHudAssetKey(body.tileEmblem) ? (body.tileEmblem as string) : null,
+    pattern: normalizeQuestPattern(body.tilePattern),
+    isFeatured: Boolean(body.isFeatured),
+  };
+}
+
 app.post('/dm/talents', async (c) => {
   const user = c.get('user')!;
   const campaignId = getCampaignId(c.env);
-  const body = await c.req.json<{
-    title: string;
-    description: string;
-    imageKey?: string | null;
-    cost?: number;
-    positionX?: number;
-    positionY?: number;
-    parentId?: number | null;
-  }>();
+  const body = await c.req.json<TalentMutationBody>();
 
   if (!body.title?.trim()) {
     return c.json({ error: 'Укажите название таланта' }, 400);
   }
 
+  const tile = normalizeTalentTileStyle(body);
+
   await c.env.DB.prepare(
-    `INSERT INTO talent_tree (title, description, image_key, cost, position_x, position_y, parent_id, is_unlocked)
-     VALUES (?, ?, ?, ?, ?, ?, ?, 0)`
+    `INSERT INTO talent_tree (title, description, image_key, cost, position_x, position_y, parent_id, is_unlocked, tile_accent, tile_emblem, tile_pattern, is_featured)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)`
   )
     .bind(
       body.title.trim(),
@@ -1652,7 +1674,11 @@ app.post('/dm/talents', async (c) => {
       Math.max(0, Math.trunc(body.cost ?? 1)),
       Math.max(16, Math.trunc(body.positionX ?? 80)),
       Math.max(16, Math.trunc(body.positionY ?? 80)),
-      body.parentId || null
+      body.parentId || null,
+      tile.accent,
+      tile.emblem,
+      tile.pattern,
+      tile.isFeatured ? 1 : 0
     )
     .run();
 
@@ -1665,17 +1691,10 @@ app.put('/dm/talents/:id', async (c) => {
   const user = c.get('user')!;
   const id = Number.parseInt(c.req.param('id'), 10);
   const campaignId = getCampaignId(c.env);
-  const body = await c.req.json<{
-    title: string;
-    description: string;
-    imageKey?: string | null;
-    cost?: number;
-    positionX?: number;
-    positionY?: number;
-    parentId?: number | null;
-  }>();
+  const body = await c.req.json<TalentMutationBody>();
 
   const safeParentId = body.parentId && body.parentId !== id ? body.parentId : null;
+  const tile = normalizeTalentTileStyle(body);
 
   await c.env.DB.prepare(
     `UPDATE talent_tree
@@ -1685,7 +1704,11 @@ app.put('/dm/talents/:id', async (c) => {
          cost = ?,
          position_x = COALESCE(?, position_x),
          position_y = COALESCE(?, position_y),
-         parent_id = ?
+         parent_id = ?,
+         tile_accent = ?,
+         tile_emblem = ?,
+         tile_pattern = ?,
+         is_featured = ?
      WHERE id = ?`
   )
     .bind(
@@ -1696,6 +1719,10 @@ app.put('/dm/talents/:id', async (c) => {
       typeof body.positionX === 'number' ? Math.max(16, Math.trunc(body.positionX)) : null,
       typeof body.positionY === 'number' ? Math.max(16, Math.trunc(body.positionY)) : null,
       safeParentId,
+      tile.accent,
+      tile.emblem,
+      tile.pattern,
+      tile.isFeatured ? 1 : 0,
       id
     )
     .run();
@@ -1718,6 +1745,67 @@ app.patch('/dm/talents/:id/position', async (c) => {
     `UPDATE talent_tree SET position_x = ?, position_y = ? WHERE id = ?`
   )
     .bind(px, py, id)
+    .run();
+
+  const state = await getTalentsState(c.env.DB, campaignId);
+  await broadcastCampaignEvent(c.env, 'talents:updated', state, user.id);
+  return c.json(state);
+});
+
+// Quick talent tile styling: feature/unfeature or recolor a node without the full form.
+app.patch('/dm/talents/:id/tile', async (c) => {
+  const user = c.get('user')!;
+  const id = Number.parseInt(c.req.param('id'), 10);
+  const campaignId = getCampaignId(c.env);
+  if (!Number.isFinite(id) || id <= 0) {
+    return c.json({ error: 'Некорректный id таланта' }, 400);
+  }
+
+  type TalentTilePatch = {
+    accent?: string | null;
+    emblem?: string | null;
+    pattern?: string | null;
+    isFeatured?: boolean;
+  };
+
+  const body = await c.req
+    .json<TalentTilePatch>()
+    .catch((): TalentTilePatch => ({}));
+
+  const current = await c.env.DB.prepare(
+    `SELECT tile_accent, tile_emblem, tile_pattern, is_featured FROM talent_tree WHERE id = ?`
+  )
+    .bind(id)
+    .first<{
+      tile_accent: string | null;
+      tile_emblem: string | null;
+      tile_pattern: string | null;
+      is_featured: number;
+    }>();
+
+  if (!current) return c.json({ error: 'Талант не найден' }, 404);
+
+  const accent =
+    body.accent === undefined ? current.tile_accent : normalizeQuestAccent(body.accent);
+  const emblem =
+    body.emblem === undefined
+      ? current.tile_emblem
+      : isHudAssetKey(body.emblem)
+        ? (body.emblem as string)
+        : null;
+  const pattern =
+    body.pattern === undefined
+      ? current.tile_pattern || 'none'
+      : normalizeQuestPattern(body.pattern);
+  const isFeatured =
+    body.isFeatured === undefined ? Boolean(current.is_featured) : Boolean(body.isFeatured);
+
+  await c.env.DB.prepare(
+    `UPDATE talent_tree
+     SET tile_accent = ?, tile_emblem = ?, tile_pattern = ?, is_featured = ?
+     WHERE id = ?`
+  )
+    .bind(accent, emblem, pattern, isFeatured ? 1 : 0, id)
     .run();
 
   const state = await getTalentsState(c.env.DB, campaignId);
