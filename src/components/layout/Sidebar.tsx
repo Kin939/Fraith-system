@@ -10,6 +10,7 @@ import {
   ScrollText,
   Skull,
   Sparkles,
+  Swords,
   Trash2,
   User,
   Users,
@@ -76,6 +77,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ onLogout }) => {
     { id: 'bestiary', label: 'Бестиарий', icon: <Skull className="w-4 h-4" strokeWidth={1.5} /> },
     { id: 'spells', label: 'Заклинания', icon: <BookOpen className="w-4 h-4" strokeWidth={1.5} /> },
     { id: 'connections', label: 'Связи', icon: <Network className="w-4 h-4" strokeWidth={1.5} /> },
+    // «Бой» — строго после «Связей» и перед «Мастером»
+    { id: 'combat', label: 'Бой', icon: <Swords className="w-4 h-4" strokeWidth={1.5} /> },
     { id: 'talents', label: 'Дерево талантов', icon: <Sparkles className="w-4 h-4" strokeWidth={1.5} /> },
     {
       id: 'chat',

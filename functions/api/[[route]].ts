@@ -85,6 +85,7 @@ import {
   uploadImageToR2,
 } from '../../src/lib/r2';
 import { registerBoardRoutes } from '../../workers/board-routes';
+import { registerCombatRoutes } from '../../workers/combat-routes';
 import { parseThemeJson } from '../../src/lib/theme';
 import type {
   AuthUser,
@@ -104,6 +105,7 @@ export interface Env {
   BUCKET?: R2Bucket;
   CAMPAIGN_DO: DurableObjectNamespace;
   BOARD_ROOM?: DurableObjectNamespace;
+  COMBAT_ROOM?: DurableObjectNamespace;
   ASSETS?: Fetcher;
   JWT_SECRET?: string;
   CAMPAIGN_ID?: string;
@@ -3108,5 +3110,11 @@ app.delete('/chat/session', async (c) => {
 // ============================================================================
 
 registerBoardRoutes(app);
+
+// ============================================================================
+// «Бой» (конструктор боёв и трекер инициативы) — изолированный набор /api/combats/*
+// ============================================================================
+
+registerCombatRoutes(app);
 
 export const onRequest = handle(app);

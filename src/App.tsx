@@ -33,6 +33,9 @@ const MessengerPage = lazy(() =>
 const BoardPage = lazy(() =>
   import('./pages/BoardPage').then((m) => ({ default: m.BoardPage }))
 );
+const CombatPage = lazy(() =>
+  import('./pages/CombatPage').then((m) => ({ default: m.CombatPage }))
+);
 const DmPage = lazy(() =>
   import('./pages/DmPage').then((m) => ({ default: m.DmPage }))
 );
@@ -168,6 +171,7 @@ export const App: React.FC = () => {
             {activeTab === 'bestiary' && <BestiaryPage />}
             {activeTab === 'spells' && <SpellsPage />}
             {activeTab === 'connections' && <ConnectionsPage />}
+            {activeTab === 'combat' && <CombatPage />}
             {activeTab === 'talents' && <TalentsPage />}
             {activeTab === 'chat' && <MessengerPage />}
             {activeTab === 'board' && <BoardPage />}
