@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { ExternalLink, Eye, EyeOff, Loader2, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ExternalLink, Eye, EyeOff, Images, Loader2, X } from 'lucide-react';
 import { apiFetch } from '../../lib/api';
 import { useCampaignStore } from '../../lib/store';
 import type { BestiaryCreature, BestiaryCreatureDetail } from '../../lib/types';
 import { EntityNotes } from '../common/EntityNotes';
 import { FormattedText } from '../common/FormattedText';
 import { getCrRimColor } from './BestiaryTile';
+import { DndsuImage } from './DndsuImage';
 import { MonsterArt } from './MonsterArt';
 
 interface BestiaryDetailProps {
@@ -24,14 +25,17 @@ export const BestiaryDetail: React.FC<BestiaryDetailProps> = ({
   const [detail, setDetail] = useState<BestiaryCreatureDetail | null>(null);
   const [loading, setLoading] = useState(false);
   const [revealed, setRevealed] = useState(false);
+  const [lightbox, setLightbox] = useState<number | null>(null);
   const pushToast = useCampaignStore((s) => s.pushToast);
 
   useEffect(() => {
     if (!creature) {
       setDetail(null);
+      setLightbox(null);
       return;
     }
     let cancelled = false;
+    setLightbox(null);
     setRevealed(creature.isRevealed);
     setLoading(true);
     setDetail(null);
@@ -56,6 +60,24 @@ export const BestiaryDetail: React.FC<BestiaryDetailProps> = ({
       cancelled = true;
     };
   }, [creature, pushToast]);
+
+  const gallery = detail?.gallery ?? [];
+  const galleryCount = gallery.length;
+
+  useEffect(() => {
+    if (lightbox === null) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setLightbox(null);
+      if (event.key === 'ArrowRight' && galleryCount > 1) {
+        setLightbox((prev) => (prev === null ? prev : (prev + 1) % galleryCount));
+      }
+      if (event.key === 'ArrowLeft' && galleryCount > 1) {
+        setLightbox((prev) => (prev === null ? prev : (prev - 1 + galleryCount) % galleryCount));
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [lightbox, galleryCount]);
 
   if (!creature) return null;
 
@@ -238,11 +260,109 @@ export const BestiaryDetail: React.FC<BestiaryDetailProps> = ({
             )}
           </div>
 
+          {galleryCount > 0 && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-xs text-muted inline-flex items-center gap-1.5">
+                  <Images className="w-3.5 h-3.5" strokeWidth={1.5} />
+                  <span>Галерея dnd.su</span>
+                </div>
+                <span className="text-[11px] text-muted font-mono tabular-nums">
+                  {galleryCount} {galleryCount === 1 ? 'изображение' : 'изображений'}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                {gallery.map((image, index) => (
+                  <button
+                    key={`${image.thumb}-${index}`}
+                    type="button"
+                    onClick={() => setLightbox(index)}
+                    className="group relative aspect-square bg-deep border border-border overflow-hidden hover:border-primary/60 transition-colors"
+                    title="Открыть изображение"
+                  >
+                    <DndsuImage
+                      thumbUrl={image.thumb}
+                      fullUrl={image.full}
+                      alt={`${view.name} — изображение ${index + 1}`}
+                      className="w-full h-full"
+                      imgClassName="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                      fallback={
+                        <span className="w-full h-full flex items-center justify-center text-[10px] text-muted">
+                          нет изображения
+                        </span>
+                      }
+                    />
+                    <span className="absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-black/70 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="pt-4 border-t border-border">
             <EntityNotes kind="creature" entityId={creature.id} />
           </div>
         </div>
       </div>
+
+      {lightbox !== null && gallery[lightbox] && (
+        <div
+          className="fixed inset-0 z-[60] bg-black/90 flex items-center justify-center p-4"
+          onClick={() => setLightbox(null)}
+        >
+          <button
+            type="button"
+            onClick={() => setLightbox(null)}
+            className="absolute top-4 right-4 w-9 h-9 bg-surface/90 border border-border flex items-center justify-center text-muted hover:text-text"
+            title="Закрыть (Esc)"
+          >
+            <X className="w-4 h-4" strokeWidth={1.5} />
+          </button>
+
+          {galleryCount > 1 && (
+            <>
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setLightbox((prev) => (prev === null ? prev : (prev - 1 + galleryCount) % galleryCount));
+                }}
+                className="absolute left-3 sm:left-6 w-10 h-10 bg-surface/90 border border-border flex items-center justify-center text-muted hover:text-text"
+                title="Предыдущее (←)"
+              >
+                <ChevronLeft className="w-5 h-5" strokeWidth={1.5} />
+              </button>
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setLightbox((prev) => (prev === null ? prev : (prev + 1) % galleryCount));
+                }}
+                className="absolute right-3 sm:right-6 w-10 h-10 bg-surface/90 border border-border flex items-center justify-center text-muted hover:text-text"
+                title="Следующее (→)"
+              >
+                <ChevronRight className="w-5 h-5" strokeWidth={1.5} />
+              </button>
+            </>
+          )}
+
+          <div className="max-w-[92vw] max-h-[86vh] space-y-2" onClick={(event) => event.stopPropagation()}>
+            <DndsuImage
+              thumbUrl={gallery[lightbox].thumb}
+              fullUrl={gallery[lightbox].full}
+              variant="full"
+              alt={`${view.name} — изображение ${lightbox + 1}`}
+              className="max-w-[92vw] max-h-[80vh] object-contain"
+              imgClassName="max-w-[92vw] max-h-[80vh] object-contain border border-border bg-deep"
+              eager
+            />
+            <div className="text-center text-xs text-secondary">
+              {view.name} · {lightbox + 1} / {galleryCount}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

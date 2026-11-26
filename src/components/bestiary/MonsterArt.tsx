@@ -1,6 +1,7 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React from 'react';
 import { resolveImageUrl } from '../../lib/artwork';
 import type { BestiaryCreature } from '../../lib/types';
+import { DndsuImage } from './DndsuImage';
 
 interface MonsterArtProps {
   creature: Pick<BestiaryCreature, 'name' | 'imageKey' | 'imageUrl' | 'imageFullUrl'>;
@@ -9,17 +10,14 @@ interface MonsterArtProps {
   className?: string;
   imgClassName?: string;
   eager?: boolean;
-}
-
-function fileName(url: string): string {
-  const clean = url.split('?')[0];
-  return clean.split('/').pop() || '';
+  /** Rendered when no artwork can be loaded at all */
+  fallback?: React.ReactNode;
 }
 
 /**
- * Bestiary artwork with a graceful fallback chain:
- * DM-uploaded portrait → edge-cached dnd.su scan (same-origin proxy) →
- * direct dnd.su URL → static placeholder art.
+ * Bestiary artwork: a portrait uploaded by the DM wins, otherwise the dnd.su
+ * gallery art is used (with the proxy/direct fallback chain inside DndsuImage)
+ * and finally the caller-provided placeholder.
  */
 export const MonsterArt: React.FC<MonsterArtProps> = ({
   creature,
@@ -27,47 +25,47 @@ export const MonsterArt: React.FC<MonsterArtProps> = ({
   className = '',
   imgClassName = '',
   eager = false,
+  fallback = null,
 }) => {
-  const sources = useMemo(() => {
-    const list: string[] = [];
+  const placeholder = fallback ?? (
+    <img
+      src={resolveImageUrl(null, 'dragon')}
+      alt={creature.name}
+      className={`${className} ${imgClassName}`.trim()}
+    />
+  );
 
-    if (creature.imageKey) {
-      // A manually uploaded portrait always wins
-      list.push(resolveImageUrl(creature.imageKey, 'dragon'));
-    } else {
-      const remote =
-        variant === 'full'
-          ? creature.imageFullUrl || creature.imageUrl
-          : creature.imageUrl || creature.imageFullUrl;
-      const file = remote ? fileName(remote) : '';
-      if (file) list.push(`/api/media/dndsu/${encodeURIComponent(file)}`);
-      if (remote) list.push(remote);
-    }
-
-    list.push(resolveImageUrl(null, 'dragon'));
-    return Array.from(new Set(list));
-  }, [creature.imageKey, creature.imageFullUrl, creature.imageUrl, variant]);
-
-  const signature = sources.join('|');
-  const [index, setIndex] = useState(0);
-
-  useEffect(() => {
-    setIndex(0);
-  }, [signature]);
-
-  const src = sources[Math.min(index, sources.length - 1)];
-
-  return (
-    <span className={`block overflow-hidden ${className}`}>
+  if (creature.imageKey) {
+    return (
       <img
-        src={src}
+        src={resolveImageUrl(creature.imageKey, 'dragon')}
         alt={creature.name}
         loading={eager ? 'eager' : 'lazy'}
-        decoding="async"
-        referrerPolicy="no-referrer"
-        onError={() => setIndex((prev) => Math.min(prev + 1, sources.length - 1))}
-        className={imgClassName}
+        className={`${className} ${imgClassName}`.trim()}
+        onError={(e) => {
+          // Broken upload — fall back to the shared placeholder art
+          const target = e.currentTarget;
+          target.onerror = null;
+          target.src = resolveImageUrl(null, 'dragon');
+        }}
       />
-    </span>
+    );
+  }
+
+  if (!creature.imageUrl && !creature.imageFullUrl) {
+    return <>{placeholder}</>;
+  }
+
+  return (
+    <DndsuImage
+      thumbUrl={creature.imageUrl}
+      fullUrl={creature.imageFullUrl}
+      variant={variant}
+      alt={creature.name}
+      className={className}
+      imgClassName={imgClassName}
+      eager={eager}
+      fallback={placeholder}
+    />
   );
 };

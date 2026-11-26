@@ -104,12 +104,18 @@ export const BestiaryPage: React.FC = () => {
     };
   }, [isDm]);
 
+  // A catalog imported by an older build has no XP/artwork on its rows, so it
+  // gets refreshed automatically (the import is idempotent and keeps reveals).
+  const catalogNeedsRefresh = Boolean(
+    importStatus && (importStatus.compendium === 0 || importStatus.stale > 0)
+  );
+
   useEffect(() => {
     if (!isDm || !importStatus || importing) return;
-    if (importStatus.compendium > 0 || autoImportStartedRef.current) return;
+    if (!catalogNeedsRefresh || autoImportStartedRef.current) return;
     autoImportStartedRef.current = true;
     void runImport();
-  }, [isDm, importStatus, importing, runImport]);
+  }, [isDm, importStatus, importing, runImport, catalogNeedsRefresh]);
 
   useEffect(() => {
     setVisibleCount(PAGE_SIZE);
@@ -222,6 +228,7 @@ export const BestiaryPage: React.FC = () => {
       {isDm &&
         (importing ||
           importError ||
+          catalogNeedsRefresh ||
           (importStatus && importStatus.compendium < DNDSU_CATALOG_TOTAL)) && (
         <div className="glass-panel hud-cut p-4 space-y-2">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -229,12 +236,16 @@ export const BestiaryPage: React.FC = () => {
               {importing && <Loader2 className="w-4 h-4 animate-spin text-muted" strokeWidth={1.5} />}
               <span>
                 {importing
-                  ? 'Загружаем бестиарий dnd.su…'
+                  ? importStatus && importStatus.compendium > 0
+                    ? 'Обновляем каталог dnd.su — подтягиваем опыт и иллюстрации…'
+                    : 'Загружаем бестиарий dnd.su…'
                   : importError
                     ? 'Импорт каталога dnd.su не завершён'
-                    : importStatus && importStatus.compendium > 0
-                      ? `Каталог dnd.su загружен не полностью (${importStatus.compendium} из ${DNDSU_CATALOG_TOTAL})`
-                      : 'Каталог dnd.su ещё не загружен'}
+                    : importStatus && importStatus.stale > 0
+                      ? 'Каталог dnd.su нужно обновить — появятся опыт и картинки'
+                      : importStatus && importStatus.compendium > 0
+                        ? `Каталог dnd.su загружен не полностью (${importStatus.compendium} из ${DNDSU_CATALOG_TOTAL})`
+                        : 'Каталог dnd.su ещё не загружен'}
               </span>
             </div>
             <div className="flex items-center gap-2">
@@ -253,9 +264,11 @@ export const BestiaryPage: React.FC = () => {
                   onClick={() => void runImport()}
                   className="anime-btn-primary h-8 px-3 text-xs"
                 >
-                  {importStatus && importStatus.compendium > 0
-                    ? 'Продолжить импорт'
-                    : 'Загрузить каталог'}
+                  {importStatus && importStatus.stale > 0
+                    ? 'Обновить каталог'
+                    : importStatus && importStatus.compendium > 0
+                      ? 'Продолжить импорт'
+                      : 'Загрузить каталог'}
                 </button>
               )}
             </div>
@@ -281,7 +294,9 @@ export const BestiaryPage: React.FC = () => {
 
           {!importing && !importError && (
             <div className="text-xs text-muted">
-              Монстры попадут в бестиарий скрытыми — игроки увидят только тех, кого вы откроете.
+              {importStatus && importStatus.stale > 0
+                ? 'Обновление добавит опыт и картинки dnd.su к уже загруженным монстрам. Видимость и заметки сохранятся.'
+                : 'Монстры попадут в бестиарий скрытыми — игроки увидят только тех, кого вы откроете.'}
             </div>
           )}
         </div>

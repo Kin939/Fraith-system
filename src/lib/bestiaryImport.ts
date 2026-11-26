@@ -25,6 +25,7 @@ export interface DndsuCreatureRecord {
   url: string;
   imageUrl: string;
   imageFullUrl: string;
+  gallery?: Array<{ u: string; t: string }>;
 }
 
 const CHUNK_SIZE = 120;
@@ -58,6 +59,7 @@ function toImportItem(record: DndsuCreatureRecord) {
     xp: record.xp,
     imageUrl: record.imageUrl,
     imageFullUrl: record.imageFullUrl,
+    gallery: (record.gallery ?? []).map((image) => ({ full: image.u, thumb: image.t })),
     speed: record.speed,
     senses: record.senses,
     languages: record.languages,
