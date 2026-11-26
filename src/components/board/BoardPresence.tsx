@@ -316,13 +316,12 @@ export const BoardPresenceBar: React.FC<{
         <span>{online ? 'live' : 'sync'}</span>
       </div>
 
-      {/* Аватары участников (не плитки с инициалами): внахлёст, внахлёст-перекрытие */}
-      <div className="flex items-center">
-        {peers.slice(0, 7).map((peer, index) => (
+      {/* Аватары участников: строго в ряд, без наездов друг на друга */}
+      <div className="flex items-center gap-1.5">
+        {peers.slice(0, 7).map((peer) => (
           <div
             key={`${peer.userId}-${peer.connectedAt}`}
-            className="relative rounded-full ring-2 ring-deep transition-transform duration-150 hover:z-20 hover:scale-110"
-            style={{ marginLeft: index === 0 ? 0 : -9, zIndex: 10 + index }}
+            className="relative shrink-0 rounded-full ring-2 ring-deep transition-transform duration-150 hover:scale-110"
           >
             <PeerAvatar
               name={peer.displayName}
@@ -336,7 +335,7 @@ export const BoardPresenceBar: React.FC<{
           </div>
         ))}
         {peers.length > 7 && (
-          <span className="ml-1.5 text-[10px] font-mono text-muted">+{peers.length - 7}</span>
+          <span className="ml-1 text-[10px] font-mono text-muted">+{peers.length - 7}</span>
         )}
       </div>
     </div>
