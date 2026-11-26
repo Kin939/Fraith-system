@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { MessageSquare, LayoutTemplate, ThumbsUp } from 'lucide-react';
+import { ChevronLeft, ChevronRight, LayoutTemplate, MessageSquare, ThumbsUp, X } from 'lucide-react';
 import { useValue, type Editor } from 'tldraw';
 import { useCampaignStore } from '../lib/store';
 import {
@@ -11,6 +11,7 @@ import {
   saveBoardTemplate,
   updateBoard as updateBoardApi,
   type BoardBackground,
+  type BoardFontPreset,
   type BoardMember,
   type BoardPermission,
   type BoardSummary,
@@ -19,21 +20,19 @@ import {
 import { useBoardSocket } from '../hooks/useBoardSocket';
 import { BoardCanvas } from '../components/board/BoardCanvas';
 import { BoardList } from '../components/board/BoardList';
-import { BoardToolbar } from '../components/board/BoardToolbar';
+import { BoardToolbar, type BoardSidePanelId } from '../components/board/BoardToolbar';
 import { CommentPanel } from '../components/board/CommentPanel';
 import { TemplatePanel } from '../components/board/TemplatePanel';
 import { VotePanel } from '../components/board/VotePanel';
 import { addMindMapChild, type BuiltinTemplate } from '../components/board/boardTemplates';
 
-type SidePanel = 'comments' | 'templates' | 'votes';
 type BoardTool = 'comment' | 'vote' | null;
 
 /**
  * Вкладка «Доска» — клон Miro/SBoard без встроенного ИИ.
  *
- * Холст: tldraw SDK (infinite canvas, стикеры, фигуры, текст, перо/маркер,
- * фреймы, картинки, коннекторы). Совместная работа: BoardRoom Durable Object
- * на каждую доску (см. workers/board-do.ts).
+ * Холст занимает всю площадь вкладки (кроме левой навигации приложения):
+ * список досок и правая панель — плавающие, со скрытием/выездом.
  */
 export const BoardPage: React.FC = () => {
   const user = useCampaignStore((s) => s.user);
@@ -41,13 +40,15 @@ export const BoardPage: React.FC = () => {
 
   const [boards, setBoards] = useState<BoardSummary[]>([]);
   const [members, setMembers] = useState<BoardMember[]>([]);
-  const [canManage, setCanManage] = useState(false);
+  const [isDm, setIsDm] = useState(false);
   const [loading, setLoading] = useState(true);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [editor, setEditor] = useState<Editor | null>(null);
   const [tool, setTool] = useState<BoardTool>(null);
-  const [panel, setPanel] = useState<SidePanel>('comments');
+  const [panel, setPanel] = useState<BoardSidePanelId>(null);
   const [compact, setCompact] = useState(false);
+  const [listOpen, setListOpen] = useState(true);
+  const [edgeHover, setEdgeHover] = useState(false);
   const [templates, setTemplates] = useState<BoardTemplateRecord[]>([]);
   const [pendingAnchor, setPendingAnchor] = useState<{ x: number; y: number; shapeId: string | null } | null>(null);
   const [activeCommentId, setActiveCommentId] = useState<string | null>(null);
@@ -71,7 +72,7 @@ export const BoardPage: React.FC = () => {
       const data = await listBoards();
       setBoards(data.boards);
       setMembers(data.members);
-      setCanManage(data.canManage);
+      setIsDm(Boolean((data as { isDm?: boolean }).isDm));
       setActiveId((prev) => {
         if (prev && data.boards.some((board) => board.id === prev)) return prev;
         return data.boards[0]?.id ?? null;
@@ -128,7 +129,7 @@ export const BoardPage: React.FC = () => {
   const handleRenameBoard = async (boardId: string, name: string) => {
     try {
       await updateBoardApi(boardId, { name });
-      await loadBoards();
+      setBoards((prev) => prev.map((board) => (board.id === boardId ? { ...board, name } : board)));
     } catch (err) {
       notify('Не удалось переименовать', err instanceof Error ? err.message : 'Попробуйте снова', 'error');
     }
@@ -151,6 +152,25 @@ export const BoardPage: React.FC = () => {
       setBoards((prev) => prev.map((board) => (board.id === boardId ? { ...board, background } : board)));
     } catch (err) {
       notify('Не удалось сменить фон', err instanceof Error ? err.message : 'Попробуйте снова', 'error');
+    }
+  };
+
+  const handleFontPreset = async (boardId: string, fontPreset: BoardFontPreset) => {
+    // Применяем сразу локально (мгновенная смена типографики), затем сохраняем на сервере.
+    setBoards((prev) => prev.map((board) => (board.id === boardId ? { ...board, fontPreset } : board)));
+    try {
+      await updateBoardApi(boardId, { fontPreset });
+    } catch (err) {
+      notify('Не удалось сменить шрифт', err instanceof Error ? err.message : 'Попробуйте снова', 'error');
+    }
+  };
+
+  const handleBgColor = async (boardId: string, bgColor: string) => {
+    setBoards((prev) => prev.map((board) => (board.id === boardId ? { ...board, bgColor } : board)));
+    try {
+      await updateBoardApi(boardId, { bgColor });
+    } catch (err) {
+      notify('Не удалось сменить цвет', err instanceof Error ? err.message : 'Попробуйте снова', 'error');
     }
   };
 
@@ -256,8 +276,13 @@ export const BoardPage: React.FC = () => {
 
   const handleSubmitAnchor = (text: string, mentions: number[]) => {
     if (!pendingAnchor) return;
-    socket.addComment({ text, shapeId: pendingAnchor.shapeId, x: pendingAnchor.x, y: pendingAnchor.y });
-    void mentions;
+    socket.addComment({
+      text,
+      shapeId: pendingAnchor.shapeId,
+      x: pendingAnchor.x,
+      y: pendingAnchor.y,
+      mentions,
+    });
     setPendingAnchor(null);
   };
 
@@ -273,113 +298,163 @@ export const BoardPage: React.FC = () => {
 
   if (!user) return null;
 
+  const handleVisible = listOpen || edgeHover;
+
   return (
-    <div className="-m-4 sm:-m-6 lg:-m-8 flex flex-col h-[calc(100dvh-7.5rem)] lg:h-[calc(100dvh-0rem)] bg-bg overflow-hidden">
-      <div className="px-4 py-2 border-b border-border bg-deep shrink-0">
+    <div className="h-[calc(100dvh-6.1rem)] lg:h-screen w-full flex flex-col bg-bg overflow-hidden">
+      <div className="px-3 py-2 border-b border-border bg-deep shrink-0">
         <BoardToolbar
           board={activeBoard}
           permission={permission}
           editor={editor}
           socket={socket}
           tool={tool}
+          panel={panel}
+          listOpen={listOpen}
           onToolChange={setTool}
+          onPanelChange={(next) => setPanel(next)}
+          onToggleList={() => setListOpen((prev) => !prev)}
           onAddMindMapNode={() => {
             if (!editor) return;
             const created = addMindMapChild(editor);
             if (!created) notify('Нужен узел', 'Выделите фигуру, к которой добавить ветвь', 'warning');
           }}
-          onSaveTemplate={() => {
-            setPanel('templates');
-            setCompact(false);
-          }}
+          onSaveTemplate={() => setPanel('templates')}
           onToast={notify}
           compact={compact}
           onToggleCompact={() => setCompact((prev) => !prev)}
+          canDeletePage={isDm || Boolean(activeBoard?.canEdit)}
         />
       </div>
 
-      <div className="flex flex-1 min-h-0">
-        {!compact && (
-          <div className="hidden md:flex">
-            <BoardList
-              boards={boards}
-              members={members}
-              activeId={activeId}
-              canManage={canManage}
-              onSelect={setActiveId}
-              onCreate={(name) => void handleCreateBoard(name)}
-              onRename={(boardId, name) => void handleRenameBoard(boardId, name)}
-              onDelete={(boardId) => void handleDeleteBoard(boardId)}
-              onBackground={(boardId, background) => void handleBackground(boardId, background)}
-              onAccess={(boardId, userId, next) => void handleAccess(boardId, userId, next)}
-            />
+      <div className="relative flex-1 min-h-0">
+        {activeBoard ? (
+          <BoardCanvas
+            key={activeBoard.id}
+            boardId={activeBoard.id}
+            permission={activeBoard.permission ?? 'read'}
+            background={activeBoard.background}
+            bgColor={activeBoard.bgColor ?? ''}
+            gridSize={activeBoard.gridSize}
+            fontPreset={activeBoard.fontPreset ?? 'classic'}
+            socket={socket}
+            user={user}
+            tool={tool}
+            onCanvasPick={handleCanvasPick}
+            onEditorReady={setEditor}
+            activeCommentId={activeCommentId}
+            onSelectComment={(commentId) => {
+              setActiveCommentId(commentId);
+              setPanel('comments');
+            }}
+          />
+        ) : (
+          <div className="h-full flex items-center justify-center p-6">
+            <div className="glass-panel hud-cut p-6 text-center space-y-2 max-w-sm">
+              <div className="text-sm text-text">
+                {loading ? 'Загрузка досок…' : 'Нет доступных досок'}
+              </div>
+              <p className="text-xs text-muted leading-relaxed">
+                Создайте доску кнопкой «+» в списке слева — её увидят все участники кампании.
+              </p>
+            </div>
           </div>
         )}
 
-        <div className="flex-1 min-w-0 flex flex-col">
-          {activeBoard ? (
-            <BoardCanvas
-              key={activeBoard.id}
-              boardId={activeBoard.id}
-              permission={activeBoard.permission ?? 'read'}
-              background={activeBoard.background}
-              gridSize={activeBoard.gridSize}
-              socket={socket}
-              user={user}
-              tool={tool}
-              onCanvasPick={handleCanvasPick}
-              onEditorReady={setEditor}
-              activeCommentId={activeCommentId}
-              onSelectComment={(commentId) => {
-                setActiveCommentId(commentId);
-                setPanel('comments');
-              }}
-            />
-          ) : (
-            <div className="flex-1 flex items-center justify-center p-6">
-              <div className="glass-panel hud-cut p-6 text-center space-y-2 max-w-sm">
-                <div className="text-sm text-text">
-                  {loading ? 'Загрузка досок…' : 'Нет доступных досок'}
-                </div>
-                <p className="text-xs text-muted leading-relaxed">
-                  {canManage
-                    ? 'Создайте доску кнопкой «+» в списке слева и выдайте доступ игрокам.'
-                    : 'Мастер ещё не открыл вам ни одну доску.'}
-                </p>
-              </div>
-            </div>
-          )}
+        {/* ---------- выезжающий список досок ---------- */}
+        <div
+          className={`absolute inset-y-0 left-0 z-30 transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+            listOpen ? 'translate-x-0' : '-translate-x-full'
+          }`}
+        >
+          <BoardList
+            boards={boards}
+            members={members}
+            activeId={activeId}
+            isDm={isDm}
+            onSelect={(boardId) => {
+              setActiveId(boardId);
+              setListOpen(false);
+            }}
+            onCreate={(name) => void handleCreateBoard(name)}
+            onRename={(boardId, name) => void handleRenameBoard(boardId, name)}
+            onDelete={(boardId) => void handleDeleteBoard(boardId)}
+            onBackground={(boardId, background) => void handleBackground(boardId, background)}
+            onFontPreset={(boardId, preset) => void handleFontPreset(boardId, preset)}
+            onBgColor={(boardId, color) => void handleBgColor(boardId, color)}
+            onAccess={(boardId, userId, next) => void handleAccess(boardId, userId, next)}
+          />
         </div>
 
-        {!compact && (
-          <aside className="hidden lg:flex w-72 shrink-0 border-l border-border bg-deep flex-col min-h-0">
-            <div className="flex items-center border-b border-border shrink-0">
-              {(
-                [
-                  { id: 'comments' as SidePanel, label: 'Комментарии', icon: MessageSquare, count: socket.comments.filter((c) => !c.resolved).length },
-                  { id: 'templates' as SidePanel, label: 'Шаблоны', icon: LayoutTemplate, count: templates.length },
-                  { id: 'votes' as SidePanel, label: 'Голоса', icon: ThumbsUp, count: Object.keys(socket.votes).length },
-                ]
-              ).map((tab) => {
-                const Icon = tab.icon;
-                const active = panel === tab.id;
-                return (
-                  <button
-                    key={tab.id}
-                    type="button"
-                    onClick={() => setPanel(tab.id)}
-                    className={`flex-1 h-9 flex items-center justify-center gap-1 text-[10px] font-mono uppercase tracking-wide border-b-2 transition-colors ${
-                      active
-                        ? 'border-b-primary text-text bg-raised/50'
-                        : 'border-b-transparent text-muted hover:text-text'
-                    }`}
-                    title={tab.label}
-                  >
-                    <Icon className="w-3 h-3" strokeWidth={1.5} />
-                    {tab.count > 0 && <span className="tabular-nums">{tab.count}</span>}
-                  </button>
-                );
-              })}
+        {/* ---------- зона наведения у левого края (когда панель скрыта) ---------- */}
+        {!listOpen && (
+          <div
+            className="absolute inset-y-0 left-0 w-4 z-20"
+            onPointerEnter={() => setEdgeHover(true)}
+            onPointerLeave={() => setEdgeHover(false)}
+          />
+        )}
+
+        {/* ---------- «язычок» сворачивания ---------- */}
+        <button
+          type="button"
+          onClick={() => {
+            setListOpen((prev) => !prev);
+            setEdgeHover(false);
+          }}
+          onPointerEnter={() => setEdgeHover(true)}
+          className={`absolute top-1/2 -translate-y-1/2 z-40 h-16 w-5 flex items-center justify-center border border-border bg-deep/95 text-muted hover:text-primary hover:border-primary/60 transition-all duration-300 ${
+            handleVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'
+          }`}
+          style={{ left: listOpen ? '16rem' : '0.25rem' }}
+          title={listOpen ? 'Свернуть панель досок' : 'Показать доски'}
+        >
+          {listOpen ? (
+            <ChevronLeft className="w-3.5 h-3.5" strokeWidth={1.5} />
+          ) : (
+            <ChevronRight className="w-3.5 h-3.5" strokeWidth={1.5} />
+          )}
+        </button>
+
+        {/* ---------- правая панель (плавающая) ---------- */}
+        {panel && !compact && (
+          <aside className="absolute inset-y-0 right-0 z-30 w-72 border-l border-border bg-deep/97 backdrop-blur-sm flex flex-col min-h-0 shadow-glass">
+            <div className="flex items-center justify-between px-2 h-9 border-b border-border shrink-0">
+              <div className="flex items-center gap-1">
+                {(
+                  [
+                    { id: 'comments' as const, label: 'Комм.', icon: MessageSquare },
+                    { id: 'templates' as const, label: 'Шаблоны', icon: LayoutTemplate },
+                    { id: 'votes' as const, label: 'Голоса', icon: ThumbsUp },
+                  ]
+                ).map((tab) => {
+                  const Icon = tab.icon;
+                  const active = panel === tab.id;
+                  return (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => setPanel(tab.id)}
+                      className={`h-7 px-2 flex items-center gap-1 text-[10px] font-mono uppercase tracking-wide border transition-colors ${
+                        active
+                          ? 'border-primary/60 text-primary bg-primary/10'
+                          : 'border-border text-muted hover:text-text'
+                      }`}
+                    >
+                      <Icon className="w-3 h-3" strokeWidth={1.5} />
+                      {tab.label}
+                    </button>
+                  );
+                })}
+              </div>
+              <button
+                type="button"
+                onClick={() => setPanel(null)}
+                className="w-6 h-6 flex items-center justify-center text-muted hover:text-text"
+                title="Скрыть панель"
+              >
+                <X className="w-3.5 h-3.5" strokeWidth={1.5} />
+              </button>
             </div>
 
             <div className="flex-1 min-h-0">
@@ -402,7 +477,7 @@ export const BoardPage: React.FC = () => {
               {panel === 'templates' && (
                 <TemplatePanel
                   templates={templates}
-                  canManage={canManage}
+                  canManage={isDm}
                   canWrite={permission === 'write'}
                   hasSelection={selection.count > 0}
                   onApplyBuiltin={handleApplyBuiltin}

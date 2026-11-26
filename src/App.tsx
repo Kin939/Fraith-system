@@ -1,5 +1,5 @@
-import React, { Suspense, lazy } from 'react';
-import { AlertTriangle, RotateCcw, X } from 'lucide-react';
+import React, { Suspense, lazy, useState } from 'react';
+import { AlertTriangle, ChevronLeft, ChevronRight, RotateCcw, X } from 'lucide-react';
 import { SelectionFormatToolbar } from './components/common/SelectionFormatToolbar';
 import { Sidebar } from './components/layout/Sidebar';
 import { TabBar } from './components/layout/TabBar';
@@ -85,6 +85,11 @@ export const App: React.FC = () => {
 
   useWebSocket();
 
+  /** Сворачивание левого меню: «язычок» на середине его правого края. */
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarEdgeHover, setSidebarEdgeHover] = useState(false);
+  const sidebarVisible = !sidebarCollapsed;
+
   if (!authReady) {
     return (
       <div className="min-h-screen flex items-center justify-center p-6">
@@ -104,10 +109,51 @@ export const App: React.FC = () => {
 
   return (
     <div className="min-h-screen flex flex-col lg:flex-row">
-      <Sidebar onLogout={logout} />
+      <div
+        className="hidden lg:block shrink-0 overflow-hidden transition-[width] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]"
+        style={{ width: sidebarCollapsed ? 0 : 256 }}
+      >
+        <Sidebar onLogout={logout} />
+      </div>
+
+      {/* Зона наведения у левого края — проявляет «язычок» свёрнутого меню */}
+      {sidebarCollapsed && (
+        <div
+          className="hidden lg:block fixed inset-y-0 left-0 z-40 w-3"
+          onPointerEnter={() => setSidebarEdgeHover(true)}
+          onPointerLeave={() => setSidebarEdgeHover(false)}
+        />
+      )}
+
+      <button
+        type="button"
+        onClick={() => {
+          setSidebarCollapsed((prev) => !prev);
+          setSidebarEdgeHover(false);
+        }}
+        onPointerEnter={() => setSidebarEdgeHover(true)}
+        className={`hidden lg:flex fixed top-1/2 -translate-y-1/2 z-50 h-24 w-5 items-center justify-center border border-border bg-deep/95 text-muted hover:text-primary hover:border-primary/60 transition-all duration-300 ${
+          sidebarVisible || sidebarEdgeHover ? 'opacity-100' : 'opacity-0 pointer-events-none'
+        }`}
+        style={{ left: sidebarCollapsed ? 4 : 256 }}
+        title={sidebarCollapsed ? 'Показать меню' : 'Свернуть меню'}
+      >
+        {sidebarCollapsed ? (
+          <ChevronRight className="w-3.5 h-3.5" strokeWidth={1.5} />
+        ) : (
+          <ChevronLeft className="w-3.5 h-3.5" strokeWidth={1.5} />
+        )}
+      </button>
+
       <TabBar onLogout={logout} />
 
-      <main className="flex-1 min-w-0 p-4 sm:p-6 lg:p-8 max-w-[1520px] w-full mx-auto">
+      <main
+        className={
+          activeTab === 'board'
+            ? 'flex-1 min-w-0 w-full p-0 max-w-none'
+            : 'flex-1 min-w-0 p-4 sm:p-6 lg:p-8 max-w-[1520px] w-full mx-auto'
+        }
+      >
         <PageErrorBoundary resetKey={`${activeTab}-${dmSelectedPlayerId}`}>
           <Suspense
             fallback={

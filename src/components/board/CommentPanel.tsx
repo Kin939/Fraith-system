@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { Check, MapPin, MessageSquare, Send, Trash2, X } from 'lucide-react';
 import type { BoardComment } from '../../lib/boardProtocol';
 import type { BoardMember } from '../../lib/boards';
+import { PeerAvatar } from '../common/PeerAvatar';
 
 interface CommentPanelProps {
   comments: BoardComment[];
@@ -61,6 +62,9 @@ export const CommentPanel: React.FC<CommentPanelProps> = ({
     [comments, showResolved]
   );
   const openCount = comments.filter((comment) => !comment.resolved).length;
+  const memberById = useMemo(() => new Map(members.map((member) => [member.id, member])), [members]);
+  const memberAvatar = (userId: number) => memberById.get(userId)?.avatarUrl ?? null;
+  const memberColor = (userId: number) => (memberById.get(userId)?.role === 'dm' ? '#f59e0b' : '#00e5ff');
 
   const submitAnchor = () => {
     const text = draft.trim();
@@ -141,11 +145,20 @@ export const CommentPanel: React.FC<CommentPanelProps> = ({
               onClick={() => onSelect(isActive ? null : comment.id)}
             >
               <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
+                <div className="min-w-0 flex items-start gap-2">
+                  <PeerAvatar
+                    name={comment.authorName}
+                    color={memberColor(comment.authorId)}
+                    avatarUrl={memberAvatar(comment.authorId)}
+                    size={22}
+                    crown={memberById.get(comment.authorId)?.role === 'dm'}
+                  />
+                  <div className="min-w-0">
                   <div className="text-[11px] text-text font-medium truncate">{comment.authorName}</div>
                   <div className="text-[10px] text-muted font-mono">
                     {formatTime(comment.createdAt)}
                     {comment.shapeId ? ' · объект' : ' · точка'}
+                  </div>
                   </div>
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
@@ -182,11 +195,39 @@ export const CommentPanel: React.FC<CommentPanelProps> = ({
 
               <p className="text-xs text-secondary whitespace-pre-wrap break-words">{comment.text}</p>
 
+              {(comment.mentions ?? []).length > 0 && (
+                <div className="flex flex-wrap items-center gap-1">
+                  {(comment.mentions ?? []).map((userId) => {
+                    const member = memberById.get(userId);
+                    return (
+                      <span
+                        key={userId}
+                        className="flex items-center gap-1 pl-0.5 pr-1.5 h-5 border border-primary/40 bg-primary/10 text-[9px] font-mono text-primary"
+                      >
+                        <PeerAvatar
+                          name={member?.displayName ?? `#${userId}`}
+                          color={memberColor(userId)}
+                          avatarUrl={memberAvatar(userId)}
+                          size={14}
+                        />
+                        {member?.displayName ?? `#${userId}`}
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
+
               {comment.replies.length > 0 && (
                 <div className="space-y-1.5 pl-2 border-l border-border/70">
                   {comment.replies.map((reply) => (
                     <div key={reply.id}>
-                      <div className="text-[10px] text-muted font-mono">
+                      <div className="text-[10px] text-muted font-mono flex items-center gap-1">
+                        <PeerAvatar
+                          name={reply.authorName}
+                          color={memberColor(reply.authorId)}
+                          avatarUrl={memberAvatar(reply.authorId)}
+                          size={14}
+                        />
                         {reply.authorName} · {formatTime(reply.createdAt)}
                       </div>
                       <div className="text-[11px] text-secondary whitespace-pre-wrap break-words">{reply.text}</div>

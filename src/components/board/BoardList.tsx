@@ -1,17 +1,36 @@
 import React, { useState } from 'react';
-import { Check, Eye, LayoutDashboard, Lock, Pencil, Plus, Settings2, Trash2, X } from 'lucide-react';
-import type { BoardBackground, BoardMember, BoardPermission, BoardSummary } from '../../lib/boards';
+import { Check, Eye, LayoutDashboard, Lock, Pencil, Plus, Settings2, Trash2, Type, X } from 'lucide-react';
+import type {
+  BoardBackground,
+  BoardFontPreset,
+  BoardMember,
+  BoardPermission,
+  BoardSummary,
+} from '../../lib/boards';
+import { BOARD_FONT_PRESETS } from '../../lib/boardFonts';
+import { PeerAvatar } from './BoardPresence';
+
+const BG_COLORS: Array<{ value: string; label: string }> = [
+  { value: '', label: 'тема' },
+  { value: '#0b0d13', label: 'графит' },
+  { value: '#0d1b2a', label: 'ночь' },
+  { value: '#101a14', label: 'мох' },
+  { value: '#1a1020', label: 'аметист' },
+  { value: '#231413', label: 'сепия' },
+];
 
 interface BoardListProps {
   boards: BoardSummary[];
   members: BoardMember[];
   activeId: string | null;
-  canManage: boolean;
+  isDm: boolean;
   onSelect: (boardId: string) => void;
   onCreate: (name: string) => void;
   onRename: (boardId: string, name: string) => void;
   onDelete: (boardId: string) => void;
   onBackground: (boardId: string, background: BoardBackground) => void;
+  onFontPreset: (boardId: string, preset: BoardFontPreset) => void;
+  onBgColor: (boardId: string, color: string) => void;
   onAccess: (boardId: string, userId: number, permission: BoardPermission | null) => void;
 }
 
@@ -22,17 +41,23 @@ const BACKGROUNDS: Array<{ id: BoardBackground; label: string }> = [
   { id: 'plain', label: 'чистый' },
 ];
 
-/** Левая колонка: несколько досок кампании, права и вид фона (DM). */
+/**
+ * Список досок кампании.
+ * Любой участник может создать доску; переименование/удаление/настройки —
+ * у автора доски и у Мастера.
+ */
 export const BoardList: React.FC<BoardListProps> = ({
   boards,
   members,
   activeId,
-  canManage,
+  isDm,
   onSelect,
   onCreate,
   onRename,
   onDelete,
   onBackground,
+  onFontPreset,
+  onBgColor,
   onAccess,
 }) => {
   const [creating, setCreating] = useState(false);
@@ -42,7 +67,7 @@ export const BoardList: React.FC<BoardListProps> = ({
   const [settingsId, setSettingsId] = useState<string | null>(null);
 
   const players = members.filter((member) => member.role === 'player');
-  const activeBoard = boards.find((board) => board.id === activeId) ?? null;
+  const memberById = new Map(members.map((member) => [member.id, member]));
 
   const submitCreate = () => {
     const name = newName.trim();
@@ -53,22 +78,22 @@ export const BoardList: React.FC<BoardListProps> = ({
   };
 
   return (
-    <aside className="w-56 shrink-0 border-r border-border bg-deep flex flex-col min-h-0">
+    <div className="w-64 h-full border-r border-border bg-deep/97 backdrop-blur-sm flex flex-col min-h-0 shadow-glass">
       <div className="flex items-center justify-between px-3 h-9 border-b border-border shrink-0">
-        <span className="text-[11px] font-mono uppercase tracking-wide text-secondary">Доски · {boards.length}</span>
-        {canManage && (
-          <button
-            type="button"
-            onClick={() => setCreating((prev) => !prev)}
-            className="w-6 h-6 flex items-center justify-center border border-border text-muted hover:text-primary transition-colors"
-            title="Новая доска"
-          >
-            <Plus className="w-3 h-3" strokeWidth={1.5} />
-          </button>
-        )}
+        <span className="text-[11px] font-mono uppercase tracking-wide text-secondary">
+          Доски · {boards.length}
+        </span>
+        <button
+          type="button"
+          onClick={() => setCreating((prev) => !prev)}
+          className="w-6 h-6 flex items-center justify-center border border-border text-muted hover:text-primary transition-colors"
+          title="Новая доска"
+        >
+          <Plus className="w-3 h-3" strokeWidth={1.5} />
+        </button>
       </div>
 
-      {creating && canManage && (
+      {creating && (
         <div className="p-2 border-b border-border space-y-1.5 shrink-0">
           <input
             autoFocus
@@ -99,6 +124,7 @@ export const BoardList: React.FC<BoardListProps> = ({
       <div className="flex-1 min-h-0 overflow-y-auto divide-y divide-border/60">
         {boards.map((board) => {
           const isActive = board.id === activeId;
+          const canEdit = isDm || board.canEdit;
           return (
             <div key={board.id} className={`${isActive ? 'bg-raised/60' : 'hover:bg-raised/30'} transition-colors`}>
               <div className="flex items-center gap-1 px-2 py-2">
@@ -136,7 +162,7 @@ export const BoardList: React.FC<BoardListProps> = ({
                   </button>
                 )}
 
-                {canManage && (
+                {canEdit && (
                   <div className="flex items-center shrink-0">
                     <button
                       type="button"
@@ -152,8 +178,10 @@ export const BoardList: React.FC<BoardListProps> = ({
                     <button
                       type="button"
                       onClick={() => setSettingsId(settingsId === board.id ? null : board.id)}
-                      className="w-5 h-5 flex items-center justify-center text-muted hover:text-primary"
-                      title="Доступ и фон"
+                      className={`w-5 h-5 flex items-center justify-center ${
+                        settingsId === board.id ? 'text-primary' : 'text-muted hover:text-primary'
+                      }`}
+                      title="Доступ, фон и шрифты"
                     >
                       <Settings2 className="w-3 h-3" strokeWidth={1.5} />
                     </button>
@@ -173,7 +201,7 @@ export const BoardList: React.FC<BoardListProps> = ({
                 )}
               </div>
 
-              {canManage && settingsId === board.id && (
+              {canEdit && settingsId === board.id && (
                 <div className="px-2 pb-2 space-y-2">
                   <div>
                     <div className="text-[9px] font-mono uppercase tracking-wide text-muted mb-1">Фон</div>
@@ -196,14 +224,71 @@ export const BoardList: React.FC<BoardListProps> = ({
                   </div>
 
                   <div>
-                    <div className="text-[9px] font-mono uppercase tracking-wide text-muted mb-1">Доступ игроков</div>
+                    <div className="text-[9px] font-mono uppercase tracking-wide text-muted mb-1">Цвет холста</div>
+                    <div className="flex items-center gap-1">
+                      {BG_COLORS.map((swatch) => {
+                        const active = (board.bgColor ?? '') === swatch.value;
+                        return (
+                          <button
+                            key={swatch.label}
+                            type="button"
+                            onClick={() => onBgColor(board.id, swatch.value)}
+                            className={`w-6 h-6 border transition-transform hover:scale-110 ${
+                              active ? 'border-primary ring-1 ring-primary/50' : 'border-border'
+                            }`}
+                            style={{
+                              background: swatch.value || 'linear-gradient(135deg,#0b0d13,#1a1020)',
+                            }}
+                            title={swatch.label}
+                          />
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="text-[9px] font-mono uppercase tracking-wide text-muted mb-1 flex items-center gap-1">
+                      <Type className="w-2.5 h-2.5" strokeWidth={2} /> Шрифты (RU + EN)
+                    </div>
+                    <div className="grid grid-cols-2 gap-1">
+                      {BOARD_FONT_PRESETS.map((preset) => (
+                        <button
+                          key={preset.id}
+                          type="button"
+                          onClick={() => onFontPreset(board.id, preset.id)}
+                          className={`px-1 py-1 text-[9px] border text-left transition-colors ${
+                            (board.fontPreset ?? 'classic') === preset.id
+                              ? 'border-primary/70 text-primary bg-primary/10'
+                              : 'border-border text-muted hover:text-text'
+                          }`}
+                          title={preset.hint}
+                        >
+                          <div className="truncate">{preset.label}</div>
+                          <div className="truncate opacity-70">{preset.hint}</div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="text-[9px] font-mono uppercase tracking-wide text-muted mb-1">
+                      Доступ игроков
+                    </div>
                     <div className="space-y-1">
                       {players.map((player) => {
                         const current: BoardPermission | null =
                           board.access?.find((entry) => entry.userId === player.id)?.permission ?? null;
                         return (
                           <div key={player.id} className="flex items-center gap-1">
-                            <span className="flex-1 text-[10px] text-secondary truncate">{player.displayName}</span>
+                            <PeerAvatar
+                              name={player.displayName}
+                              color={current === 'write' ? '#4cc38a' : current === 'read' ? '#e5a93b' : '#64748b'}
+                              avatarUrl={player.avatarUrl}
+                              size={16}
+                            />
+                            <span className="flex-1 text-[10px] text-secondary truncate">
+                              {player.displayName}
+                            </span>
                             <button
                               type="button"
                               onClick={() => onAccess(board.id, player.id, null)}
@@ -247,16 +332,16 @@ export const BoardList: React.FC<BoardListProps> = ({
 
         {boards.length === 0 && (
           <div className="p-3 text-[11px] text-muted leading-relaxed">
-            Доступных досок нет. Мастер может создать первую доску кнопкой «+».
+            Доступных досок нет. Создайте первую кнопкой «+».
           </div>
         )}
       </div>
 
-      {activeBoard && (
-        <div className="px-3 py-2 border-t border-border text-[10px] text-muted font-mono uppercase tracking-wide shrink-0">
-          {activeBoard.permission === 'write' ? 'редактирование' : 'только чтение'}
+      <div className="px-3 py-2 border-t border-border shrink-0 space-y-1">
+        <div className="text-[10px] text-muted font-mono uppercase tracking-wide">
+          {members.length} участника · {memberById.size} в кампании
         </div>
-      )}
-    </aside>
+      </div>
+    </div>
   );
 };

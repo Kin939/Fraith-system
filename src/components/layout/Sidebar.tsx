@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   BookOpen,
   CalendarClock,
@@ -17,6 +17,8 @@ import {
 import { resolvePublicAssetUrl } from '../../lib/cdnAssets';
 import { apiFetch } from '../../lib/api';
 import { CampaignTabId, useCampaignStore } from '../../lib/store';
+import type { PlayerId } from '../../lib/types';
+import { PeerAvatar } from '../common/PeerAvatar';
 
 interface SidebarProps {
   onLogout: () => void;
@@ -34,8 +36,21 @@ export const Sidebar: React.FC<SidebarProps> = ({ onLogout }) => {
   const rolls = useCampaignStore((s) => s.rolls);
   const setRolls = useCampaignStore((s) => s.setRolls);
   const pushToast = useCampaignStore((s) => s.pushToast);
+  const charactersById = useCampaignStore((s) => s.charactersById);
 
   const [clearingRolls, setClearingRolls] = useState(false);
+
+  /** Портреты для списка «За столом»: персонаж игрока → иначе аватар аккаунта */
+  const onlineAvatars = useMemo<Record<number, string | null>>(() => {
+    const map: Record<number, string | null> = {};
+    for (const member of onlineUsers) {
+      const character = member.playerId != null ? charactersById[member.playerId as PlayerId] : undefined;
+      const fromCharacter = character?.avatarUrl ?? null;
+      const fromAccount = user && user.id === member.userId ? user.avatarUrl ?? null : null;
+      map[member.userId] = fromCharacter ?? fromAccount;
+    }
+    return map;
+  }, [onlineUsers, charactersById, user]);
 
   if (!user) return null;
 
@@ -216,8 +231,15 @@ export const Sidebar: React.FC<SidebarProps> = ({ onLogout }) => {
                 key={m.userId}
                 className="h-8 flex items-center justify-between px-2.5 text-xs text-secondary"
               >
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <span className="w-2 h-2 rounded-full bg-positive shrink-0" />
+                <div className="flex items-center gap-2 min-w-0">
+                  <PeerAvatar
+                    name={m.displayName}
+                    color={m.role === 'dm' ? '#f59e0b' : '#00e5ff'}
+                    avatarUrl={onlineAvatars[m.userId] ?? null}
+                    size={20}
+                    crown={m.role === 'dm'}
+                  />
+                  <span className="w-1.5 h-1.5 rounded-full bg-positive shrink-0" />
                   <span className="truncate text-text">{m.displayName}</span>
                 </div>
                 <span className="font-mono text-xs text-muted shrink-0 tabular-nums">

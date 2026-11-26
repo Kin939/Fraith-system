@@ -3,6 +3,7 @@ import { Eraser, Minus, Plus, ThumbsUp } from 'lucide-react';
 import type { BoardVotes } from '../../lib/boardProtocol';
 import { myVoteCount, voteCountFor } from '../../lib/boardProtocol';
 import type { BoardMember } from '../../lib/boards';
+import { PeerAvatar } from '../common/PeerAvatar';
 
 interface VotePanelProps {
   votes: BoardVotes;
@@ -32,10 +33,16 @@ export const VotePanel: React.FC<VotePanelProps> = ({
     .map(([shapeId, bucket]) => ({
       shapeId,
       total: voteCountFor(votes, shapeId),
-      voters: Object.entries(bucket).map(([userId, count]) => ({
-        name: members.find((member) => member.id === Number(userId))?.displayName ?? `#${userId}`,
-        count,
-      })),
+      voters: Object.entries(bucket).map(([userId, count]) => {
+        const member = members.find((item) => item.id === Number(userId));
+        return {
+          id: Number(userId),
+          name: member?.displayName ?? `#${userId}`,
+          avatarUrl: member?.avatarUrl ?? null,
+          isDm: member?.role === 'dm',
+          count,
+        };
+      }),
     }))
     .sort((a, b) => b.total - a.total);
 
@@ -107,8 +114,20 @@ export const VotePanel: React.FC<VotePanelProps> = ({
               <span className="text-[10px] font-mono text-secondary truncate flex-1">{entry.shapeId}</span>
               <span className="text-[11px] font-mono text-warning tabular-nums">{entry.total}</span>
             </div>
-            <div className="text-[10px] text-muted truncate">
-              {entry.voters.map((voter) => `${voter.name} ×${voter.count}`).join(', ')}
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              {entry.voters.map((voter) => (
+                <span key={voter.id} className="flex items-center gap-1 text-[10px] text-muted">
+                  <PeerAvatar
+                    name={voter.name}
+                    color={voter.isDm ? '#f59e0b' : '#00e5ff'}
+                    avatarUrl={voter.avatarUrl}
+                    size={16}
+                    crown={voter.isDm}
+                  />
+                  {voter.name}
+                  <span className="font-mono text-warning">×{voter.count}</span>
+                </span>
+              ))}
             </div>
           </div>
         ))}

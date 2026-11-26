@@ -11,51 +11,74 @@ import {
   type TLComponents,
   type TLRecord,
 } from 'tldraw';
+import type { TLContent } from '@tldraw/editor';
 import 'tldraw/tldraw.css';
+import './boardFonts.css';
 import type { AuthUser } from '../../lib/types';
 import type { BoardBackground, BoardPermission } from '../../lib/boards';
 import { uploadBoardFile } from '../../lib/boards';
 import { TLDRAW_LICENSE_KEY } from '../../lib/boardConfig';
+import { fontPresetClass } from '../../lib/boardFonts';
 import type { BoardSocketApi } from '../../hooks/useBoardSocket';
 import { BoardCursorOverlay, BoardSelectionOverlay } from './BoardPresence';
+import { X } from 'lucide-react';
 import { BoardCommentPins, BoardMinimap, BoardVoteBadges } from './BoardPins';
 
 /* -------------------------------------------------------------------------- */
 /*  Фон доски: точки / линии / клетки (в тёмной теме, движется с зумом)        */
 /* -------------------------------------------------------------------------- */
 
-const BoardBackgroundLayer: React.FC<{ variant: BoardBackground; size: number }> = ({ variant, size }) => {
+const BoardBackgroundLayer: React.FC<{ variant: BoardBackground; size: number; color: string }> = ({
+  variant,
+  size,
+  color,
+}) => {
   const editor = useEditor();
   const camera = useValue('board-bg-camera', () => editor.getCamera(), [editor]);
 
+  const base = color || 'var(--bg-deep,#08090f)';
+
   if (variant === 'plain') {
-    return <div className="absolute inset-0" style={{ backgroundColor: 'var(--bg-deep,#08090f)' }} />;
+    return <div className="absolute inset-0" style={{ backgroundColor: base }} />;
   }
 
   const spacing = Math.max(8, size * camera.z);
-  const color = 'rgba(148,163,184,0.22)';
+  const lineColor = 'rgba(148,163,184,0.22)';
   const styles: React.CSSProperties = {
-    backgroundColor: 'var(--bg-deep,#08090f)',
+    backgroundColor: base,
     backgroundPosition: `${camera.x}px ${camera.y}px`,
     backgroundSize: `${spacing}px ${spacing}px`,
   };
 
   if (variant === 'dots') {
-    styles.backgroundImage = `radial-gradient(circle, ${color} 1px, transparent 1.4px)`;
+    styles.backgroundImage = `radial-gradient(circle, ${lineColor} 1px, transparent 1.4px)`;
   } else if (variant === 'lines') {
-    styles.backgroundImage = `linear-gradient(to right, ${color} 1px, transparent 1px)`;
+    styles.backgroundImage = `linear-gradient(to right, ${lineColor} 1px, transparent 1px)`;
   } else {
-    styles.backgroundImage = `linear-gradient(to right, ${color} 1px, transparent 1px), linear-gradient(to bottom, ${color} 1px, transparent 1px)`;
+    styles.backgroundImage = `linear-gradient(to right, ${lineColor} 1px, transparent 1px), linear-gradient(to bottom, ${lineColor} 1px, transparent 1px)`;
   }
 
   return <div className="absolute inset-0" style={styles} />;
+};
+
+/**
+ * Колесо мыши = зум (к пользователю / от пользователя), пинч на тачпаде — тоже зум.
+ * Панорамирование: Space+драг, средняя кнопка мыши или правая кнопка с драгом.
+ */
+const CAMERA_OPTIONS = {
+  wheelBehavior: 'zoom' as const,
+  zoomSpeed: 1.15,
+  panSpeed: 1,
+  zoomSteps: [0.05, 0.1, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4, 6, 8, 12, 16],
 };
 
 interface BoardCanvasProps {
   boardId: string;
   permission: BoardPermission;
   background: BoardBackground;
+  bgColor?: string;
   gridSize: number;
+  fontPreset: string;
   socket: BoardSocketApi;
   user: AuthUser;
   tool: 'comment' | 'vote' | null;
@@ -64,6 +87,26 @@ interface BoardCanvasProps {
   activeCommentId: string | null;
   onSelectComment: (commentId: string) => void;
 }
+
+/** Подсказка по управлению: показывается один раз, скрывается по крестику. */
+const BoardHint: React.FC<{ onDismiss: () => void }> = ({ onDismiss }) => (
+  <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-[230] flex items-center gap-2 px-2.5 py-1 border border-border bg-deep/92 backdrop-blur-sm text-[10px] font-mono text-muted whitespace-nowrap max-w-[92vw] overflow-x-auto">
+    <span className="text-secondary">колесо — зум</span>
+    <span className="text-border">·</span>
+    <span>space / СКМ — панорама</span>
+    <span className="text-border">·</span>
+    <span>ctrl+Z / ctrl+Y</span>
+    <span className="text-border">·</span>
+    <span>ctrl+C / V / D</span>
+    <span className="text-border">·</span>
+    <span>del — удалить</span>
+    <span className="text-border">·</span>
+    <span className="text-primary/80">стрелка: тяните от объекта к объекту</span>
+    <button type="button" onClick={onDismiss} className="text-muted hover:text-text shrink-0" title="Скрыть подсказку">
+      <X className="w-3 h-3" strokeWidth={2} />
+    </button>
+  </div>
+);
 
 /**
  * Холст доски: tldraw SDK + двусторонняя синхронизация через BoardRoom DO.
@@ -75,7 +118,9 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
   boardId,
   permission,
   background,
+  bgColor,
   gridSize,
+  fontPreset,
   socket,
   tool,
   onCanvasPick,
@@ -85,6 +130,7 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
 }) => {
   const [editor, setEditor] = useState<Editor | null>(null);
   const [synced, setSynced] = useState(false);
+  const [hintVisible, setHintVisible] = useState(true);
   const [syncError, setSyncError] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const lastCursorAtRef = useRef(0);
@@ -107,7 +153,7 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
 
   const components = useMemo<TLComponents>(
     () => ({
-      Background: () => <BoardBackgroundLayer variant={background} size={gridSize} />,
+      Background: () => <BoardBackgroundLayer variant={background} size={gridSize} color={bgColor ?? ''} />,
     }),
     [background, gridSize]
   );
@@ -116,6 +162,14 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
     (mounted: Editor) => {
       mounted.user.updateUserPreferences({ colorScheme: 'dark' });
       mounted.updateInstanceState({ isReadonly: readOnly });
+      // Фокус на холсте нужен, чтобы нативные хоткеи tldraw (Ctrl+Z, Del, копирование) работали сразу.
+      requestAnimationFrame(() => {
+        try {
+          mounted.getContainer().focus();
+        } catch {
+          /* контейнер мог ещё не смонтироваться */
+        }
+      });
       setEditor(mounted);
       onEditorReady(mounted);
     },
@@ -261,6 +315,152 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
     };
   }, [editor, sendCursor]);
 
+  // ------------------------------------------------- буфер обмена (свой, надёжный)
+
+  /**
+   * В embedded-превью доступ к системному буферу часто заблокирован политикой
+   * разрешений, из-за чего Ctrl+C/Ctrl+V «молча» не работают. Держим собственный
+   * снимок выделения: копирование по-прежнему попадает в системный буфер (если
+   * браузер разрешает), а вставка использует системные данные, когда они есть,
+   * и внутренний снимок — когда их нет.
+   */
+  const clipboardRef = useRef<TLContent | null>(null);
+
+  useEffect(() => {
+    if (!editor) return;
+
+    const pointerPoint = () => {
+      const point = editor.inputs.currentPagePoint;
+      if (point && Number.isFinite(point.x) && Number.isFinite(point.y)) {
+        return { x: point.x, y: point.y };
+      }
+      const bounds = editor.getViewportPageBounds();
+      return { x: bounds.center.x, y: bounds.center.y };
+    };
+
+    const handleCopy = () => {
+      if (readOnly) return;
+      const ids = editor.getSelectedShapeIds();
+      if (ids.length === 0) return;
+      const content = editor.getContentFromCurrentPage(ids);
+      if (content) clipboardRef.current = content;
+    };
+
+    const handlePaste = (event: ClipboardEvent) => {
+      if (readOnly) return;
+      const buffer = clipboardRef.current;
+      if (!buffer) return;
+      const types = event.clipboardData ? Array.from(event.clipboardData.types) : [];
+      if (types.length > 0) return; // в системном буфере есть данные — пусть работает tldraw
+
+      event.preventDefault();
+      event.stopPropagation();
+      editor.putContentOntoCurrentPage(buffer, { point: pointerPoint(), select: true });
+    };
+
+    window.addEventListener('copy', handleCopy, true);
+    window.addEventListener('paste', handlePaste, true);
+    return () => {
+      window.removeEventListener('copy', handleCopy, true);
+      window.removeEventListener('paste', handlePaste, true);
+    };
+  }, [editor, readOnly]);
+
+  // --------------------------------------------------- клавиатурные сокращения
+
+  /**
+   * tldraw сам обрабатывает хоткеи, если у холста есть фокус. Наш обработчик —
+   * страховка для случая, когда фокус остался в интерфейсе доски: он срабатывает
+   * только если tldraw событие не поглотил (event.defaultPrevented === false).
+   */
+  useEffect(() => {
+    if (!editor) return;
+
+    const handler = (event: KeyboardEvent) => {
+      if (event.defaultPrevented) return;
+
+      const target = event.target as HTMLElement | null;
+      if (target) {
+        const tag = target.tagName;
+        if (target.isContentEditable || tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      }
+      if (editor.getEditingShapeId()) return; // идёт редактирование текста внутри фигуры
+
+      const mod = event.metaKey || event.ctrlKey;
+      const key = event.key.toLowerCase();
+      const selection = editor.getSelectedShapeIds();
+
+      if (mod && key === 'z') {
+        event.preventDefault();
+        if (event.shiftKey) editor.redo();
+        else editor.undo();
+        return;
+      }
+      if (mod && key === 'y') {
+        event.preventDefault();
+        editor.redo();
+        return;
+      }
+      if (mod && key === 'a') {
+        event.preventDefault();
+        editor.selectAll();
+        return;
+      }
+      if (mod && key === 'd') {
+        event.preventDefault();
+        if (selection.length > 0 && !readOnly) editor.duplicateShapes(selection, { x: 24, y: 24 });
+        return;
+      }
+      if (mod && key === 'x') {
+        // Своя «вырезать»: снимок в буфер + удаление, без зависимости от прав браузера.
+        if (selection.length > 0 && !readOnly) {
+          event.preventDefault();
+          const content = editor.getContentFromCurrentPage(selection);
+          if (content) clipboardRef.current = content;
+          editor.deleteShapes(selection);
+        }
+        return;
+      }
+      if (mod && (key === 'c' || key === 'v' || key === 's' || key === 'p')) {
+        return; // копирование/вставка — нативные обработчики tldraw (+ наш фолбэк выше)
+      }
+      if (!mod && (event.key === 'Delete' || event.key === 'Backspace')) {
+        if (selection.length > 0 && !readOnly) {
+          event.preventDefault();
+          editor.deleteShapes(selection);
+        }
+        return;
+      }
+      if (!mod && event.key === 'Escape') {
+        editor.setCurrentTool('select');
+        editor.selectNone();
+        return;
+      }
+      if (!mod && (event.key === '+' || event.key === '=')) {
+        event.preventDefault();
+        editor.zoomIn();
+        return;
+      }
+      if (!mod && event.key === '-') {
+        event.preventDefault();
+        editor.zoomOut();
+        return;
+      }
+      if (!mod && event.key === '0') {
+        event.preventDefault();
+        editor.resetZoom();
+        return;
+      }
+      if (!mod && key === 'f') {
+        if (selection.length > 0) editor.zoomToSelection({ animation: { duration: 200 } });
+        else editor.zoomToFit({ animation: { duration: 200 } });
+      }
+    };
+
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [editor, readOnly]);
+
   // ------------------------------------------------------------------ разметка
 
   const handlePick = (event: React.PointerEvent<HTMLDivElement>) => {
@@ -274,15 +474,18 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
   };
 
   return (
-    <div className="relative flex-1 min-w-0 h-full overflow-hidden bg-deep">
+    <div
+      className={`relative flex-1 min-w-0 h-full overflow-hidden bg-deep ${fontPresetClass(fontPreset)}`}
+    >
       <div ref={containerRef} className="absolute inset-0">
         <Tldraw
           licenseKey={TLDRAW_LICENSE_KEY}
           onMount={handleMount}
           assets={assets}
           components={components}
-          autoFocus={false}
+          autoFocus
           inferDarkMode={false}
+          cameraOptions={CAMERA_OPTIONS}
         />
       </div>
 
@@ -299,6 +502,7 @@ export const BoardCanvas: React.FC<BoardCanvasProps> = ({
           />
           <BoardVoteBadges editor={editor} votes={socket.votes} />
           <BoardMinimap editor={editor} />
+          {hintVisible && <BoardHint onDismiss={() => setHintVisible(false)} />}
         </>
       )}
 
