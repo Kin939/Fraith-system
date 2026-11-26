@@ -96,7 +96,7 @@ const BLOCKED_EXTENSIONS = new Set([
   'php',
 ]);
 
-const ALLOWED_FOLDERS = new Set(['quests', 'bestiary', 'talents', 'avatars']);
+const ALLOWED_FOLDERS = new Set(['quests', 'bestiary', 'talents', 'avatars', 'npcs']);
 const MAX_UPLOAD_BYTES = 5 * 1024 * 1024; // 5 MB for DM artwork
 const MAX_CHAT_UPLOAD_BYTES = 8 * 1024 * 1024; // 8 MB for chat photos & files
 

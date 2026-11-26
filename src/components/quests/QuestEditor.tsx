@@ -147,6 +147,7 @@ export const QuestEditor: React.FC<QuestEditorProps> = ({ initialQuest, onDone }
     status,
     createdAt: new Date().toISOString(),
     tileStyle: { accent: tileAccent, emblem: tileEmblem, pattern: tilePattern, isImportant },
+    notesCount: quests.find((q) => q.id === editingId)?.notesCount ?? 0,
   };
 
   const handleToggleImportant = async (quest: Quest) => {

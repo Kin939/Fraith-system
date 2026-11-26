@@ -5,6 +5,7 @@ import {
   Crown,
   LogOut,
   MessageSquare,
+  Network,
   ScrollText,
   Skull,
   Sparkles,
@@ -57,6 +58,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ onLogout }) => {
     { id: 'quests', label: 'Квесты', icon: <ScrollText className="w-4 h-4" strokeWidth={1.5} /> },
     { id: 'bestiary', label: 'Бестиарий', icon: <Skull className="w-4 h-4" strokeWidth={1.5} /> },
     { id: 'spells', label: 'Заклинания', icon: <BookOpen className="w-4 h-4" strokeWidth={1.5} /> },
+    { id: 'connections', label: 'Связи', icon: <Network className="w-4 h-4" strokeWidth={1.5} /> },
     { id: 'talents', label: 'Дерево талантов', icon: <Sparkles className="w-4 h-4" strokeWidth={1.5} /> },
     {
       id: 'chat',

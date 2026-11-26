@@ -149,6 +149,53 @@ export interface Quest {
   status: QuestStatus;
   createdAt: string;
   tileStyle: QuestTileStyle;
+  /** Number of party notes attached to the quest (shown as a tile badge) */
+  notesCount: number;
+}
+
+/**
+ * A quest note written in first person by a member of the table.
+ * Notes are always visible to the whole party (players + DM).
+ */
+export interface QuestNote {
+  id: number;
+  questId: number;
+  authorId: number;
+  /** Account display name */
+  authorName: string;
+  authorRole: UserRole;
+  authorPlayerId: PlayerId | null;
+  /** Character name the note is written as (players only) */
+  authorCharacterName: string | null;
+  authorAvatarUrl: string | null;
+  body: string;
+  createdAt: string;
+  updatedAt: string | null;
+}
+
+export type NpcAttitude = 'friendly' | 'neutral' | 'wary' | 'hostile' | 'unknown';
+
+/**
+ * A campaign contact / NPC shown on the "Связи" tab.
+ * The DM creates them hidden and reveals them to the party when the story needs it.
+ */
+export interface CampaignNpc {
+  id: number;
+  name: string;
+  /** Profession, title or role in the story */
+  role: string;
+  faction: string;
+  location: string;
+  attitude: NpcAttitude;
+  /** Public description — players see it once the NPC is revealed */
+  description: string;
+  /** DM-only intel, never sent to players */
+  secretNotes: string;
+  imageKey: string | null;
+  isRevealed: boolean;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string | null;
 }
 
 export interface BestiaryCreature {
@@ -298,6 +345,8 @@ export type CampaignWsEventType =
   | 'connected'
   | 'presence:update'
   | 'quests:updated'
+  | 'quest_notes:updated'
+  | 'npcs:updated'
   | 'bestiary:updated'
   | 'spells:updated'
   | 'learned_spells:updated'

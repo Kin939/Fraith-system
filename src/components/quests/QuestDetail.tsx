@@ -4,6 +4,7 @@ import { resolveImageUrl } from '../../lib/artwork';
 import { questEmblemUrl, questTileCssVars, resolveQuestAccent } from '../../lib/questStyle';
 import type { Quest } from '../../lib/types';
 import { FormattedText } from '../common/FormattedText';
+import { QuestNotes } from './QuestNotes';
 
 interface QuestDetailProps {
   quest: Quest | null;
@@ -200,6 +201,11 @@ export const QuestDetail: React.FC<QuestDetailProps> = ({
               </div>
             </div>
           )}
+        </div>
+
+        {/* Party notes — everyone writes in their own name, everyone reads them */}
+        <div className="pt-4 border-t border-border">
+          <QuestNotes questId={quest.id} />
         </div>
       </div>
     </div>
