@@ -1,7 +1,7 @@
 import React from 'react';
 import { Eye, EyeOff } from 'lucide-react';
-import { resolveImageUrl } from '../../lib/artwork';
 import type { BestiaryCreature } from '../../lib/types';
+import { MonsterArt } from './MonsterArt';
 
 interface BestiaryTileProps {
   creature: BestiaryCreature;
@@ -63,7 +63,6 @@ export const BestiaryTile: React.FC<BestiaryTileProps> = ({
     );
   }
 
-  const portraitUrl = resolveImageUrl(creature.imageKey, 'dragon');
   const crColor = getCrRimColor(creature.crNumeric);
 
   return (
@@ -115,12 +114,12 @@ export const BestiaryTile: React.FC<BestiaryTileProps> = ({
       {/* Circular Revealed Portrait */}
       <div
         style={{ borderColor: `color-mix(in srgb, ${crColor} 55%, transparent)` }}
-        className="w-24 h-24 rounded-full p-1 bg-deep border"
+        className="w-24 h-24 rounded-full p-1 bg-deep border shrink-0"
       >
-        <img
-          src={portraitUrl}
-          alt={creature.name}
-          className="w-full h-full rounded-full object-cover bg-deep"
+        <MonsterArt
+          creature={creature}
+          className="w-full h-full rounded-full bg-deep"
+          imgClassName="w-full h-full rounded-full object-cover bg-deep"
         />
       </div>
 
@@ -141,10 +140,14 @@ export const BestiaryTile: React.FC<BestiaryTileProps> = ({
         )}
       </div>
 
-      <div className="w-full pt-3 border-t border-border flex items-center justify-center gap-4 font-mono text-xs text-secondary tabular-nums">
-        <span>КД {creature.ac}</span>
-        <span className="text-muted">·</span>
-        <span className="truncate">Хиты {creature.hp}</span>
+      <div className="w-full pt-3 border-t border-border grid grid-cols-3 gap-1 font-mono text-xs text-secondary tabular-nums text-center">
+        <span title="Класс доспеха">КД {creature.ac}</span>
+        <span className="truncate" title={`Хиты ${creature.hp}`}>
+          Хиты {creature.hp}
+        </span>
+        <span title="Опыт за победу">
+          Опыт {creature.xp.toLocaleString('ru-RU')}
+        </span>
       </div>
     </div>
   );

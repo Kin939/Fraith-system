@@ -16,6 +16,7 @@ export const BestiaryEditor: React.FC = () => {
   const [creatureType, setCreatureType] = useState('Чудовище');
   const [ac, setAc] = useState(14);
   const [hp, setHp] = useState('45 (6d10 + 12)');
+  const [xp, setXp] = useState(0);
   const [description, setDescription] = useState('');
   const [speed, setSpeed] = useState('');
   const [senses, setSenses] = useState('');
@@ -37,6 +38,7 @@ export const BestiaryEditor: React.FC = () => {
       setCreatureType('Чудовище');
       setAc(14);
       setHp('45 (6d10 + 12)');
+      setXp(0);
       setDescription('');
       setSpeed('');
       setSenses('');
@@ -52,6 +54,7 @@ export const BestiaryEditor: React.FC = () => {
     setCreatureType(c.creatureType);
     setAc(c.ac);
     setHp(c.hp);
+    setXp(c.xp);
     setDescription('');
     setSpeed('');
     setSenses('');
@@ -69,6 +72,7 @@ export const BestiaryEditor: React.FC = () => {
         setCreatureType(res.creature.creatureType);
         setAc(res.creature.ac);
         setHp(res.creature.hp);
+        setXp(res.creature.xp);
         setDescription(res.creature.description);
         setSpeed(res.creature.speed);
         setSenses(res.creature.senses);
@@ -120,6 +124,7 @@ export const BestiaryEditor: React.FC = () => {
         creatureType,
         ac,
         hp,
+        xp,
         description,
         speed,
         senses,
@@ -247,7 +252,7 @@ export const BestiaryEditor: React.FC = () => {
                   <span className="text-sm font-medium text-text truncate">{c.name}</span>
                 </div>
                 <div className="text-xs text-muted mt-1 truncate">
-                  {c.creatureType}
+                  {c.creatureType} · {c.xp.toLocaleString('ru-RU')} опыта
                   {c.sourceTitle ? ` · ${c.sourceTitle}` : ''}
                 </div>
               </div>
@@ -348,6 +353,17 @@ export const BestiaryEditor: React.FC = () => {
             />
           </div>
 
+          <div>
+            <label className="block text-xs text-secondary mb-1.5">Опыт (XP)</label>
+            <input
+              type="number"
+              min={0}
+              value={xp}
+              onChange={(e) => setXp(Math.max(0, Math.trunc(Number(e.target.value) || 0)))}
+              className="anime-input w-full h-9 text-sm font-mono"
+            />
+          </div>
+
           <div className="sm:col-span-3">
             <label className="block text-xs text-secondary mb-1.5">Скорость</label>
             <input
@@ -420,7 +436,10 @@ export const BestiaryEditor: React.FC = () => {
               />
             </label>
             <div className="text-xs text-muted">
-              Портрет: <code>{imageKey || 'по умолчанию'}</code>
+              Портрет: <code>{imageKey || 'арт dnd.su'}</code>
+            </div>
+            <div className="text-[11px] text-muted">
+              Без своего портрета существо показывает картинку с dnd.su
             </div>
           </div>
         </div>

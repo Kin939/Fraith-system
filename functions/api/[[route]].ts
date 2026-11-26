@@ -1174,6 +1174,60 @@ app.get('/bestiary/:id', async (c) => {
   return c.json({ creature });
 });
 
+/**
+ * Bestiary artwork proxy: dnd.su blocks nothing but its files are third-party,
+ * so we stream them through the Worker and cache them at the edge forever.
+ * Same-origin images also survive strict referrer policies in the browser.
+ */
+const DNDSU_ART_FILE_RE = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,180}\.(?:jpe?g|png|webp|gif)$/i;
+
+app.get('/media/dndsu/:file', async (c) => {
+  const file = c.req.param('file');
+  if (!DNDSU_ART_FILE_RE.test(file)) {
+    return c.json({ error: 'Некорректное имя файла' }, 400);
+  }
+
+  const cache = typeof caches !== 'undefined' ? caches.default : null;
+  const cacheKey = new Request(c.req.url, { method: 'GET' });
+  if (cache) {
+    const hit = await cache.match(cacheKey);
+    if (hit) return hit;
+  }
+
+  let upstream: Response;
+  try {
+    upstream = await fetch(`https://dnd.su/gallery/bestiary/${file}`, {
+      headers: {
+        Accept: 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
+        Referer: 'https://dnd.su/',
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36',
+      },
+    });
+  } catch {
+    return c.json({ error: 'Источник картинки недоступен' }, 502);
+  }
+
+  const contentType = upstream.headers.get('Content-Type') || '';
+  if (!upstream.ok || !upstream.body || !contentType.startsWith('image/')) {
+    return c.json({ error: 'Картинка не найдена' }, 404);
+  }
+
+  const response = new Response(upstream.body, {
+    status: 200,
+    headers: {
+      'Content-Type': contentType,
+      'Cache-Control': 'public, max-age=31536000, s-maxage=31536000, immutable',
+      'Access-Control-Allow-Origin': '*',
+    },
+  });
+
+  if (cache) {
+    c.executionCtx.waitUntil(cache.put(cacheKey, response.clone()));
+  }
+  return response;
+});
+
 app.get('/dm/bestiary/import-status', async (c) => {
   const user = c.get('user');
   if (!user) return c.json({ error: 'Необходима авторизация' }, 401);
@@ -1243,6 +1297,7 @@ app.post('/dm/bestiary', async (c) => {
     alignment?: string;
     ac?: number;
     hp?: string;
+    xp?: number;
     description?: string;
     imageKey?: string | null;
     isRevealed?: boolean;
@@ -1258,9 +1313,9 @@ app.post('/dm/bestiary', async (c) => {
 
   await c.env.DB.prepare(
     `INSERT INTO bestiary
-       (name, cr, cr_numeric, creature_type, size, alignment, ac, hp, description, image_key,
+       (name, cr, cr_numeric, creature_type, size, alignment, ac, hp, xp, description, image_key,
         is_revealed, sort_order)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   )
     .bind(
       body.name.trim(),
@@ -1271,6 +1326,7 @@ app.post('/dm/bestiary', async (c) => {
       (body.alignment || '').trim(),
       Math.max(1, Math.trunc(body.ac ?? 13)),
       (body.hp || '27 (5d8 + 5)').trim(),
+      Math.max(0, Math.trunc(body.xp ?? 0)),
       (body.description || '').trim(),
       body.imageKey || null,
       body.isRevealed ? 1 : 0,
@@ -1295,6 +1351,7 @@ app.put('/dm/bestiary/:id', async (c) => {
     alignment?: string;
     ac?: number;
     hp?: string;
+    xp?: number;
     description?: string;
     imageKey?: string | null;
     isRevealed?: boolean;
@@ -1318,6 +1375,7 @@ app.put('/dm/bestiary/:id', async (c) => {
          alignment = ?,
          ac = ?,
          hp = ?,
+         xp = ?,
          description = ?,
          image_key = ?,
          is_revealed = ?,
@@ -1333,6 +1391,7 @@ app.put('/dm/bestiary/:id', async (c) => {
       (body.alignment || '').trim(),
       Math.max(1, Math.trunc(body.ac ?? 13)),
       (body.hp || '27 (5d8 + 5)').trim(),
+      Math.max(0, Math.trunc(body.xp ?? 0)),
       (body.description || '').trim(),
       body.imageKey || null,
       body.isRevealed ? 1 : 0,

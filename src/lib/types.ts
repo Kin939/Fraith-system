@@ -222,7 +222,13 @@ export interface BestiaryCreature {
   alignment: string;
   ac: number;
   hp: string;
+  /** Experience awarded for defeating the creature */
+  xp: number;
   imageKey: string | null;
+  /** dnd.su art (thumbnail) — used by tiles, cached through our own proxy */
+  imageUrl: string;
+  /** dnd.su art in full resolution — used by the detail view */
+  imageFullUrl: string;
   isRevealed: boolean;
   sortOrder: number;
   /** Book / adventure the monster comes from */
