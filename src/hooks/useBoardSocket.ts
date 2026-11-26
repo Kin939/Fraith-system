@@ -8,6 +8,7 @@ import type {
   BoardTimerState,
   BoardVotes,
 } from '../lib/boardProtocol';
+import { clearOutbox, flushOutboxViaHttp, pushOutbox, readOutbox, type BoardDiff } from '../lib/boardOutbox';
 
 interface UseBoardSocketOptions {
   boardId: string | null;
@@ -45,9 +46,15 @@ export function useBoardSocket({ boardId, enabled }: UseBoardSocketOptions) {
   const [comments, setComments] = useState<BoardComment[]>([]);
   const [votes, setVotes] = useState<BoardVotes>({});
   const [timer, setTimer] = useState<BoardTimerState | null>(null);
+  /** Сколько правок ещё не ушло на сервер (для индикатора «сохраняю…»). */
+  const [pendingDiffs, setPendingDiffs] = useState(0);
 
   const wsRef = useRef<WebSocket | null>(null);
-  const seqRef = useRef<number>(-1);
+  const seqRef = useRef<number>(-1);  /** Локальные патчи, не ушедшие в сокет (реконнект/закрытый сокет). */
+  const pendingDiffsRef = useRef<BoardDiff[]>([]);
+  const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const resyncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const storeHandlersRef = useRef(new Set<(event: BoardStoreEvent) => void>());
   const ephemeralHandlersRef = useRef(new Set<(message: BoardEphemeralMessage) => void>());
   const pendingSnapshotRef = useRef<Record<string, unknown> | null>(null);
@@ -76,6 +83,46 @@ export function useBoardSocket({ boardId, enabled }: UseBoardSocketOptions) {
       }
     });
   }, []);
+
+  /** Досылает накопленные патчи после ресинка: иначе удаление, сделанное в
+   *  момент обрыва связи, терялось и после F5 «возвращалось» на доску. */
+  const flushPendingDiffs = useCallback(() => {
+    if (flushTimerRef.current) {
+      clearTimeout(flushTimerRef.current);
+      flushTimerRef.current = null;
+    }
+    const socket = wsRef.current;
+    if (!socket || socket.readyState !== WebSocket.OPEN) return;
+    if (pendingDiffsRef.current.length === 0) return;
+    const queued = pendingDiffsRef.current;
+    pendingDiffsRef.current = [];
+    try {
+      for (const diff of queued) {
+        socket.send(JSON.stringify({ type: 'diff', payload: { diff } }));
+      }
+    } finally {
+      clearOutbox(boardIdRef.current ?? '');
+      setPendingDiffs(pendingDiffsRef.current.length);
+    }
+
+    // После досылки просим повторную синхронизацию: снапшот мог прийти до наших
+    // патчей, и локальный документ разошёлся бы с сервером (удалённая фигура
+    // осталась бы на экране до перезагрузки). Replay вернёт авторитетное состояние.
+    if (resyncTimerRef.current) clearTimeout(resyncTimerRef.current);
+    resyncTimerRef.current = setTimeout(() => {
+      resyncTimerRef.current = null;
+      const current = wsRef.current;
+      if (current && current.readyState === WebSocket.OPEN) {
+        current.send(JSON.stringify({ type: 'hello', payload: { lastSeq: seqRef.current } }));
+      }
+    }, 500);
+  }, []);
+
+  const scheduleFlush = useCallback(() => {
+    if (flushTimerRef.current) clearTimeout(flushTimerRef.current);
+    // Небольшая пауза: сначала применяем снапшот/init, потом досылаем свои патчи.
+    flushTimerRef.current = setTimeout(flushPendingDiffs, 400);
+  }, [flushPendingDiffs]);
 
   const handleMessage = useCallback(
     (event: MessageEvent) => {
@@ -111,6 +158,7 @@ export function useBoardSocket({ boardId, enabled }: UseBoardSocketOptions) {
             pendingSnapshotRef.current = null;
             emitStore({ kind: 'empty' });
           }
+          if (pendingDiffsRef.current.length > 0) scheduleFlush();
           break;
         }
         case 'snapshot:chunk': {
@@ -122,6 +170,7 @@ export function useBoardSocket({ boardId, enabled }: UseBoardSocketOptions) {
             const snapshot = pendingSnapshotRef.current;
             pendingSnapshotRef.current = null;
             emitStore({ kind: 'snapshot', records: snapshot });
+            if (pendingDiffsRef.current.length > 0) scheduleFlush();
           }
           break;
         }
@@ -200,7 +249,7 @@ export function useBoardSocket({ boardId, enabled }: UseBoardSocketOptions) {
           break;
       }
     },
-    [emitEphemeral, emitStore]
+    [emitEphemeral, emitStore, scheduleFlush]
   );
 
   const connect = useCallback(() => {
@@ -275,15 +324,40 @@ export function useBoardSocket({ boardId, enabled }: UseBoardSocketOptions) {
     setTimer(null);
     setSelfId(null);
 
+    // Восстанавливаем недоставленные правки прошлой сессии (F5, переключение вкладки).
+    pendingDiffsRef.current = boardId ? readOutbox(boardId) : [];
+    setPendingDiffs(pendingDiffsRef.current.length);
+    if (flushTimerRef.current) {
+      clearTimeout(flushTimerRef.current);
+      flushTimerRef.current = null;
+    }
+
     if (!enabled || !boardId) {
       setStatus('idle');
       return;
     }
     connect();
 
+    /**
+     * Уход со страницы (переключение вкладки, закрытие): сокет ещё может быть
+     * жив, но переподключения уже не будет. Поэтому остаток очереди досылаем
+     * по HTTP keepalive — иначе последнее удаление терялось.
+     */
+    const flushOnLeave = () => {
+      if (pendingDiffsRef.current.length === 0) return;
+      void flushOutboxViaHttp(boardId);
+    };
+    window.addEventListener('pagehide', flushOnLeave);
+
     return () => {
+      window.removeEventListener('pagehide', flushOnLeave);
+      flushOnLeave();
       manuallyClosedRef.current = true;
       if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
+      if (resyncTimerRef.current) {
+        clearTimeout(resyncTimerRef.current);
+        resyncTimerRef.current = null;
+      }
       if (pingTimerRef.current) clearInterval(pingTimerRef.current);
       pingTimerRef.current = null;
       const socket = wsRef.current;
@@ -303,11 +377,28 @@ export function useBoardSocket({ boardId, enabled }: UseBoardSocketOptions) {
 
   const send = useCallback((type: string, payload: Record<string, unknown> = {}) => {
     const socket = wsRef.current;
-    if (!socket || socket.readyState !== WebSocket.OPEN) return;
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+      // Правки холста не выбрасываем: копим и досылаем после переподключения.
+      // Остальные сообщения (курсоры, комментарии, голоса) эфемерны или требуют
+      // подтверждения — их молча отбрасываем, как и раньше.
+      if (type === 'diff' && payload.diff) {
+        const diff = payload.diff as BoardDiff;
+        pendingDiffsRef.current.push(diff);
+        if (pendingDiffsRef.current.length > 400) pendingDiffsRef.current.shift();
+        if (boardIdRef.current) pushOutbox(boardIdRef.current, diff);
+        setPendingDiffs(pendingDiffsRef.current.length);
+      }
+      return;
+    }
     try {
       socket.send(JSON.stringify({ type, payload }));
     } catch {
-      /* noop */
+      if (type === 'diff' && payload.diff) {
+        const diff = payload.diff as BoardDiff;
+        pendingDiffsRef.current.push(diff);
+        if (boardIdRef.current) pushOutbox(boardIdRef.current, diff);
+        setPendingDiffs(pendingDiffsRef.current.length);
+      }
     }
   }, []);
 
@@ -384,6 +475,7 @@ export function useBoardSocket({ boardId, enabled }: UseBoardSocketOptions) {
     status,
     selfId,
     peers,
+    pendingDiffs,
     comments,
     votes,
     timer,

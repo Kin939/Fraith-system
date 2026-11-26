@@ -138,7 +138,12 @@ export const BoardToolbar: React.FC<BoardToolbarProps> = ({
         </div>
       </div>
 
-      <BoardPresenceBar peers={socket.peers} status={socket.status} selfId={socket.selfId} />
+      <BoardPresenceBar
+        peers={socket.peers}
+        status={socket.status}
+        selfId={socket.selfId}
+        pendingDiffs={socket.pendingDiffs}
+      />
 
       <SessionTimer
         timer={socket.timer}

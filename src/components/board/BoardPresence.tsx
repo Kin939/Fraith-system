@@ -298,22 +298,35 @@ export const BoardPresenceBar: React.FC<{
   peers: BoardPeer[];
   status: BoardSocketApi['status'];
   selfId: number | null;
-}> = ({ peers, status, selfId }) => {
+  /** Правки, ещё не подтверждённые сервером. */
+  pendingDiffs?: number;
+}> = ({ peers, status, selfId, pendingDiffs = 0 }) => {
   const online = status === 'open';
+  const saving = pendingDiffs > 0;
   return (
     <div className="flex items-center gap-2">
       <div
         className={`flex items-center gap-1.5 px-2 h-8 border text-[10px] font-mono uppercase tracking-wide ${
-          online ? 'border-positive/40 text-positive' : 'border-warning/40 text-warning'
+          !online
+            ? 'border-warning/40 text-warning'
+            : saving
+              ? 'border-primary/50 text-primary'
+              : 'border-positive/40 text-positive'
         }`}
-        title={online ? 'Синхронизация активна' : 'Переподключение…'}
+        title={
+          !online
+            ? 'Переподключение…'
+            : saving
+              ? `Сохраняю правки: ${pendingDiffs}`
+              : 'Все правки сохранены'
+        }
       >
-        {online ? (
-          <Wifi className="w-3 h-3" strokeWidth={1.5} />
-        ) : (
+        {!online ? (
           <WifiOff className="w-3 h-3" strokeWidth={1.5} />
+        ) : (
+          <Wifi className="w-3 h-3" strokeWidth={1.5} />
         )}
-        <span>{online ? 'live' : 'sync'}</span>
+        <span>{!online ? 'sync' : saving ? 'сохраняю…' : 'сохранено'}</span>
       </div>
 
       {/* Аватары участников: строго в ряд, без наездов друг на друга */}

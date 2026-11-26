@@ -68,6 +68,17 @@ async function fetchBoardRow(env: Env, boardId: string): Promise<BoardRow | null
     .first<BoardRow>();
 }
 
+/**
+ * Чтение JSON-тела с типизированным пустым фолбэком (см. combat-routes).
+ */
+async function readJson<T>(request: { json: <U>() => Promise<U> }, fallback: T): Promise<T> {
+  try {
+    return await request.json<T>();
+  } catch {
+    return fallback;
+  }
+}
+
 async function resolvePermission(
   env: Env,
   boardId: string,
@@ -419,6 +430,44 @@ export function registerBoardRoutes(app: Hono<{ Bindings: Env; Variables: Variab
     ]);
 
     return c.json({ ok: true });
+  });
+
+  // -------------------------------------------- досылка патчей без WebSocket
+  // Клиент закрывает вкладку/теряет сокет и отправляет накопленную очередь
+  // правок через fetch(keepalive). Без этого удаления терялись и «возвращались»
+  // после перезагрузки страницы.
+  app.post('/boards/:id/diffs', async (c) => {
+    const user = c.get('user');
+    if (!user) return c.json({ error: 'Необходима авторизация' }, 401);
+
+    const boardId = c.req.param('id');
+    const board = await fetchBoardRow(c.env, boardId);
+    if (!board) return c.json({ error: 'Доска не найдена' }, 404);
+
+    const permission = await resolvePermission(c.env, boardId, user);
+    if (!permission) return c.json({ error: 'Нет доступа к этой доске' }, 403);
+    if (permission !== 'write' && user.role !== 'dm') {
+      return c.json({ error: 'Только чтение' }, 403);
+    }
+    if (!c.env.BOARD_ROOM) return c.json({ error: 'Durable Object BOARD_ROOM не настроен' }, 503);
+
+    const body = await readJson<{ diffs?: unknown[] }>(c.req, {});
+    const diffs = Array.isArray(body.diffs) ? body.diffs.slice(0, 200) : [];
+    if (diffs.length === 0) return c.json({ ok: true, applied: 0 });
+
+    const stub = c.env.BOARD_ROOM.get(c.env.BOARD_ROOM.idFromName(boardId));
+    const doUrl = new URL('https://board-do.internal/diffs');
+    doUrl.searchParams.set('boardId', boardId);
+    doUrl.searchParams.set('userId', String(user.id));
+
+    const res = await stub.fetch(doUrl.toString(), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ diffs }),
+    });
+    const result = (await res.json().catch(() => ({}))) as { ok?: boolean; applied?: number; seq?: number };
+    if (!res.ok || !result.ok) return c.json({ error: 'Не удалось применить правки' }, 502);
+    return c.json({ ok: true, applied: result.applied ?? diffs.length, seq: result.seq ?? null });
   });
 
   // -------------------------------------------------------------- WebSocket
