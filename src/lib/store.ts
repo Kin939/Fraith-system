@@ -34,6 +34,7 @@ export type CampaignTabId =
   | 'bestiary'
   | 'spells'
   | 'connections'
+  | 'combat'
   | 'talents'
   | 'chat'
   | 'board'

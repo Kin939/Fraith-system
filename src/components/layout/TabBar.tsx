@@ -9,6 +9,7 @@ import {
   ScrollText,
   Skull,
   Sparkles,
+  Swords,
   User,
   Users,
 } from 'lucide-react';
@@ -48,6 +49,8 @@ export const TabBar: React.FC<TabBarProps> = ({ onLogout }) => {
     { id: 'bestiary', label: 'Бестиарий', icon: <Skull className="w-4 h-4" strokeWidth={1.5} /> },
     { id: 'spells', label: 'Заклинания', icon: <BookOpen className="w-4 h-4" strokeWidth={1.5} /> },
     { id: 'connections', label: 'Связи', icon: <Network className="w-4 h-4" strokeWidth={1.5} /> },
+    // «Бой» — строго после «Связей» и перед «Мастером»
+    { id: 'combat', label: 'Бой', icon: <Swords className="w-4 h-4" strokeWidth={1.5} /> },
     { id: 'talents', label: 'Дерево талантов', icon: <Sparkles className="w-4 h-4" strokeWidth={1.5} /> },
     {
       id: 'chat',

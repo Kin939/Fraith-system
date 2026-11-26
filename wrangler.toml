@@ -46,6 +46,15 @@ class_name = "BoardRoom"
 tag = "v2"
 new_sqlite_classes = ["BoardRoom"]
 
+# Вкладка «Бой»: отдельный Durable Object на каждый бой (инициатива, ход, HP, эффекты, таймер).
+[[durable_objects.bindings]]
+name = "COMBAT_ROOM"
+class_name = "CombatRoom"
+
+[[migrations]]
+tag = "v3"
+new_sqlite_classes = ["CombatRoom"]
+
 # Optional Cloudflare R2 Object Storage:
 # Uncomment after enabling R2 in your Cloudflare Dashboard (or bind `BUCKET` in Worker Settings -> Bindings).
 # Until enabled, uploaded quest/bestiary/talent images automatically fall back to D1 storage.
