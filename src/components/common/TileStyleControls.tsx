@@ -3,8 +3,11 @@ import { Star, Wand2 } from 'lucide-react';
 import {
   QUEST_ACCENT_PRESETS,
   QUEST_EMBLEM_OPTIONS,
+  QUEST_PATTERN_GROUPS,
   QUEST_PATTERN_OPTIONS,
+  patternsByGroup,
   questEmblemUrl,
+  type TilePatternGroupId,
 } from '../../lib/questStyle';
 import type { TilePattern } from '../../lib/types';
 
@@ -78,6 +81,9 @@ export const TileStyleControls: React.FC<TileStyleControlsProps> = ({
   compact = false,
 }) => {
   const accent = value.accent || '#00e5ff';
+  const [patternGroup, setPatternGroup] = React.useState<'all' | TilePatternGroupId>('all');
+  const visiblePatterns =
+    patternGroup === 'all' ? QUEST_PATTERN_OPTIONS : patternsByGroup(patternGroup);
 
   return (
     <div className={compact ? 'space-y-3' : 'space-y-4'}>
@@ -212,10 +218,47 @@ export const TileStyleControls: React.FC<TileStyleControlsProps> = ({
         </div>
       </div>
 
-      <div className="space-y-1.5">
-        <div className="text-xs text-secondary">Узор фона</div>
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
-          {QUEST_PATTERN_OPTIONS.map((pattern) => {
+      <div className="space-y-2">
+        <div className="flex items-center justify-between gap-2">
+          <div className="text-xs text-secondary">Узор фона</div>
+          <span className="text-[10px] font-mono text-muted">
+            {QUEST_PATTERN_OPTIONS.length} вариантов
+          </span>
+        </div>
+
+        <div className="flex flex-wrap gap-1">
+          {(
+            [
+              { id: 'all' as const, label: 'Все' },
+              ...QUEST_PATTERN_GROUPS.map((g) => ({ id: g.id, label: g.label })),
+            ]
+          ).map((group) => {
+            const active = patternGroup === group.id;
+            const count =
+              group.id === 'all'
+                ? QUEST_PATTERN_OPTIONS.length
+                : patternsByGroup(group.id as TilePatternGroupId).length;
+            return (
+              <button
+                key={group.id}
+                type="button"
+                onClick={() => setPatternGroup(group.id)}
+                aria-pressed={active}
+                className={`h-6 px-1.5 text-[10px] border transition-colors ${
+                  active
+                    ? 'border-text text-text bg-raised'
+                    : 'border-border text-muted hover:text-text'
+                }`}
+              >
+                {group.label}
+                <span className="ml-1 font-mono opacity-70">{count}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="grid grid-cols-3 sm:grid-cols-4 gap-1.5 max-h-60 overflow-y-auto pr-1">
+          {visiblePatterns.map((pattern) => {
             const active = value.pattern === pattern.id;
             return (
               <button
@@ -224,21 +267,42 @@ export const TileStyleControls: React.FC<TileStyleControlsProps> = ({
                 onClick={() => onChange({ pattern: pattern.id })}
                 title={pattern.description}
                 aria-pressed={active}
-                className={`relative h-11 border text-left px-2 overflow-hidden transition-colors ${
-                  active ? 'border-text text-text' : 'border-border text-secondary hover:text-text'
+                className={`relative h-12 border overflow-hidden text-left transition-colors ${
+                  active
+                    ? 'border-text bg-raised'
+                    : 'border-border bg-deep hover:bg-raised/70'
                 }`}
                 style={{
                   ['--q-accent' as string]: accent,
-                  ['--q-accent-soft' as string]: `${accent}44`,
+                  ['--q-accent-soft' as string]: `${accent}55`,
                 }}
               >
-                {pattern.id !== 'none' && (
+                {pattern.id !== 'none' ? (
                   <span
                     aria-hidden
                     className={`quest-tile__pattern quest-pattern--${pattern.id}`}
+                    style={{ opacity: 0.9 }}
+                  />
+                ) : (
+                  <span
+                    aria-hidden
+                    className="absolute inset-0"
+                    style={{
+                      background:
+                        'linear-gradient(135deg, rgba(255,255,255,0.04), transparent 60%)',
+                    }}
                   />
                 )}
-                <span className="relative z-10 text-[11px]">{pattern.label}</span>
+                <span className="absolute inset-x-0 bottom-0 z-10 px-1 py-0.5 text-[9px] leading-tight text-text bg-gradient-to-t from-black/80 to-transparent truncate">
+                  {pattern.label}
+                </span>
+                {active && (
+                  <span
+                    className="absolute top-0 right-0 z-10 w-3 h-3"
+                    style={{ backgroundColor: accent }}
+                    aria-hidden
+                  />
+                )}
               </button>
             );
           })}

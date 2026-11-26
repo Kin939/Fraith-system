@@ -21,27 +21,90 @@ export const QUEST_ACCENT_PRESETS: QuestAccentPreset[] = [
   { id: 'ash', label: 'Пепел', hex: '#64748b' },
 ];
 
-export const QUEST_TILE_PATTERNS: QuestTilePattern[] = [
-  'none',
-  'runes',
-  'grid',
-  'hazard',
-  'stars',
-  'scanlines',
+export type TilePatternGroupId =
+  | 'plain'
+  | 'geometry'
+  | 'magic'
+  | 'tech'
+  | 'danger'
+  | 'nature';
+
+export interface TilePatternGroup {
+  id: TilePatternGroupId;
+  label: string;
+}
+
+export const QUEST_PATTERN_GROUPS: TilePatternGroup[] = [
+  { id: 'plain', label: 'Чистые' },
+  { id: 'geometry', label: 'Геометрия' },
+  { id: 'magic', label: 'Магия' },
+  { id: 'tech', label: 'Техно' },
+  { id: 'danger', label: 'Опасность' },
+  { id: 'nature', label: 'Природа' },
 ];
 
-export const QUEST_PATTERN_OPTIONS: Array<{
+export interface QuestPatternOption {
   id: QuestTilePattern;
   label: string;
   description: string;
-}> = [
-  { id: 'none', label: 'Чистая', description: 'Ровная поверхность без узора' },
-  { id: 'runes', label: 'Руны', description: 'Редкие глифы древнего договора' },
-  { id: 'grid', label: 'Сетка', description: 'Тактическая координатная сетка' },
-  { id: 'hazard', label: 'Опасность', description: 'Диагональные полосы тревоги' },
-  { id: 'stars', label: 'Звёзды', description: 'Астральная пыль и созвездия' },
-  { id: 'scanlines', label: 'Скан', description: 'Строки сканирующего HUD' },
+  group: TilePatternGroupId;
+}
+
+/** 34 decorative tile fills, grouped by mood. CSS lives in src/index.css. */
+export const QUEST_PATTERN_OPTIONS: QuestPatternOption[] = [
+  { id: 'none', label: 'Чистая', description: 'Ровная поверхность без узора', group: 'plain' },
+
+  // — Geometry —
+  { id: 'grid', label: 'Сетка', description: 'Тактическая координатная сетка', group: 'geometry' },
+  { id: 'dots', label: 'Точки', description: 'Ровный точечный матричный фон', group: 'geometry' },
+  { id: 'diagonal', label: 'Диагональ', description: 'Тонкие диагональные линии', group: 'geometry' },
+  { id: 'crosshatch', label: 'Кресты', description: 'Перекрещенная штриховка', group: 'geometry' },
+  { id: 'diamonds', label: 'Ромбы', description: 'Ромбовидная решётка', group: 'geometry' },
+  { id: 'hex', label: 'Гексы', description: 'Соты из шестиугольников', group: 'geometry' },
+  { id: 'triangles', label: 'Треугольники', description: 'Зубчатые треугольные клинья', group: 'geometry' },
+  { id: 'chevron', label: 'Шевроны', description: 'Строгие V-образные полосы', group: 'geometry' },
+  { id: 'stripes', label: 'Полосы', description: 'Вертикальные технические полосы', group: 'geometry' },
+  { id: 'rings', label: 'Кольца', description: 'Концентрические окружности', group: 'geometry' },
+  { id: 'plaid', label: 'Клетка', description: 'Тканая клетка тёмного сукна', group: 'geometry' },
+  { id: 'blueprint', label: 'Чертёж', description: 'Инженерная сетка с крупными осями', group: 'geometry' },
+  { id: 'circuit', label: 'Плата', description: 'Дорожки и контакты печатной платы', group: 'geometry' },
+  { id: 'barcode', label: 'Штрихкод', description: 'Неровные вертикальные штрихи', group: 'geometry' },
+
+  // — Magic —
+  { id: 'runes', label: 'Руны', description: 'Редкие глифы древнего договора', group: 'magic' },
+  { id: 'stars', label: 'Звёзды', description: 'Астральная пыль и созвездия', group: 'magic' },
+  { id: 'sparkles', label: 'Искры', description: 'Яркие колючие блики магии', group: 'magic' },
+  { id: 'arcane', label: 'Аркана', description: 'Магический круг с делениями', group: 'magic' },
+  { id: 'nebula', label: 'Туманность', description: 'Мягкие облака звёздной пыли', group: 'magic' },
+  { id: 'sigil', label: 'Сигил', description: 'Большая печать-пентаграмма', group: 'magic' },
+  { id: 'pulse', label: 'Пульс', description: 'Волны расходящейся энергии', group: 'magic' },
+
+  // — Tech / HUD —
+  { id: 'scanlines', label: 'Скан', description: 'Строки сканирующего HUD', group: 'tech' },
+  { id: 'crt', label: 'CRT', description: 'Развёртка старого монитора', group: 'tech' },
+  { id: 'datastream', label: 'Данные', description: 'Поток коротких цифровых штрихов', group: 'tech' },
+  { id: 'target', label: 'Прицел', description: 'Перекрестие с кольцами захвата', group: 'tech' },
+
+  // — Danger —
+  { id: 'hazard', label: 'Опасность', description: 'Диагональные полосы тревоги', group: 'danger' },
+  { id: 'flames', label: 'Пламя', description: 'Языки огня по нижней кромке', group: 'danger' },
+  { id: 'cracks', label: 'Трещины', description: 'Разломы по камню и металлу', group: 'danger' },
+
+  // — Nature & materials —
+  { id: 'scales', label: 'Чешуя', description: 'Драконья чешуя рядами', group: 'nature' },
+  { id: 'vines', label: 'Лозы', description: 'Ползучие стебли и усики', group: 'nature' },
+  { id: 'wood', label: 'Дерево', description: 'Волокна старой древесины', group: 'nature' },
+  { id: 'stone', label: 'Камень', description: 'Крапчатая каменная крошка', group: 'nature' },
+  { id: 'waves', label: 'Волны', description: 'Рябь воды и морская зыбь', group: 'nature' },
 ];
+
+export const QUEST_TILE_PATTERNS: QuestTilePattern[] = QUEST_PATTERN_OPTIONS.map(
+  (option) => option.id
+);
+
+export function patternsByGroup(group: TilePatternGroupId): QuestPatternOption[] {
+  return QUEST_PATTERN_OPTIONS.filter((option) => option.group === group);
+}
 
 export const QUEST_EMBLEM_OPTIONS: Array<{ id: HudAssetKey; label: string }> = [
   { id: 'dice', label: 'Дайс d20' },

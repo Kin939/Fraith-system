@@ -565,7 +565,137 @@ a.dndsu-source-plaque:hover {
   mix-blend-mode: screen;
 }
 
-/* — Patterns — */
+/* — Patterns (34 fills, grouped by mood; all driven by --q-accent) — */
+.quest-tile__pattern {
+  background-repeat: repeat;
+}
+
+/* Geometry */
+.quest-pattern--grid {
+  background-image:
+    linear-gradient(to right, var(--q-accent-soft) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--q-accent-soft) 1px, transparent 1px);
+  background-size: 22px 22px;
+  opacity: 0.22;
+}
+
+.quest-pattern--dots {
+  background-image: radial-gradient(var(--q-accent-soft) 1.2px, transparent 1.3px);
+  background-size: 12px 12px;
+  opacity: 0.6;
+}
+
+.quest-pattern--diagonal {
+  background-image: repeating-linear-gradient(
+    45deg,
+    var(--q-accent-soft) 0 1px,
+    transparent 1px 14px
+  );
+  opacity: 0.5;
+}
+
+.quest-pattern--crosshatch {
+  background-image:
+    repeating-linear-gradient(45deg, var(--q-accent-soft) 0 1px, transparent 1px 16px),
+    repeating-linear-gradient(-45deg, var(--q-accent-soft) 0 1px, transparent 1px 16px);
+  opacity: 0.45;
+}
+
+.quest-pattern--diamonds {
+  background-image:
+    linear-gradient(45deg, transparent 46%, var(--q-accent-soft) 46% 54%, transparent 54%),
+    linear-gradient(-45deg, transparent 46%, var(--q-accent-soft) 46% 54%, transparent 54%);
+  background-size: 22px 22px;
+  opacity: 0.4;
+}
+
+.quest-pattern--hex {
+  background-color: var(--q-accent);
+  opacity: 0.24;
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='24' viewBox='0 0 28 24'%3E%3Cpath d='M7 1h14l7 11-7 11H7L0 12z' fill='none' stroke='%23fff' stroke-width='1'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='24' viewBox='0 0 28 24'%3E%3Cpath d='M7 1h14l7 11-7 11H7L0 12z' fill='none' stroke='%23fff' stroke-width='1'/%3E%3C/svg%3E");
+  -webkit-mask-size: 28px 24px;
+  mask-size: 28px 24px;
+}
+
+.quest-pattern--triangles {
+  background-image: repeating-conic-gradient(
+    from 180deg at 50% 100%,
+    var(--q-accent-soft) 0deg 60deg,
+    transparent 60deg 120deg
+  );
+  background-size: 26px 22px;
+  opacity: 0.35;
+}
+
+.quest-pattern--chevron {
+  background-image:
+    repeating-linear-gradient(135deg, var(--q-accent-soft) 0 2px, transparent 2px 18px),
+    repeating-linear-gradient(45deg, var(--q-accent-soft) 0 2px, transparent 2px 18px);
+  background-size: 100% 50%, 100% 50%;
+  background-position: 0 0, 0 100%;
+  background-repeat: repeat-x;
+  opacity: 0.4;
+}
+
+.quest-pattern--stripes {
+  background-image: repeating-linear-gradient(
+    90deg,
+    var(--q-accent-soft) 0 2px,
+    transparent 2px 14px
+  );
+  opacity: 0.4;
+}
+
+.quest-pattern--rings {
+  background-image: repeating-radial-gradient(
+    circle at 50% 50%,
+    var(--q-accent-soft) 0 1px,
+    transparent 1px 13px
+  );
+  opacity: 0.45;
+}
+
+.quest-pattern--plaid {
+  background-image:
+    repeating-linear-gradient(0deg, var(--q-accent-soft) 0 5px, transparent 5px 22px),
+    repeating-linear-gradient(90deg, var(--q-accent-soft) 0 5px, transparent 5px 22px);
+  opacity: 0.3;
+}
+
+.quest-pattern--blueprint {
+  background-image:
+    linear-gradient(var(--q-accent-soft) 1px, transparent 1px),
+    linear-gradient(90deg, var(--q-accent-soft) 1px, transparent 1px),
+    linear-gradient(var(--q-accent) 1px, transparent 1px),
+    linear-gradient(90deg, var(--q-accent) 1px, transparent 1px);
+  background-size: 12px 12px, 12px 12px, 60px 60px, 60px 60px;
+  opacity: 0.28;
+}
+
+.quest-pattern--circuit {
+  background-color: var(--q-accent);
+  opacity: 0.28;
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='48' height='48' viewBox='0 0 48 48'%3E%3Cg fill='none' stroke='%23fff' stroke-width='1'%3E%3Cpath d='M0 12h14l6 6h16M0 36h10l6-6h20M24 0v8M24 48v-8M48 20h-8M48 40h-6'/%3E%3Ccircle cx='36' cy='18' r='2'/%3E%3Ccircle cx='16' cy='30' r='2'/%3E%3C/g%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='48' height='48' viewBox='0 0 48 48'%3E%3Cg fill='none' stroke='%23fff' stroke-width='1'%3E%3Cpath d='M0 12h14l6 6h16M0 36h10l6-6h20M24 0v8M24 48v-8M48 20h-8M48 40h-6'/%3E%3Ccircle cx='36' cy='18' r='2'/%3E%3Ccircle cx='16' cy='30' r='2'/%3E%3C/g%3E%3C/svg%3E");
+  -webkit-mask-size: 48px 48px;
+  mask-size: 48px 48px;
+}
+
+.quest-pattern--barcode {
+  background-image: repeating-linear-gradient(
+    90deg,
+    var(--q-accent-soft) 0 2px,
+    transparent 2px 5px,
+    var(--q-accent-soft) 5px 6px,
+    transparent 6px 12px,
+    var(--q-accent-soft) 12px 15px,
+    transparent 15px 20px
+  );
+  opacity: 0.35;
+}
+
+/* Magic */
 .quest-pattern--runes {
   background-image:
     radial-gradient(circle at 18% 26%, var(--q-accent-soft) 0 1.5px, transparent 2px),
@@ -579,23 +709,6 @@ a.dndsu-source-plaque:hover {
   opacity: 0.35;
 }
 
-.quest-pattern--grid {
-  background-image:
-    linear-gradient(to right, var(--q-accent-soft) 1px, transparent 1px),
-    linear-gradient(to bottom, var(--q-accent-soft) 1px, transparent 1px);
-  background-size: 22px 22px;
-  opacity: 0.22;
-}
-
-.quest-pattern--hazard {
-  background-image: repeating-linear-gradient(
-    -45deg,
-    var(--q-accent-soft) 0 10px,
-    transparent 10px 24px
-  );
-  opacity: 0.2;
-}
-
 .quest-pattern--stars {
   background-image:
     radial-gradient(1px 1px at 12% 22%, var(--q-accent) 50%, transparent 51%),
@@ -607,6 +720,63 @@ a.dndsu-source-plaque:hover {
   opacity: 0.5;
 }
 
+.quest-pattern--sparkles {
+  background-image:
+    radial-gradient(1.6px 1.6px at 22% 28%, var(--q-accent) 45%, transparent 50%),
+    radial-gradient(1.2px 1.2px at 66% 18%, var(--q-accent-soft) 45%, transparent 50%),
+    radial-gradient(2px 2px at 44% 72%, var(--q-accent) 45%, transparent 50%),
+    radial-gradient(1.1px 1.1px at 84% 58%, var(--q-accent-soft) 45%, transparent 50%),
+    radial-gradient(1.3px 1.3px at 12% 84%, var(--q-accent) 45%, transparent 50%);
+  background-size: 130px 130px;
+  opacity: 0.7;
+}
+
+.quest-pattern--arcane {
+  background-image:
+    repeating-radial-gradient(
+      circle at 50% 50%,
+      transparent 0 15px,
+      var(--q-accent-soft) 15px 16px
+    ),
+    repeating-conic-gradient(
+      from 0deg at 50% 50%,
+      var(--q-accent-soft) 0deg 0.8deg,
+      transparent 0.8deg 30deg
+    );
+  opacity: 0.4;
+}
+
+.quest-pattern--nebula {
+  background-image:
+    radial-gradient(60% 55% at 22% 25%, var(--q-accent-soft), transparent 72%),
+    radial-gradient(55% 60% at 78% 70%, var(--q-accent-soft), transparent 74%),
+    radial-gradient(40% 40% at 55% 48%, var(--q-accent-soft), transparent 70%);
+  opacity: 0.55;
+}
+
+.quest-pattern--sigil {
+  background-color: var(--q-accent);
+  opacity: 0.3;
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120' viewBox='0 0 120 120'%3E%3Cg fill='none' stroke='%23fff' stroke-width='1.1'%3E%3Ccircle cx='60' cy='60' r='46'/%3E%3Ccircle cx='60' cy='60' r='34' stroke-dasharray='3 6'/%3E%3Cpath d='M60 16l13 30 31 4-23 21 6 31-27-15-27 15 6-31-23-21 31-4z'/%3E%3C/g%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120' viewBox='0 0 120 120'%3E%3Cg fill='none' stroke='%23fff' stroke-width='1.1'%3E%3Ccircle cx='60' cy='60' r='46'/%3E%3Ccircle cx='60' cy='60' r='34' stroke-dasharray='3 6'/%3E%3Cpath d='M60 16l13 30 31 4-23 21 6 31-27-15-27 15 6-31-23-21 31-4z'/%3E%3C/g%3E%3C/svg%3E");
+  -webkit-mask-size: 120px 120px;
+  mask-size: 120px 120px;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+}
+
+.quest-pattern--pulse {
+  background-image: repeating-radial-gradient(
+    circle at 50% 50%,
+    var(--q-accent-soft) 0 2px,
+    transparent 2px 26px
+  );
+  opacity: 0.4;
+}
+
+/* Tech / HUD */
 .quest-pattern--scanlines {
   background-image: repeating-linear-gradient(
     to bottom,
@@ -614,6 +784,114 @@ a.dndsu-source-plaque:hover {
     transparent 1px 4px
   );
   opacity: 0.25;
+}
+
+.quest-pattern--crt {
+  background-image:
+    repeating-linear-gradient(to bottom, var(--q-accent-soft) 0 1px, transparent 1px 3px),
+    radial-gradient(120% 85% at 50% 0%, transparent 55%, var(--q-accent-soft) 100%);
+  opacity: 0.3;
+}
+
+.quest-pattern--datastream {
+  background-color: var(--q-accent);
+  opacity: 0.3;
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32'%3E%3Cg stroke='%23fff' stroke-width='1.6' stroke-linecap='round'%3E%3Cpath d='M6 2v8M6 16v4M16 6v12M16 24v6M26 2v6M26 14v10'/%3E%3C/g%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32'%3E%3Cg stroke='%23fff' stroke-width='1.6' stroke-linecap='round'%3E%3Cpath d='M6 2v8M6 16v4M16 6v12M16 24v6M26 2v6M26 14v10'/%3E%3C/g%3E%3C/svg%3E");
+  -webkit-mask-size: 32px 32px;
+  mask-size: 32px 32px;
+}
+
+.quest-pattern--target {
+  background-image:
+    repeating-radial-gradient(
+      circle at 50% 50%,
+      transparent 0 9px,
+      var(--q-accent-soft) 9px 10px,
+      transparent 10px 20px
+    ),
+    linear-gradient(var(--q-accent) 1px, transparent 1px),
+    linear-gradient(90deg, var(--q-accent) 1px, transparent 1px);
+  background-size: 80px 80px, 80px 80px, 80px 80px;
+  opacity: 0.35;
+}
+
+/* Danger */
+.quest-pattern--hazard {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    var(--q-accent-soft) 0 10px,
+    transparent 10px 24px
+  );
+  opacity: 0.2;
+}
+
+.quest-pattern--flames {
+  background-image: repeating-conic-gradient(
+    from 180deg at 50% 100%,
+    var(--q-accent-soft) 0deg 34deg,
+    transparent 34deg 68deg
+  );
+  background-size: 22px 20px;
+  opacity: 0.4;
+}
+
+.quest-pattern--cracks {
+  background-color: var(--q-accent);
+  opacity: 0.25;
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='96' height='96' viewBox='0 0 96 96'%3E%3Cg fill='none' stroke='%23fff' stroke-width='1'%3E%3Cpath d='M4 10l18 14 6 16 14 8 10 18 12 6'/%3E%3Cpath d='M22 24l-6 14M28 40l16-6M42 48l-4 16M70 66l14-4'/%3E%3C/g%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='96' height='96' viewBox='0 0 96 96'%3E%3Cg fill='none' stroke='%23fff' stroke-width='1'%3E%3Cpath d='M4 10l18 14 6 16 14 8 10 18 12 6'/%3E%3Cpath d='M22 24l-6 14M28 40l16-6M42 48l-4 16M70 66l14-4'/%3E%3C/g%3E%3C/svg%3E");
+  -webkit-mask-size: 96px 96px;
+  mask-size: 96px 96px;
+}
+
+/* Nature & materials */
+.quest-pattern--scales {
+  background-color: var(--q-accent);
+  opacity: 0.26;
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='18' viewBox='0 0 24 18'%3E%3Cg fill='none' stroke='%23fff' stroke-width='1'%3E%3Cpath d='M0 18a12 12 0 0 1 24 0'/%3E%3Cpath d='M-12 9a12 12 0 0 1 24 0M12 9a12 12 0 0 1 24 0'/%3E%3C/g%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='18' viewBox='0 0 24 18'%3E%3Cg fill='none' stroke='%23fff' stroke-width='1'%3E%3Cpath d='M0 18a12 12 0 0 1 24 0'/%3E%3Cpath d='M-12 9a12 12 0 0 1 24 0M12 9a12 12 0 0 1 24 0'/%3E%3C/g%3E%3C/svg%3E");
+  -webkit-mask-size: 24px 18px;
+  mask-size: 24px 18px;
+}
+
+.quest-pattern--vines {
+  background-color: var(--q-accent);
+  opacity: 0.24;
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80' viewBox='0 0 80 80'%3E%3Cg fill='none' stroke='%23fff' stroke-width='1.1'%3E%3Cpath d='M6 74c14-10 10-26 22-32s18-18 30-16'/%3E%3Cpath d='M28 42c-6-6-4-14 2-18M52 26c6-4 12-2 14 4M44 52c8 2 12 8 10 16'/%3E%3C/g%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80' viewBox='0 0 80 80'%3E%3Cg fill='none' stroke='%23fff' stroke-width='1.1'%3E%3Cpath d='M6 74c14-10 10-26 22-32s18-18 30-16'/%3E%3Cpath d='M28 42c-6-6-4-14 2-18M52 26c6-4 12-2 14 4M44 52c8 2 12 8 10 16'/%3E%3C/g%3E%3C/svg%3E");
+  -webkit-mask-size: 80px 80px;
+  mask-size: 80px 80px;
+}
+
+.quest-pattern--wood {
+  background-image: repeating-linear-gradient(
+    93deg,
+    var(--q-accent-soft) 0 1px,
+    transparent 1px 7px,
+    var(--q-accent-soft) 8px 9px,
+    transparent 9px 19px
+  );
+  opacity: 0.32;
+}
+
+.quest-pattern--stone {
+  background-image:
+    radial-gradient(2.2px 1.6px at 14% 22%, var(--q-accent-soft) 50%, transparent 51%),
+    radial-gradient(1.6px 2px at 62% 34%, var(--q-accent-soft) 50%, transparent 51%),
+    radial-gradient(1.8px 1.4px at 34% 68%, var(--q-accent-soft) 50%, transparent 51%),
+    radial-gradient(1.4px 1.8px at 82% 78%, var(--q-accent-soft) 50%, transparent 51%),
+    radial-gradient(2px 2px at 48% 12%, var(--q-accent-soft) 50%, transparent 51%);
+  background-size: 90px 90px;
+  opacity: 0.45;
+}
+
+.quest-pattern--waves {
+  background-image:
+    radial-gradient(circle at 50% 0, transparent 12px, var(--q-accent-soft) 13px, transparent 14px),
+    radial-gradient(circle at 50% 0, transparent 24px, var(--q-accent-soft) 25px, transparent 26px);
+  background-size: 64px 32px;
+  opacity: 0.45;
 }
 
 /* — Important shimmer — */
