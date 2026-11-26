@@ -6,6 +6,7 @@ import type {
   CharacterProfile,
   ChatMessage,
   ChatPoll,
+  CustomCampaignEmoji,
   JournalEntry,
   LearnedSpellRecord,
   NextSessionBanner,
@@ -203,6 +204,13 @@ export function useWebSocket() {
           case 'chat:session_updated': {
             const p = msg.payload as { nextSession?: NextSessionBanner | null };
             store.setNextSessionInStore(p?.nextSession ?? null);
+            break;
+          }
+          case 'chat:emojis_updated': {
+            const p = msg.payload as { customEmojis?: CustomCampaignEmoji[] };
+            if (Array.isArray(p?.customEmojis)) {
+              store.setCustomEmojis(p.customEmojis);
+            }
             break;
           }
           case 'chat:typing': {

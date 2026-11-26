@@ -82,3 +82,24 @@ export async function uploadChatAttachment(
     timeoutMs: 30000,
   });
 }
+
+export async function uploadCustomCampaignEmoji(
+  file: File,
+  name: string
+): Promise<{
+  emoji: import('./types').CustomCampaignEmoji;
+  customEmojis: import('./types').CustomCampaignEmoji[];
+}> {
+  const fd = new FormData();
+  fd.append('file', file);
+  fd.append('name', name);
+
+  return apiFetch<{
+    emoji: import('./types').CustomCampaignEmoji;
+    customEmojis: import('./types').CustomCampaignEmoji[];
+  }>('/api/chat/emojis', {
+    method: 'POST',
+    body: fd,
+    timeoutMs: 30000,
+  });
+}

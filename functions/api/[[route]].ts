@@ -17,7 +17,9 @@ import {
   confirmPollOptionAsNextSession,
   createChatMessage,
   createChatPollWithMessage,
+  createCustomCampaignEmoji,
   deleteChatMessage,
+  deleteCustomCampaignEmoji,
   getCharacterProfile,
   getChatMessageById,
   getJournalEntry,
@@ -31,6 +33,7 @@ import {
   listBestiary,
   listCharacterProfiles,
   listChatMessages,
+  listCustomCampaignEmojis,
   listDmManagedAccounts,
   listLearnedSpellsForPlayer,
   listQuests,
@@ -1808,12 +1811,83 @@ app.use('/chat/*', async (c, next) => {
 app.get('/chat', async (c) => {
   const limitParam = Number.parseInt(c.req.query('limit') || '200', 10);
   const campaignId = c.env.CAMPAIGN_ID || 'fraith-main';
-  const [messages, nextSession, partyUsers] = await Promise.all([
+  const [messages, nextSession, partyUsers, customEmojis] = await Promise.all([
     listChatMessages(c.env.DB, Number.isFinite(limitParam) ? limitParam : 200),
     getNextSessionBanner(c.env.DB, campaignId),
     listAllUsersWithThemes(c.env.DB),
+    listCustomCampaignEmojis(c.env.DB),
   ]);
-  return c.json({ messages, nextSession, partyUsers });
+  return c.json({ messages, nextSession, partyUsers, customEmojis });
+});
+
+app.post('/chat/emojis', async (c) => {
+  const user = c.get('user')!;
+  let formData: FormData;
+  try {
+    formData = await c.req.formData();
+  } catch {
+    return c.json({ error: 'Некорректные данные формы загрузки эмодзи' }, 400);
+  }
+
+  const file = formData.get('file');
+  const rawName = String(formData.get('name') || '').trim();
+  if (!(file instanceof File)) {
+    return c.json({ error: 'Выберите изображение эмодзи (PNG, WEBP, GIF или JPG)' }, 400);
+  }
+  if (file.size > 2 * 1024 * 1024) {
+    return c.json({ error: 'Максимальный размер кастомного эмодзи — 2 МБ' }, 400);
+  }
+
+  try {
+    const uploaded = await uploadChatAttachmentToR2(c.env.BUCKET, c.env.DB, file);
+    if (uploaded.kind !== 'image') {
+      return c.json({ error: 'Для эмодзи подходят только изображения (PNG, WEBP, GIF, JPG)' }, 400);
+    }
+
+    const cleanName =
+      rawName || file.name.replace(/\.[^.]+$/, '').slice(0, 32) || 'Кастомный эмодзи';
+
+    const emoji = await createCustomCampaignEmoji(c.env.DB, {
+      name: cleanName,
+      imageKey: uploaded.key,
+      imageUrl: uploaded.url,
+      creatorId: user.id,
+    });
+    const customEmojis = await listCustomCampaignEmojis(c.env.DB);
+    await broadcastCampaignEvent(c.env, 'chat:emojis_updated', { customEmojis }, user.id);
+    return c.json({ emoji, customEmojis });
+  } catch (err) {
+    return c.json(
+      { error: err instanceof Error ? err.message : 'Ошибка при сохранении эмодзи' },
+      400
+    );
+  }
+});
+
+app.delete('/chat/emojis/:id', async (c) => {
+  const user = c.get('user')!;
+  const emojiId = Number.parseInt(c.req.param('id'), 10);
+  if (!Number.isFinite(emojiId) || emojiId <= 0) {
+    return c.json({ error: 'Некорректный идентификатор эмодзи' }, 400);
+  }
+
+  const row = await c.env.DB.prepare(
+    `SELECT id, creator_id FROM chat_custom_emojis WHERE id = ?`
+  )
+    .bind(emojiId)
+    .first<{ id: number; creator_id: number }>();
+
+  if (!row) {
+    return c.json({ error: 'Эмодзи не найден' }, 404);
+  }
+  if (row.creator_id !== user.id && user.role !== 'dm') {
+    return c.json({ error: 'Удалить чужой кастомный эмодзи может только Мастер' }, 403);
+  }
+
+  await deleteCustomCampaignEmoji(c.env.DB, emojiId);
+  const customEmojis = await listCustomCampaignEmojis(c.env.DB);
+  await broadcastCampaignEvent(c.env, 'chat:emojis_updated', { customEmojis }, user.id);
+  return c.json({ ok: true, customEmojis });
 });
 
 app.post('/chat/upload', async (c) => {
@@ -1968,7 +2042,7 @@ app.post('/chat/messages/:id/react', async (c) => {
   }
 
   const body = await c.req.json<{ emoji?: string }>().catch((): { emoji?: string } => ({}));
-  const emoji = (body.emoji ?? '').trim().slice(0, 16);
+  const emoji = (body.emoji ?? '').trim().slice(0, 64);
   if (!emoji) {
     return c.json({ error: 'Выберите эмодзи для реакции' }, 400);
   }

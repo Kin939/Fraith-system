@@ -12,6 +12,7 @@ import { apiFetch } from '../../lib/api';
 import { useCampaignStore } from '../../lib/store';
 import { getSlotTheme, getUserThemeSlot } from '../../lib/theme';
 import type { ChatParticipantBadge, ChatPoll, NextSessionBanner } from '../../lib/types';
+import { RichEmojiText } from './CustomEmoji';
 import { formatRussianSessionSlot } from './PollComposerModal';
 
 interface PollCardProps {
@@ -191,7 +192,9 @@ export const PollCard: React.FC<PollCardProps> = ({ poll, compact = false }) => 
           </div>
         </div>
 
-        <div className="text-sm font-medium text-text leading-snug">{poll.question}</div>
+        <div className="text-sm font-medium text-text leading-snug">
+          <RichEmojiText text={poll.question} inlineOnly />
+        </div>
       </div>
 
       {/* Options */}
@@ -244,7 +247,7 @@ export const PollCard: React.FC<PollCardProps> = ({ poll, compact = false }) => 
                       {votedByMe && <Check className="w-3 h-3" strokeWidth={2.2} />}
                     </span>
                     <span className="text-xs sm:text-sm text-text leading-snug break-words">
-                      {opt.label}
+                      <RichEmojiText text={opt.label} inlineOnly />
                     </span>
                     {isConfirmed && (
                       <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[11px] bg-positive/15 border border-positive/40 text-positive shrink-0">

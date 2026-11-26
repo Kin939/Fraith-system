@@ -12,6 +12,7 @@ import type {
   CharacterProfile,
   ChatMessage,
   ChatPoll,
+  CustomCampaignEmoji,
   JournalEntry,
   LearnedSpellRecord,
   NextSessionBanner,
@@ -76,6 +77,7 @@ interface CampaignState {
   talentPurchases: PurchasedTalent[];
   rolls: RollLogEntry[];
   chatMessages: ChatMessage[];
+  customEmojis: CustomCampaignEmoji[];
   nextSession: NextSessionBanner | null;
   unreadChatCount: number;
   typingUsers: TypingMember[];
@@ -118,6 +120,7 @@ interface CampaignState {
   setRolls: (rolls: RollLogEntry[]) => void;
 
   setChatMessages: (messages: ChatMessage[]) => void;
+  setCustomEmojis: (emojis: CustomCampaignEmoji[]) => void;
   upsertChatMessage: (message: ChatMessage, isIncomingFromOther?: boolean) => void;
   removeChatMessage: (messageId: number) => void;
   updateChatPollInStore: (poll: ChatPoll) => void;
@@ -155,6 +158,7 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
   talentPurchases: [],
   rolls: [],
   chatMessages: [],
+  customEmojis: [],
   nextSession: null,
   unreadChatCount: 0,
   typingUsers: [],
@@ -171,6 +175,7 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
         journalsById: {},
         learnedSpellsById: { 1: [], 2: [], 3: [] },
         chatMessages: [],
+        customEmojis: [],
         nextSession: null,
         unreadChatCount: 0,
         typingUsers: [],
@@ -258,6 +263,7 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
   setRolls: (rolls) => set({ rolls }),
 
   setChatMessages: (chatMessages) => set({ chatMessages }),
+  setCustomEmojis: (customEmojis) => set({ customEmojis }),
 
   upsertChatMessage: (message, isIncomingFromOther = false) =>
     set((s) => {
@@ -386,10 +392,12 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
         messages: ChatMessage[];
         nextSession: NextSessionBanner | null;
         partyUsers?: AuthUser[];
+        customEmojis?: CustomCampaignEmoji[];
       }>('/api/chat').catch(() => ({
         messages: [] as ChatMessage[],
         nextSession: null as NextSessionBanner | null,
         partyUsers: [] as AuthUser[],
+        customEmojis: [] as CustomCampaignEmoji[],
       })),
       ...playerIdsToLoad.map((pid) =>
         apiFetch<{
@@ -431,6 +439,7 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
       talentPurchases: talentsRes.purchases,
       rolls: rollsRes.rolls,
       chatMessages: chatRes.messages,
+      customEmojis: chatRes.customEmojis ?? [],
       nextSession: chatRes.nextSession,
       charactersById: { ...s.charactersById, ...charMap },
       journalsById: { ...s.journalsById, ...journalMap },

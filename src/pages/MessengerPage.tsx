@@ -28,6 +28,10 @@ import {
   X,
 } from 'lucide-react';
 import {
+  CustomEmojiGlyph,
+  RichEmojiText,
+} from '../components/messenger/CustomEmoji';
+import {
   EmojiPickerPopover,
   QUICK_REACTION_EMOJIS,
   recordRecentEmoji,
@@ -40,12 +44,14 @@ import {
 } from '../components/messenger/PollComposerModal';
 import { sendCampaignSocketMessage } from '../hooks/useWebSocket';
 import { apiFetch, uploadChatAttachment } from '../lib/api';
+import { ensureEmojiPackLoaded } from '../lib/emojiPack';
 import { useCampaignStore } from '../lib/store';
 import { getSlotTheme, getUserThemeSlot } from '../lib/theme';
 import type {
   ChatAttachment,
   ChatMessage,
   ChatPollKind,
+  CustomCampaignEmoji,
   NextSessionBanner,
   PlayerId,
   UserRole,
@@ -140,27 +146,6 @@ function renderFileIcon(att: ChatAttachment) {
   return <FileText className="w-4 h-4 text-primary" strokeWidth={1.5} />;
 }
 
-function renderMessageTextWithLinks(content: string): React.ReactNode {
-  const urlRegex = /(https?:\/\/[^\s<]+)/g;
-  const parts = content.split(urlRegex);
-  return parts.map((part, idx) => {
-    if (/^https?:\/\//.test(part)) {
-      return (
-        <a
-          key={idx}
-          href={part}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-primary underline underline-offset-2 break-all hover:opacity-90"
-        >
-          {part}
-        </a>
-      );
-    }
-    return <React.Fragment key={idx}>{part}</React.Fragment>;
-  });
-}
-
 export const MessengerPage: React.FC = () => {
   const user = useCampaignStore((s) => s.user);
   const messages = useCampaignStore((s) => s.chatMessages);
@@ -170,6 +155,7 @@ export const MessengerPage: React.FC = () => {
   const charactersById = useCampaignStore((s) => s.charactersById);
 
   const setChatMessages = useCampaignStore((s) => s.setChatMessages);
+  const setCustomEmojis = useCampaignStore((s) => s.setCustomEmojis);
   const upsertChatMessage = useCampaignStore((s) => s.upsertChatMessage);
   const removeChatMessage = useCampaignStore((s) => s.removeChatMessage);
   const setNextSessionInStore = useCampaignStore((s) => s.setNextSessionInStore);
@@ -210,17 +196,22 @@ export const MessengerPage: React.FC = () => {
   const stickToBottomRef = useRef<boolean>(true);
   const lastTypingSentRef = useRef<number>(0);
 
-  // Refresh latest messages on mount so nothing is missed
+  // Preload stylized emoji pack & refresh latest messages on mount
   useEffect(() => {
+    void ensureEmojiPackLoaded();
     let active = true;
     void apiFetch<{
       messages: ChatMessage[];
       nextSession: NextSessionBanner | null;
+      customEmojis?: CustomCampaignEmoji[];
     }>('/api/chat')
       .then((res) => {
         if (!active) return;
         setChatMessages(res.messages);
         setNextSessionInStore(res.nextSession);
+        if (Array.isArray(res.customEmojis)) {
+          setCustomEmojis(res.customEmojis);
+        }
       })
       .catch(() => {
         // Already loaded via bootstrap
@@ -228,7 +219,7 @@ export const MessengerPage: React.FC = () => {
     return () => {
       active = false;
     };
-  }, [setChatMessages, setNextSessionInStore]);
+  }, [setChatMessages, setCustomEmojis, setNextSessionInStore]);
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior = 'smooth') => {
     const el = streamRef.current;
@@ -349,19 +340,29 @@ export const MessengerPage: React.FC = () => {
     }
   };
 
-  const insertEmojiAtCursor = (emoji: string) => {
+  const insertEmojiAtCursor = (emojiToken: string) => {
+    const needsSpacer = emojiToken.startsWith(':') && emojiToken.endsWith(':');
     const el = textareaRef.current;
     if (!el) {
-      setDraft((prev) => prev + emoji);
+      setDraft((prev) => {
+        const prefix =
+          needsSpacer && prev.length > 0 && !/\s$/.test(prev) ? `${prev} ` : prev;
+        return `${prefix}${emojiToken}${needsSpacer ? ' ' : ''}`;
+      });
       return;
     }
     const start = el.selectionStart ?? draft.length;
     const end = el.selectionEnd ?? draft.length;
-    const next = draft.slice(0, start) + emoji + draft.slice(end);
+    const before = draft.slice(0, start);
+    const after = draft.slice(end);
+    const padLeft = needsSpacer && before.length > 0 && !/\s$/.test(before) ? ' ' : '';
+    const padRight = needsSpacer && (after.length === 0 || !/^\s/.test(after)) ? ' ' : '';
+    const inserted = `${padLeft}${emojiToken}${padRight}`;
+    const next = before + inserted + after;
     setDraft(next);
     requestAnimationFrame(() => {
       el.focus();
-      const pos = start + emoji.length;
+      const pos = start + inserted.length;
       el.setSelectionRange(pos, pos);
     });
   };
@@ -802,10 +803,13 @@ export const MessengerPage: React.FC = () => {
             <div className="min-w-0 truncate text-xs">
               <span className="text-primary font-medium mr-1.5">Закреплено:</span>
               <span className="text-secondary group-hover:text-text transition-colors">
-                {latestPinned.poll
-                  ? `Голосование: ${latestPinned.poll.question}`
-                  : latestPinned.content ||
-                    `Вложение (${latestPinned.attachments.length})`}
+                {latestPinned.poll ? (
+                  <RichEmojiText text={`Голосование: ${latestPinned.poll.question}`} inlineOnly />
+                ) : latestPinned.content ? (
+                  <RichEmojiText text={latestPinned.content} inlineOnly />
+                ) : (
+                  `Вложение (${latestPinned.attachments.length})`
+                )}
               </span>
             </div>
           </button>
@@ -903,13 +907,13 @@ export const MessengerPage: React.FC = () => {
                           <button
                             type="button"
                             onClick={() => setLightboxImage(attachment)}
-                            className="block w-full aspect-video overflow-hidden bg-black/30"
+                            className="block w-full aspect-[4/3] overflow-hidden leading-none"
                           >
                             <img
                               src={attachment.url}
                               alt={attachment.name}
                               loading="lazy"
-                              className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform"
+                              className="block w-full h-full object-cover group-hover:scale-[1.03] transition-transform"
                             />
                           </button>
                           <div className="p-2 flex items-center justify-between gap-2 text-[11px] text-muted">
@@ -1109,34 +1113,57 @@ export const MessengerPage: React.FC = () => {
                               {msg.replyPreview.senderDisplayName}
                             </div>
                             <div className="text-xs text-muted truncate max-w-md">
-                              {msg.replyPreview.content ||
-                                (msg.replyPreview.hasPoll
-                                  ? 'Голосование'
-                                  : msg.replyPreview.hasAttachments
-                                    ? 'Вложение'
-                                    : 'Сообщение')}
+                              {msg.replyPreview.content ? (
+                                <RichEmojiText text={msg.replyPreview.content} inlineOnly />
+                              ) : msg.replyPreview.hasPoll ? (
+                                'Голосование'
+                              ) : msg.replyPreview.hasAttachments ? (
+                                'Вложение'
+                              ) : (
+                                'Сообщение'
+                              )}
                             </div>
                           </div>
                         </button>
                       )}
 
-                      {/* Text Content */}
+                      {/* Text Content with Stylized Custom Emojis */}
                       {msg.content && (
                         <div className="text-sm text-text whitespace-pre-wrap break-words leading-relaxed max-w-3xl">
-                          {renderMessageTextWithLinks(msg.content)}
+                          <RichEmojiText
+                            text={msg.content}
+                            allowJumbo={msg.attachments.length === 0 && !msg.poll}
+                          />
                           {isGroupedWithPrev && msg.editedAt && (
                             <span className="ml-1.5 text-[10px] text-muted">(изм.)</span>
                           )}
                         </div>
                       )}
 
-                      {/* Image Attachments */}
-                      {imageAttachments.length > 0 && (
+                      {/* Image Attachments (Tight Natural Aspect Ratio for 1 Image, Cropped Collage Grid for 2+ Images — Zero Black Bars) */}
+                      {imageAttachments.length === 1 && (
+                        <div className="pt-0.5">
+                          <button
+                            type="button"
+                            onClick={() => setLightboxImage(imageAttachments[0])}
+                            className="group/img relative inline-block max-w-full sm:max-w-[360px] rounded-md overflow-hidden border border-border/80 leading-none align-top"
+                          >
+                            <img
+                              src={imageAttachments[0].url}
+                              alt={imageAttachments[0].name}
+                              loading="lazy"
+                              className="block w-auto h-auto max-w-full max-h-[380px] object-cover group-hover/img:brightness-105 transition"
+                            />
+                          </button>
+                        </div>
+                      )}
+
+                      {imageAttachments.length > 1 && (
                         <div
-                          className={`grid gap-2 pt-0.5 max-w-xl ${
-                            imageAttachments.length === 1
-                              ? 'grid-cols-1'
-                              : 'grid-cols-2'
+                          className={`grid gap-1.5 pt-0.5 max-w-md ${
+                            imageAttachments.length === 2 || imageAttachments.length === 4
+                              ? 'grid-cols-2'
+                              : 'grid-cols-2 sm:grid-cols-3'
                           }`}
                         >
                           {imageAttachments.map((img, i) => (
@@ -1144,13 +1171,13 @@ export const MessengerPage: React.FC = () => {
                               key={`${img.key}-${i}`}
                               type="button"
                               onClick={() => setLightboxImage(img)}
-                              className="group/img relative overflow-hidden bg-deep border border-border text-left"
+                              className="group/img relative aspect-square w-full rounded-md overflow-hidden border border-border/80 leading-none"
                             >
                               <img
                                 src={img.url}
                                 alt={img.name}
                                 loading="lazy"
-                                className="max-h-80 w-full object-contain bg-black/30"
+                                className="block w-full h-full object-cover group-hover/img:scale-[1.03] transition-transform"
                               />
                             </button>
                           ))}
@@ -1242,13 +1269,13 @@ export const MessengerPage: React.FC = () => {
                                 type="button"
                                 title={namesTooltip}
                                 onClick={() => handleToggleReaction(msg.id, r.emoji)}
-                                className={`h-6 px-2 text-xs inline-flex items-center gap-1 border transition-colors ${
+                                className={`h-7 px-2 text-xs inline-flex items-center gap-1.5 border rounded-sm transition-colors ${
                                   reactedByMe
                                     ? 'bg-primary/15 border-primary/50 text-text'
                                     : 'bg-deep border-border text-secondary hover:text-text'
                                 }`}
                               >
-                                <span>{r.emoji}</span>
+                                <CustomEmojiGlyph token={r.emoji} sizeClass="w-4 h-4" />
                                 <span className="font-mono text-[11px] tabular-nums">
                                   {r.count}
                                 </span>
@@ -1338,17 +1365,17 @@ export const MessengerPage: React.FC = () => {
                       )}
                     </div>
 
-                    {/* Quick Emoji Reaction Bar */}
+                    {/* Quick Stylized Emoji Reaction Bar */}
                     {reactionPickerMsgId === msg.id && (
-                      <div className="absolute right-2 top-5 z-30 p-1 bg-surface border border-border shadow-glass flex items-center gap-0.5">
+                      <div className="absolute right-2 top-5 z-30 p-1 bg-surface border border-border shadow-glass flex items-center gap-1">
                         {QUICK_REACTION_EMOJIS.map((em) => (
                           <button
                             key={em}
                             type="button"
                             onClick={() => handleToggleReaction(msg.id, em)}
-                            className="w-7 h-7 flex items-center justify-center text-base hover:bg-raised transition-colors"
+                            className="w-8 h-8 flex items-center justify-center hover:bg-raised transition-transform hover:scale-110 rounded-sm"
                           >
-                            {em}
+                            <CustomEmojiGlyph token={em} sizeClass="w-5 h-5" />
                           </button>
                         ))}
                         <button
@@ -1357,8 +1384,8 @@ export const MessengerPage: React.FC = () => {
                             setReactionPickerMsgId(null);
                             setFullEmojiReactionMsgId(msg.id);
                           }}
-                          className="w-7 h-7 flex items-center justify-center text-muted hover:text-text hover:bg-raised transition-colors"
-                          title="Все эмодзи"
+                          className="w-8 h-8 flex items-center justify-center text-muted hover:text-text hover:bg-raised transition-colors"
+                          title="Все 1500+ эмодзи"
                         >
                           <Plus className="w-3.5 h-3.5" strokeWidth={1.5} />
                         </button>
@@ -1450,7 +1477,7 @@ export const MessengerPage: React.FC = () => {
                     <img
                       src={att.url}
                       alt={att.name}
-                      className="w-9 h-9 object-cover bg-black/30 shrink-0"
+                      className="block w-9 h-9 object-cover rounded-sm shrink-0"
                     />
                   ) : (
                     <div className="w-9 h-9 bg-deep border border-border flex items-center justify-center shrink-0">
@@ -1598,7 +1625,7 @@ export const MessengerPage: React.FC = () => {
         />
       )}
 
-      {/* Fullscreen Image Lightbox */}
+      {/* Fullscreen Image Lightbox (Exact Image Bounds — No Black Padding Frame) */}
       {lightboxImage && (
         <div
           onClick={() => setLightboxImage(null)}
@@ -1606,9 +1633,9 @@ export const MessengerPage: React.FC = () => {
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="max-w-5xl w-full flex flex-col items-center gap-3"
+            className="inline-flex flex-col items-center gap-3 max-w-[94vw]"
           >
-            <div className="w-full flex items-center justify-between gap-3 px-3 py-2 bg-surface border border-border">
+            <div className="w-full min-w-[260px] flex items-center justify-between gap-3 px-3 py-2 bg-surface border border-border rounded-sm">
               <div className="min-w-0">
                 <div className="text-xs font-medium text-text truncate">
                   {lightboxImage.name}
@@ -1647,7 +1674,7 @@ export const MessengerPage: React.FC = () => {
             <img
               src={lightboxImage.url}
               alt={lightboxImage.name}
-              className="max-h-[80vh] max-w-full object-contain border border-border bg-deep"
+              className="block w-auto h-auto max-h-[80vh] max-w-[92vw] rounded-md border border-border/80 shadow-2xl"
             />
           </div>
         </div>

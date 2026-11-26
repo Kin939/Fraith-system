@@ -12,6 +12,7 @@ import type {
   ChatPollOption,
   ChatReactionSummary,
   ChatReplyPreview,
+  CustomCampaignEmoji,
   DmManagedAccountInfo,
   JournalEntry,
   LearnedSpellRecord,
@@ -1786,4 +1787,104 @@ export async function confirmPollOptionAsNextSession(
   if (!poll) return null;
 
   return { poll, nextSession };
+}
+
+const RU_TRANSLIT: Record<string, string> = {
+  а: 'a', б: 'b', в: 'v', г: 'g', д: 'd', е: 'e', ё: 'yo', ж: 'zh', з: 'z',
+  и: 'i', й: 'y', к: 'k', л: 'l', м: 'm', н: 'n', о: 'o', п: 'p', р: 'r',
+  с: 's', т: 't', у: 'u', ф: 'f', х: 'kh', ц: 'ts', ч: 'ch', ш: 'sh', щ: 'sch',
+  ъ: '', ы: 'y', ь: '', э: 'e', ю: 'yu', я: 'ya',
+};
+
+export function slugifyCustomEmojiCode(raw: string): string {
+  const lower = raw.trim().toLowerCase();
+  let transliterated = '';
+  for (const ch of lower) {
+    transliterated += RU_TRANSLIT[ch] !== undefined ? RU_TRANSLIT[ch] : ch;
+  }
+  const cleaned = transliterated
+    .replace(/[^a-z0-9_]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 24);
+  return cleaned || `emote_${Math.random().toString(36).slice(2, 6)}`;
+}
+
+export async function listCustomCampaignEmojis(
+  db: D1Database
+): Promise<CustomCampaignEmoji[]> {
+  const { results } = await db
+    .prepare(`SELECT * FROM chat_custom_emojis ORDER BY id DESC`)
+    .all<{
+      id: number;
+      code: string;
+      name: string;
+      image_key: string;
+      image_url: string;
+      creator_id: number;
+      created_at: string;
+    }>();
+
+  return results.map((r) => ({
+    id: r.id,
+    code: r.code,
+    token: `:${r.code}:`,
+    name: r.name,
+    imageUrl: r.image_url,
+    creatorId: r.creator_id,
+    createdAt: r.created_at,
+  }));
+}
+
+export async function createCustomCampaignEmoji(
+  db: D1Database,
+  params: {
+    name: string;
+    code?: string;
+    imageKey: string;
+    imageUrl: string;
+    creatorId: number;
+  }
+): Promise<CustomCampaignEmoji> {
+  const baseCode = slugifyCustomEmojiCode(params.code || params.name);
+  let finalCode = `c_${baseCode}`;
+  const existing = await db
+    .prepare(`SELECT 1 AS ok FROM chat_custom_emojis WHERE code = ?`)
+    .bind(finalCode)
+    .first<{ ok: number }>();
+
+  if (existing) {
+    finalCode = `c_${baseCode}_${Math.random().toString(36).slice(2, 5)}`;
+  }
+
+  await db
+    .prepare(
+      `INSERT INTO chat_custom_emojis (code, name, image_key, image_url, creator_id, created_at)
+       VALUES (?, ?, ?, ?, ?, datetime('now'))`
+    )
+    .bind(finalCode, params.name.trim().slice(0, 48), params.imageKey, params.imageUrl, params.creatorId)
+    .run();
+
+  const all = await listCustomCampaignEmojis(db);
+  return (
+    all.find((e) => e.code === finalCode) ?? {
+      id: Date.now(),
+      code: finalCode,
+      token: `:${finalCode}:`,
+      name: params.name.trim(),
+      imageUrl: params.imageUrl,
+      creatorId: params.creatorId,
+      createdAt: new Date().toISOString(),
+    }
+  );
+}
+
+export async function deleteCustomCampaignEmoji(
+  db: D1Database,
+  id: number
+): Promise<boolean> {
+  const res = await db
+    .prepare(`DELETE FROM chat_custom_emojis WHERE id = ?`)
+    .bind(id)
+    .run();
+  return Boolean(res.meta.changes);
 }
