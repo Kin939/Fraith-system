@@ -252,7 +252,18 @@ export type CampaignWsEventType =
   | 'chat:message_deleted'
   | 'chat:poll_updated'
   | 'chat:session_updated'
+  | 'chat:emojis_updated'
   | 'chat:typing';
+
+export interface CustomCampaignEmoji {
+  id: number;
+  code: string;
+  token: string;
+  name: string;
+  imageUrl: string;
+  creatorId: number;
+  createdAt: string;
+}
 
 export type ChatAttachmentKind = 'image' | 'audio' | 'video' | 'file';
 
