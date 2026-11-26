@@ -4,6 +4,7 @@ import { DEFAULT_ANIME_THEME, parseThemeJson } from './theme';
 import type {
   AuthUser,
   BestiaryCreature,
+  CampaignNpc,
   CharacterProfile,
   ChatAttachment,
   ChatMessage,
@@ -18,9 +19,11 @@ import type {
   JournalEntry,
   LearnedSpellRecord,
   NextSessionBanner,
+  NpcAttitude,
   PlayerId,
   PurchasedTalent,
   Quest,
+  QuestNote,
   QuestParameters,
   QuestStatus,
   RollLogEntry,
@@ -517,6 +520,7 @@ interface QuestRow {
   tile_emblem?: string | null;
   tile_pattern?: string | null;
   is_important?: number | null;
+  notes_count?: number | null;
 }
 
 function mapQuestRow(row: QuestRow): Quest {
@@ -544,23 +548,209 @@ function mapQuestRow(row: QuestRow): Quest {
       pattern: normalizeQuestPattern(row.tile_pattern),
       isImportant: Boolean(row.is_important),
     },
+    notesCount: Number(row.notes_count ?? 0),
   };
 }
 
 export async function listQuests(db: D1Database): Promise<Quest[]> {
   const { results } = await db
     .prepare(
-      `SELECT * FROM quests
-       ORDER BY is_important DESC,
-       CASE status
+      `SELECT q.*,
+              (SELECT COUNT(*) FROM quest_notes n WHERE n.quest_id = q.id) AS notes_count
+       FROM quests q
+       ORDER BY q.is_important DESC,
+       CASE q.status
          WHEN 'active' THEN 0
          WHEN 'available' THEN 1
          WHEN 'completed' THEN 2
          ELSE 3
-       END, id DESC`
+       END, q.id DESC`
     )
     .all<QuestRow>();
   return results.map(mapQuestRow);
+}
+
+// ---------------------------------------------------------------------------
+// Quest notes — first-person party notes, visible to everyone at the table
+// ---------------------------------------------------------------------------
+
+interface QuestNoteRow {
+  id: number;
+  quest_id: number;
+  author_user_id: number;
+  body: string;
+  created_at: string;
+  updated_at: string | null;
+  display_name: string;
+  role: UserRole;
+  player_id: PlayerId | null;
+  character_name: string | null;
+}
+
+/** Hard cap so a single note can never bloat the campaign state */
+export const QUEST_NOTE_MAX_LENGTH = 2000;
+
+export async function listQuestNotes(db: D1Database, questId: number): Promise<QuestNote[]> {
+  const { results } = await db
+    .prepare(
+      `SELECT n.id, n.quest_id, n.author_user_id, n.body, n.created_at, n.updated_at,
+              u.display_name, u.role, u.player_id,
+              cp.character_name AS character_name
+       FROM quest_notes n
+       JOIN users u ON u.id = n.author_user_id
+       LEFT JOIN character_profiles cp ON cp.player_id = u.player_id
+       WHERE n.quest_id = ?
+       ORDER BY n.created_at ASC, n.id ASC`
+    )
+    .bind(questId)
+    .all<QuestNoteRow>();
+
+  const avatars = await loadAvatarIndex(db);
+
+  return results.map((row) => ({
+    id: row.id,
+    questId: row.quest_id,
+    authorId: row.author_user_id,
+    authorName: row.display_name,
+    authorRole: row.role,
+    authorPlayerId: row.player_id,
+    authorCharacterName:
+      row.role === 'player' && (row.character_name || '').trim()
+        ? row.character_name!.trim()
+        : null,
+    authorAvatarUrl: avatars.byUserId.get(row.author_user_id) ?? null,
+    body: row.body,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  }));
+}
+
+export async function getQuestNoteAuthor(
+  db: D1Database,
+  noteId: number
+): Promise<{ id: number; questId: number; authorId: number } | null> {
+  const row = await db
+    .prepare(`SELECT id, quest_id, author_user_id FROM quest_notes WHERE id = ?`)
+    .bind(noteId)
+    .first<{ id: number; quest_id: number; author_user_id: number }>();
+  if (!row) return null;
+  return { id: row.id, questId: row.quest_id, authorId: row.author_user_id };
+}
+
+/** Quest ids are validated by the caller; the note body is trimmed & capped here. */
+export async function createQuestNote(
+  db: D1Database,
+  questId: number,
+  authorId: number,
+  body: string
+): Promise<void> {
+  await db
+    .prepare(
+      `INSERT INTO quest_notes (quest_id, author_user_id, body, created_at)
+       VALUES (?, ?, ?, datetime('now'))`
+    )
+    .bind(questId, authorId, body.trim().slice(0, QUEST_NOTE_MAX_LENGTH))
+    .run();
+}
+
+export async function updateQuestNote(
+  db: D1Database,
+  noteId: number,
+  body: string
+): Promise<void> {
+  await db
+    .prepare(
+      `UPDATE quest_notes SET body = ?, updated_at = datetime('now') WHERE id = ?`
+    )
+    .bind(body.trim().slice(0, QUEST_NOTE_MAX_LENGTH), noteId)
+    .run();
+}
+
+export async function deleteQuestNote(db: D1Database, noteId: number): Promise<void> {
+  await db.prepare(`DELETE FROM quest_notes WHERE id = ?`).bind(noteId).run();
+}
+
+// ---------------------------------------------------------------------------
+// Campaign NPCs ("Связи" tab) — created hidden, revealed by the DM
+// ---------------------------------------------------------------------------
+
+interface CampaignNpcRow {
+  id: number;
+  name: string;
+  role: string;
+  faction: string;
+  location: string;
+  attitude: string;
+  description: string;
+  secret_notes: string;
+  image_key: string | null;
+  is_revealed: number;
+  sort_order: number;
+  created_at: string;
+  updated_at: string | null;
+}
+
+export const NPC_ATTITUDES: NpcAttitude[] = [
+  'friendly',
+  'neutral',
+  'wary',
+  'hostile',
+  'unknown',
+];
+
+export function normalizeNpcAttitude(value: unknown): NpcAttitude {
+  const raw = typeof value === 'string' ? value.trim().toLowerCase() : '';
+  return (NPC_ATTITUDES as string[]).includes(raw) ? (raw as NpcAttitude) : 'neutral';
+}
+
+function mapNpcRow(row: CampaignNpcRow, isDm: boolean): CampaignNpc {
+  return {
+    id: row.id,
+    name: row.name,
+    role: row.role,
+    faction: row.faction,
+    location: row.location,
+    attitude: normalizeNpcAttitude(row.attitude),
+    description: row.description,
+    // Secrets never leave the DM's view
+    secretNotes: isDm ? row.secret_notes : '',
+    imageKey: row.image_key,
+    isRevealed: Boolean(row.is_revealed),
+    sortOrder: row.sort_order,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+/**
+ * Players only ever receive revealed contacts — hidden NPCs are invisible to them.
+ */
+export async function listNpcs(
+  db: D1Database,
+  viewerRole: UserRole
+): Promise<CampaignNpc[]> {
+  const { results } = await db
+    .prepare(
+      `SELECT * FROM campaign_npcs
+       ORDER BY is_revealed DESC, sort_order ASC, name ASC, id ASC`
+    )
+    .all<CampaignNpcRow>();
+
+  const isDm = viewerRole === 'dm';
+  return results
+    .filter((row) => isDm || Boolean(row.is_revealed))
+    .map((row) => mapNpcRow(row, isDm));
+}
+
+export async function getNpcById(
+  db: D1Database,
+  npcId: number
+): Promise<CampaignNpc | null> {
+  const row = await db
+    .prepare(`SELECT * FROM campaign_npcs WHERE id = ?`)
+    .bind(npcId)
+    .first<CampaignNpcRow>();
+  return row ? mapNpcRow(row, true) : null;
 }
 
 interface BestiaryRow {

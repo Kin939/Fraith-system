@@ -5,7 +5,7 @@ import { QuestDetail } from '../components/quests/QuestDetail';
 import { QuestTile } from '../components/quests/QuestTile';
 import { patchQuestTile } from '../lib/api';
 import { useCampaignStore } from '../lib/store';
-import { tileGridCols, useTileSize } from '../lib/tileSize';
+import { useTileSize } from '../lib/tileSize';
 import type { Quest } from '../lib/types';
 
 type QuestStatusFilter = 'all' | 'active' | 'completed' | 'important';
@@ -125,7 +125,8 @@ export const QuestsPage: React.FC = () => {
 
       {/* Split View: Stack on mobile, 5/7 split on lg+ */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        <div className={`lg:col-span-5 grid gap-3 ${tileGridCols(tileSize)}`}>
+        {/* Wide rectangular cards — one per row so quests never look like squares */}
+        <div className="lg:col-span-5 grid grid-cols-1 gap-2.5">
           {filteredQuests.length === 0 ? (
             <div className="glass-panel hud-cut p-6 text-center text-sm text-muted">
               Квестов с выбранным статусом нет

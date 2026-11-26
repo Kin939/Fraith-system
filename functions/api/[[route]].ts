@@ -17,13 +17,17 @@ import {
   confirmPollOptionAsNextSession,
   createChatMessage,
   createChatPollWithMessage,
+  createQuestNote,
   createCustomCampaignEmoji,
   deleteChatMessage,
   deleteCustomCampaignEmoji,
+  deleteQuestNote,
   getCharacterProfile,
   getChatMessageById,
   getJournalEntry,
   getNextSessionBanner,
+  getNpcById,
+  getQuestNoteAuthor,
   getTalentsState,
   getUserByEmail,
   getUserById,
@@ -36,11 +40,14 @@ import {
   listCustomCampaignEmojis,
   listDmManagedAccounts,
   listLearnedSpellsForPlayer,
+  listNpcs,
+  listQuestNotes,
   listQuests,
   listRecentRolls,
   listSpells,
   mapUserRowToAuthUser,
   nextCustomSpellId,
+  normalizeNpcAttitude,
   parseCrToNumeric,
   saveJournalEntry,
   setChatPollClosed,
@@ -51,6 +58,7 @@ import {
   unlockTalentForParty,
   updateAccountPassword,
   updateChatMessageContent,
+  updateQuestNote,
   updateLearnedSpellMeta,
   upsertNextSessionBanner,
   upsertUserTheme,
@@ -980,6 +988,114 @@ app.delete('/dm/quests/:id', async (c) => {
   return c.json({ quests });
 });
 
+// ---------------------------------------------------------------------------
+// Quest notes — party members write in their own name, everyone sees them
+// ---------------------------------------------------------------------------
+
+const QUEST_NOTE_LIMIT = 2000;
+
+async function broadcastQuestNotes(env: Env, questId: number, senderId?: number) {
+  const notes = await listQuestNotes(env.DB, questId);
+  await broadcastCampaignEvent(env, 'quest_notes:updated', { questId, notes }, senderId);
+  return notes;
+}
+
+async function questExists(env: Env, questId: number): Promise<boolean> {
+  const row = await env.DB.prepare(`SELECT id FROM quests WHERE id = ?`)
+    .bind(questId)
+    .first<{ id: number }>();
+  return Boolean(row);
+}
+
+app.get('/quests/:id/notes', async (c) => {
+  const user = c.get('user');
+  if (!user) return c.json({ error: 'Необходима авторизация' }, 401);
+
+  const questId = Number.parseInt(c.req.param('id'), 10);
+  if (!Number.isFinite(questId) || questId <= 0) {
+    return c.json({ error: 'Некорректный id квеста' }, 400);
+  }
+
+  const notes = await listQuestNotes(c.env.DB, questId);
+  return c.json({ notes });
+});
+
+app.post('/quests/:id/notes', async (c) => {
+  const user = c.get('user')!;
+  const questId = Number.parseInt(c.req.param('id'), 10);
+  if (!Number.isFinite(questId) || questId <= 0) {
+    return c.json({ error: 'Некорректный id квеста' }, 400);
+  }
+  if (!(await questExists(c.env, questId))) {
+    return c.json({ error: 'Квест не найден' }, 404);
+  }
+
+  const body = await c.req
+    .json<{ body?: string }>()
+    .catch((): { body?: string } => ({}));
+  const text = (body.body || '').trim();
+
+  if (!text) return c.json({ error: 'Заметка не может быть пустой' }, 400);
+  if (text.length > QUEST_NOTE_LIMIT) {
+    return c.json({ error: `Заметка длиннее ${QUEST_NOTE_LIMIT} символов` }, 400);
+  }
+
+  await createQuestNote(c.env.DB, questId, user.id, text);
+  const notes = await broadcastQuestNotes(c.env, questId, user.id);
+  return c.json({ notes });
+});
+
+app.put('/quests/:id/notes/:noteId', async (c) => {
+  const user = c.get('user')!;
+  const questId = Number.parseInt(c.req.param('id'), 10);
+  const noteId = Number.parseInt(c.req.param('noteId'), 10);
+  if (!Number.isFinite(questId) || !Number.isFinite(noteId)) {
+    return c.json({ error: 'Некорректный id заметки' }, 400);
+  }
+
+  const note = await getQuestNoteAuthor(c.env.DB, noteId);
+  if (!note || note.questId !== questId) {
+    return c.json({ error: 'Заметка не найдена' }, 404);
+  }
+  if (note.authorId !== user.id && user.role !== 'dm') {
+    return c.json({ error: 'Можно редактировать только свои заметки' }, 403);
+  }
+
+  const body = await c.req
+    .json<{ body?: string }>()
+    .catch((): { body?: string } => ({}));
+  const text = (body.body || '').trim();
+  if (!text) return c.json({ error: 'Заметка не может быть пустой' }, 400);
+  if (text.length > QUEST_NOTE_LIMIT) {
+    return c.json({ error: `Заметка длиннее ${QUEST_NOTE_LIMIT} символов` }, 400);
+  }
+
+  await updateQuestNote(c.env.DB, noteId, text);
+  const notes = await broadcastQuestNotes(c.env, questId, user.id);
+  return c.json({ notes });
+});
+
+app.delete('/quests/:id/notes/:noteId', async (c) => {
+  const user = c.get('user')!;
+  const questId = Number.parseInt(c.req.param('id'), 10);
+  const noteId = Number.parseInt(c.req.param('noteId'), 10);
+  if (!Number.isFinite(questId) || !Number.isFinite(noteId)) {
+    return c.json({ error: 'Некорректный id заметки' }, 400);
+  }
+
+  const note = await getQuestNoteAuthor(c.env.DB, noteId);
+  if (!note || note.questId !== questId) {
+    return c.json({ error: 'Заметка не найдена' }, 404);
+  }
+  if (note.authorId !== user.id && user.role !== 'dm') {
+    return c.json({ error: 'Можно удалять только свои заметки' }, 403);
+  }
+
+  await deleteQuestNote(c.env.DB, noteId);
+  const notes = await broadcastQuestNotes(c.env, questId, user.id);
+  return c.json({ notes });
+});
+
 // ============================================================================
 // Tab 3: Bestiary (Role-masked read, CR sorting, DM CRUD)
 // ============================================================================
@@ -1097,6 +1213,162 @@ app.delete('/dm/bestiary/:id', async (c) => {
   await broadcastCampaignEvent(c.env, 'bestiary:updated', { updatedAt: Date.now() }, user.id);
   const creatures = await listBestiary(c.env.DB, 'dm');
   return c.json({ creatures });
+});
+
+// ============================================================================
+// Connections tab: campaign NPCs (players see revealed contacts only)
+// ============================================================================
+
+const NPC_TEXT_LIMIT = 4000;
+
+interface NpcMutationBody {
+  name?: string;
+  role?: string;
+  faction?: string;
+  location?: string;
+  attitude?: string;
+  description?: string;
+  secretNotes?: string;
+  imageKey?: string | null;
+  isRevealed?: boolean;
+  sortOrder?: number;
+}
+
+function normalizeNpcBody(body: NpcMutationBody) {
+  return {
+    name: (body.name || '').trim().slice(0, 80),
+    role: (body.role || '').trim().slice(0, 80),
+    faction: (body.faction || '').trim().slice(0, 80),
+    location: (body.location || '').trim().slice(0, 80),
+    attitude: normalizeNpcAttitude(body.attitude),
+    description: (body.description || '').trim().slice(0, NPC_TEXT_LIMIT),
+    secretNotes: (body.secretNotes || '').trim().slice(0, NPC_TEXT_LIMIT),
+    imageKey: body.imageKey || null,
+    isRevealed: Boolean(body.isRevealed),
+    sortOrder: Math.trunc(body.sortOrder ?? 0),
+  };
+}
+
+async function broadcastNpcUpdate(env: Env, senderId?: number): Promise<void> {
+  // Invalidation only — the masked list is re-fetched per role so secrets never leak
+  await broadcastCampaignEvent(env, 'npcs:updated', { updatedAt: Date.now() }, senderId);
+}
+
+app.get('/npcs', async (c) => {
+  const user = c.get('user');
+  if (!user) return c.json({ error: 'Необходима авторизация' }, 401);
+
+  const npcs = await listNpcs(c.env.DB, user.role);
+  return c.json({ npcs });
+});
+
+app.post('/dm/npcs', async (c) => {
+  const user = c.get('user')!;
+  const body = await c.req
+    .json<NpcMutationBody>()
+    .catch((): NpcMutationBody => ({}));
+  const npc = normalizeNpcBody(body);
+
+  if (!npc.name) return c.json({ error: 'Укажите имя NPC' }, 400);
+
+  await c.env.DB.prepare(
+    `INSERT INTO campaign_npcs
+       (name, role, faction, location, attitude, description, secret_notes, image_key, is_revealed, sort_order, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`
+  )
+    .bind(
+      npc.name,
+      npc.role,
+      npc.faction,
+      npc.location,
+      npc.attitude,
+      npc.description,
+      npc.secretNotes,
+      npc.imageKey,
+      npc.isRevealed ? 1 : 0,
+      npc.sortOrder
+    )
+    .run();
+
+  await broadcastNpcUpdate(c.env, user.id);
+  const npcs = await listNpcs(c.env.DB, 'dm');
+  return c.json({ npcs });
+});
+
+app.put('/dm/npcs/:id', async (c) => {
+  const user = c.get('user')!;
+  const id = Number.parseInt(c.req.param('id'), 10);
+  if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Некорректный id NPC' }, 400);
+  if (!(await getNpcById(c.env.DB, id))) return c.json({ error: 'NPC не найден' }, 404);
+
+  const body = await c.req
+    .json<NpcMutationBody>()
+    .catch((): NpcMutationBody => ({}));
+  const npc = normalizeNpcBody(body);
+  if (!npc.name) return c.json({ error: 'Укажите имя NPC' }, 400);
+
+  await c.env.DB.prepare(
+    `UPDATE campaign_npcs
+     SET name = ?, role = ?, faction = ?, location = ?, attitude = ?,
+         description = ?, secret_notes = ?, image_key = ?, is_revealed = ?,
+         sort_order = ?, updated_at = datetime('now')
+     WHERE id = ?`
+  )
+    .bind(
+      npc.name,
+      npc.role,
+      npc.faction,
+      npc.location,
+      npc.attitude,
+      npc.description,
+      npc.secretNotes,
+      npc.imageKey,
+      npc.isRevealed ? 1 : 0,
+      npc.sortOrder,
+      id
+    )
+    .run();
+
+  await broadcastNpcUpdate(c.env, user.id);
+  const npcs = await listNpcs(c.env.DB, 'dm');
+  return c.json({ npcs });
+});
+
+// One-tap reveal / hide from the connections grid
+app.patch('/dm/npcs/:id/reveal', async (c) => {
+  const user = c.get('user')!;
+  const id = Number.parseInt(c.req.param('id'), 10);
+  if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Некорректный id NPC' }, 400);
+
+  const existing = await getNpcById(c.env.DB, id);
+  if (!existing) return c.json({ error: 'NPC не найден' }, 404);
+
+  const body = await c.req
+    .json<{ isRevealed?: boolean }>()
+    .catch((): { isRevealed?: boolean } => ({}));
+  const isRevealed =
+    body.isRevealed === undefined ? !existing.isRevealed : Boolean(body.isRevealed);
+
+  await c.env.DB.prepare(
+    `UPDATE campaign_npcs SET is_revealed = ?, updated_at = datetime('now') WHERE id = ?`
+  )
+    .bind(isRevealed ? 1 : 0, id)
+    .run();
+
+  await broadcastNpcUpdate(c.env, user.id);
+  const npcs = await listNpcs(c.env.DB, 'dm');
+  return c.json({ npcs });
+});
+
+app.delete('/dm/npcs/:id', async (c) => {
+  const user = c.get('user')!;
+  const id = Number.parseInt(c.req.param('id'), 10);
+  if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Некорректный id NPC' }, 400);
+
+  await c.env.DB.prepare(`DELETE FROM campaign_npcs WHERE id = ?`).bind(id).run();
+  await broadcastNpcUpdate(c.env, user.id);
+  const npcs = await listNpcs(c.env.DB, 'dm');
+  return c.json({ npcs });
 });
 
 // ============================================================================

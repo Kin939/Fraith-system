@@ -13,6 +13,7 @@ import type {
   PlayerId,
   PurchasedTalent,
   Quest,
+  QuestNote,
   RollLogEntry,
   Spell,
   TalentNode,
@@ -74,6 +75,17 @@ export function useWebSocket() {
             if (Array.isArray(p?.quests)) {
               store.setQuests(p.quests);
             }
+            break;
+          }
+          case 'quest_notes:updated': {
+            const p = msg.payload as { questId?: number; notes?: QuestNote[] };
+            if (typeof p?.questId === 'number' && Array.isArray(p.notes)) {
+              store.setQuestNotes(p.questId, p.notes);
+            }
+            break;
+          }
+          case 'npcs:updated': {
+            void store.refreshNpcs();
             break;
           }
           case 'bestiary:updated': {

@@ -56,7 +56,7 @@ export async function apiFetch<T>(
 
 export async function uploadImageAsset(
   file: File,
-  folder: 'quests' | 'bestiary' | 'talents' | 'avatars'
+  folder: 'quests' | 'bestiary' | 'talents' | 'avatars' | 'npcs'
 ): Promise<{ key: string; url: string }> {
   const fd = new FormData();
   fd.append('file', file);

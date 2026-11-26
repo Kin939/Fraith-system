@@ -9,6 +9,7 @@ import {
 import type {
   AuthUser,
   BestiaryCreature,
+  CampaignNpc,
   CharacterProfile,
   ChatMessage,
   ChatPoll,
@@ -19,6 +20,7 @@ import type {
   PlayerId,
   PurchasedTalent,
   Quest,
+  QuestNote,
   RollLogEntry,
   Spell,
   TalentNode,
@@ -30,6 +32,7 @@ export type CampaignTabId =
   | 'quests'
   | 'bestiary'
   | 'spells'
+  | 'connections'
   | 'talents'
   | 'chat'
   | 'dm';
@@ -71,6 +74,9 @@ interface CampaignState {
   learnedSpellsById: Partial<Record<PlayerId, LearnedSpellRecord[]>>;
 
   quests: Quest[];
+  /** Party notes per quest id (loaded on demand, synced in real time) */
+  questNotes: Record<number, QuestNote[]>;
+  npcs: CampaignNpc[];
   bestiary: BestiaryCreature[];
   spells: Spell[];
   inspirationPoints: number;
@@ -97,6 +103,8 @@ interface CampaignState {
   setOnlineUsers: (online: OnlineMember[]) => void;
 
   setQuests: (quests: Quest[]) => void;
+  setQuestNotes: (questId: number, notes: QuestNote[]) => void;
+  setNpcs: (npcs: CampaignNpc[]) => void;
   setBestiary: (creatures: BestiaryCreature[]) => void;
   setSpells: (spells: Spell[]) => void;
   setTalentsBundle: (bundle: {
@@ -138,6 +146,7 @@ interface CampaignState {
 
   bootstrapCampaignData: () => Promise<void>;
   refreshBestiary: () => Promise<void>;
+  refreshNpcs: () => Promise<void>;
 }
 
 export const useCampaignStore = create<CampaignState>((set, get) => ({
@@ -156,6 +165,8 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
   learnedSpellsById: { 1: [], 2: [], 3: [] },
 
   quests: [],
+  questNotes: {},
+  npcs: [],
   bestiary: [],
   spells: [],
   inspirationPoints: 0,
@@ -179,6 +190,8 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
         charactersById: {},
         journalsById: {},
         learnedSpellsById: { 1: [], 2: [], 3: [] },
+        questNotes: {},
+        npcs: [],
         chatMessages: [],
         customEmojis: [],
         nextSession: null,
@@ -210,6 +223,16 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
   setOnlineUsers: (onlineUsers) => set({ onlineUsers }),
 
   setQuests: (quests) => set({ quests }),
+
+  setQuestNotes: (questId, notes) =>
+    set((s) => ({
+      questNotes: { ...s.questNotes, [questId]: notes },
+      quests: s.quests.map((q) =>
+        q.id === questId ? { ...q, notesCount: notes.length } : q
+      ),
+    })),
+
+  setNpcs: (npcs) => set({ npcs }),
   setBestiary: (bestiary) => set({ bestiary }),
   setSpells: (spells) => set({ spells }),
   setTalentsBundle: ({ inspirationPoints, nodes, purchases }) =>
@@ -403,6 +426,7 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
       rollsRes,
       allCharsRes,
       chatRes,
+      npcsRes,
       ...playerBundles
     ] = await Promise.all([
       apiFetch<{ quests: Quest[] }>('/api/quests'),
@@ -425,6 +449,9 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
         nextSession: null as NextSessionBanner | null,
         partyUsers: [] as AuthUser[],
         customEmojis: [] as CustomCampaignEmoji[],
+      })),
+      apiFetch<{ npcs: CampaignNpc[] }>('/api/npcs').catch(() => ({
+        npcs: [] as CampaignNpc[],
       })),
       ...playerIdsToLoad.map((pid) =>
         apiFetch<{
@@ -459,6 +486,7 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
 
     set((s) => ({
       quests: questsRes.quests,
+      npcs: npcsRes.npcs,
       bestiary: bestiaryRes.creatures,
       spells: spellsRes.spells,
       inspirationPoints: talentsRes.inspirationPoints,
@@ -477,5 +505,10 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
   refreshBestiary: async () => {
     const bestiaryRes = await apiFetch<{ creatures: BestiaryCreature[] }>('/api/bestiary');
     set({ bestiary: bestiaryRes.creatures });
+  },
+
+  refreshNpcs: async () => {
+    const npcsRes = await apiFetch<{ npcs: CampaignNpc[] }>('/api/npcs');
+    set({ npcs: npcsRes.npcs });
   },
 }));
