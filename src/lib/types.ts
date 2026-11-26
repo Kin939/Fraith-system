@@ -246,7 +246,106 @@ export type CampaignWsEventType =
   | 'lss:roll'
   | 'rolls:cleared'
   | 'lss:health'
-  | 'theme:updated';
+  | 'theme:updated'
+  | 'chat:message_created'
+  | 'chat:message_updated'
+  | 'chat:message_deleted'
+  | 'chat:poll_updated'
+  | 'chat:session_updated'
+  | 'chat:typing';
+
+export type ChatAttachmentKind = 'image' | 'audio' | 'video' | 'file';
+
+export interface ChatAttachment {
+  key: string;
+  url: string;
+  name: string;
+  mimeType: string;
+  size: number;
+  kind: ChatAttachmentKind;
+}
+
+export interface ChatParticipantBadge {
+  userId: number;
+  displayName: string;
+  role: UserRole;
+  playerId: PlayerId | null;
+}
+
+export interface ChatReactionSummary {
+  emoji: string;
+  count: number;
+  userIds: number[];
+  users: ChatParticipantBadge[];
+}
+
+export type ChatPollKind = 'date' | 'general';
+
+export interface ChatPollOption {
+  id: number;
+  pollId: number;
+  label: string;
+  dateIso: string | null;
+  sortOrder: number;
+  voteCount: number;
+  userIds: number[];
+  voters: ChatParticipantBadge[];
+}
+
+export interface ChatPoll {
+  id: number;
+  creatorId: number;
+  creatorName: string;
+  kind: ChatPollKind;
+  question: string;
+  allowMultiple: boolean;
+  isAnonymous: boolean;
+  allowAddOptions: boolean;
+  isClosed: boolean;
+  confirmedOptionId: number | null;
+  totalVoters: number;
+  options: ChatPollOption[];
+  createdAt: string;
+}
+
+export interface ChatReplyPreview {
+  id: number;
+  senderDisplayName: string;
+  senderRole: UserRole;
+  senderPlayerId: PlayerId | null;
+  content: string;
+  hasAttachments: boolean;
+  hasPoll: boolean;
+}
+
+export interface ChatMessage {
+  id: number;
+  userId: number;
+  senderUsername: string;
+  senderDisplayName: string;
+  senderRole: UserRole;
+  senderPlayerId: PlayerId | null;
+  content: string;
+  replyToId: number | null;
+  replyPreview: ChatReplyPreview | null;
+  attachments: ChatAttachment[];
+  pollId: number | null;
+  poll: ChatPoll | null;
+  reactions: ChatReactionSummary[];
+  isPinned: boolean;
+  editedAt: string | null;
+  createdAt: string;
+}
+
+export interface NextSessionBanner {
+  campaignId: string;
+  label: string;
+  dateIso: string | null;
+  note: string;
+  pollId: number | null;
+  updatedBy: number | null;
+  updatedAt: string;
+}
 
 export interface DmManagedAccountInfo {
   id: number;

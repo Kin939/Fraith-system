@@ -3,6 +3,7 @@ import {
   BookOpen,
   Crown,
   LogOut,
+  MessageSquare,
   ScrollText,
   Skull,
   Sparkles,
@@ -21,11 +22,17 @@ export const TabBar: React.FC<TabBarProps> = ({ onLogout }) => {
   const activeTab = useCampaignStore((s) => s.activeTab);
   const setActiveTab = useCampaignStore((s) => s.setActiveTab);
   const wsConnected = useCampaignStore((s) => s.wsConnected);
+  const unreadChatCount = useCampaignStore((s) => s.unreadChatCount);
 
   if (!user) return null;
   const isDm = user.role === 'dm';
 
-  const tabs: Array<{ id: CampaignTabId; label: string; icon: React.ReactNode }> = [
+  const tabs: Array<{
+    id: CampaignTabId;
+    label: string;
+    icon: React.ReactNode;
+    badge?: number;
+  }> = [
     {
       id: 'character',
       label: isDm ? 'Персонажи' : 'Мой персонаж',
@@ -39,6 +46,12 @@ export const TabBar: React.FC<TabBarProps> = ({ onLogout }) => {
     { id: 'bestiary', label: 'Бестиарий', icon: <Skull className="w-4 h-4" strokeWidth={1.5} /> },
     { id: 'spells', label: 'Заклинания', icon: <BookOpen className="w-4 h-4" strokeWidth={1.5} /> },
     { id: 'talents', label: 'Дерево талантов', icon: <Sparkles className="w-4 h-4" strokeWidth={1.5} /> },
+    {
+      id: 'chat',
+      label: 'Мессенджер',
+      icon: <MessageSquare className="w-4 h-4" strokeWidth={1.5} />,
+      badge: unreadChatCount > 0 ? unreadChatCount : undefined,
+    },
   ];
 
   if (isDm) {
@@ -99,6 +112,11 @@ export const TabBar: React.FC<TabBarProps> = ({ onLogout }) => {
             >
               <span className={active ? 'text-primary' : 'text-muted'}>{tab.icon}</span>
               <span>{tab.label}</span>
+              {tab.badge ? (
+                <span className="hud-keycap text-primary border-primary/40 font-mono tabular-nums">
+                  {tab.badge > 99 ? '99+' : tab.badge}
+                </span>
+              ) : null}
             </button>
           );
         })}
