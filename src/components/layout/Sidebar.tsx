@@ -19,6 +19,7 @@ import { apiFetch } from '../../lib/api';
 import { CampaignTabId, useCampaignStore } from '../../lib/store';
 import type { PlayerId } from '../../lib/types';
 import { PeerAvatar } from '../common/PeerAvatar';
+import { BUILD_AT, BUILD_SHA } from './UpdatePrompt';
 
 interface SidebarProps {
   onLogout: () => void;
@@ -311,6 +312,14 @@ export const Sidebar: React.FC<SidebarProps> = ({ onLogout }) => {
           <div className="text-xs text-muted truncate">
             {isDm ? 'Мастер кампании' : `Игрок ${user.playerId} · ${user.username}`}
           </div>
+          {BUILD_SHA && (
+            <div
+              className="text-[9px] font-mono text-muted/60 truncate"
+              title={`Сборка ${BUILD_SHA}${BUILD_AT ? ` · ${new Date(BUILD_AT).toLocaleString('ru-RU')}` : ''}`}
+            >
+              build {BUILD_SHA.slice(0, 7)}
+            </div>
+          )}
         </div>
         <button
           type="button"

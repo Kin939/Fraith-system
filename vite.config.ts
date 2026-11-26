@@ -188,6 +188,10 @@ function fraithCdnBootstrapPlugin(): Plugin {
 export default defineConfig({
   plugins: [react(), fraithCdnBootstrapPlugin()],
   base: './',
+  define: {
+    __FRAITH_BUILD_SHA__: JSON.stringify(resolveGitShortSha()),
+    __FRAITH_BUILD_AT__: JSON.stringify(new Date().toISOString()),
+  },
   server: {
     host: '0.0.0.0',
     port: 5173,
