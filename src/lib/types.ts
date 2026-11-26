@@ -75,7 +75,47 @@ export interface JournalEntry {
 
 export type QuestStatus = 'active' | 'completed' | 'failed' | 'available';
 
-export type TilePattern = 'none' | 'runes' | 'grid' | 'hazard' | 'stars' | 'scanlines';
+export type TilePattern =
+  // plain
+  | 'none'
+  // geometry
+  | 'grid'
+  | 'dots'
+  | 'diagonal'
+  | 'crosshatch'
+  | 'diamonds'
+  | 'hex'
+  | 'triangles'
+  | 'chevron'
+  | 'stripes'
+  | 'rings'
+  | 'plaid'
+  | 'blueprint'
+  | 'circuit'
+  | 'barcode'
+  // magic
+  | 'runes'
+  | 'stars'
+  | 'sparkles'
+  | 'arcane'
+  | 'nebula'
+  | 'sigil'
+  | 'pulse'
+  // tech / HUD
+  | 'scanlines'
+  | 'crt'
+  | 'datastream'
+  | 'target'
+  // danger
+  | 'hazard'
+  | 'flames'
+  | 'cracks'
+  // nature & materials
+  | 'scales'
+  | 'vines'
+  | 'wood'
+  | 'stone'
+  | 'waves';
 
 export type QuestTilePattern = TilePattern;
 
