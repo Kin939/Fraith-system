@@ -118,8 +118,16 @@ export const BestiaryTile: React.FC<BestiaryTileProps> = ({
       >
         <MonsterArt
           creature={creature}
-          className="w-full h-full rounded-full bg-deep"
           imgClassName="w-full h-full rounded-full object-cover bg-deep"
+          fallback={
+            <div
+              className="w-full h-full rounded-full bg-deep flex items-center justify-center font-mono text-lg font-medium"
+              style={{ color: crColor }}
+              title="У этого существа нет иллюстрации на dnd.su"
+            >
+              {creature.name.slice(0, 1).toUpperCase()}
+            </div>
+          }
         />
       </div>
 

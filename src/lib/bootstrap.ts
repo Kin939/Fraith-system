@@ -179,6 +179,8 @@ async function ensureBestiaryColumns(db: D1Database): Promise<void> {
     ['xp', `INTEGER NOT NULL DEFAULT 0`],
     ['image_url', `TEXT NOT NULL DEFAULT ''`],
     ['image_full_url', `TEXT NOT NULL DEFAULT ''`],
+    ['gallery_json', `TEXT NOT NULL DEFAULT '[]'`],
+    ['compendium_version', `INTEGER NOT NULL DEFAULT 0`],
   ];
 
   for (const [col, def] of extraColumns) {
@@ -322,7 +324,9 @@ async function runBootstrap(db: D1Database): Promise<void> {
       languages TEXT NOT NULL DEFAULT '',
       xp INTEGER NOT NULL DEFAULT 0,
       image_url TEXT NOT NULL DEFAULT '',
-      image_full_url TEXT NOT NULL DEFAULT ''
+      image_full_url TEXT NOT NULL DEFAULT '',
+      gallery_json TEXT NOT NULL DEFAULT '[]',
+      compendium_version INTEGER NOT NULL DEFAULT 0
     )`,
     `CREATE INDEX IF NOT EXISTS idx_bestiary_cr ON bestiary(cr_numeric ASC, sort_order ASC, id ASC)`,
     `CREATE TABLE IF NOT EXISTS spells (

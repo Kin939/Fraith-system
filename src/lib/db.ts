@@ -5,6 +5,7 @@ import type {
   AuthUser,
   BestiaryCreature,
   BestiaryCreatureDetail,
+  BestiaryGalleryImage,
   CampaignNpc,
   CharacterProfile,
   ChatAttachment,
@@ -798,6 +799,8 @@ interface BestiaryBaseRow {
   image_key: string | null;
   image_url: string | null;
   image_full_url: string | null;
+  gallery_json?: string | null;
+  compendium_version?: number | null;
   is_revealed: number;
   sort_order: number;
   source_title: string | null;
@@ -887,24 +890,59 @@ export async function getBestiaryCreature(
     senses: row.senses ?? '',
     languages: row.languages ?? '',
     importKey: row.import_key,
+    gallery: parseGallery(row.gallery_json),
   };
 }
 
+export function parseGallery(raw: string | null | undefined): BestiaryGalleryImage[] {
+  if (!raw) return [];
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map((item) => {
+        if (!item || typeof item !== 'object') return null;
+        const value = item as { full?: unknown; thumb?: unknown; u?: unknown; t?: unknown };
+        const full = typeof value.full === 'string' ? value.full : typeof value.u === 'string' ? value.u : '';
+        const thumb = typeof value.thumb === 'string' ? value.thumb : typeof value.t === 'string' ? value.t : '';
+        if (!full && !thumb) return null;
+        return { full: full || thumb, thumb: thumb || full };
+      })
+      .filter((item): item is BestiaryGalleryImage => Boolean(item))
+      .slice(0, 16);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Bump when the shipped dnd.su dataset gains fields that already-imported rows
+ * must pick up (XP + artwork = 2, galleries = 3).
+ */
+export const COMPENDIUM_VERSION = 3;
+
 export async function getBestiaryImportStatus(
   db: D1Database
-): Promise<{ total: number; compendium: number; revealed: number }> {
+): Promise<{ total: number; compendium: number; revealed: number; stale: number }> {
   const row = await db
     .prepare(
       `SELECT COUNT(*) AS total,
               SUM(CASE WHEN is_compendium = 1 THEN 1 ELSE 0 END) AS compendium,
-              SUM(CASE WHEN is_revealed = 1 THEN 1 ELSE 0 END) AS revealed
+              SUM(CASE WHEN is_revealed = 1 THEN 1 ELSE 0 END) AS revealed,
+              SUM(CASE WHEN is_compendium = 1 AND compendium_version < ${COMPENDIUM_VERSION} THEN 1 ELSE 0 END) AS stale
        FROM bestiary`
     )
-    .first<{ total: number; compendium: number | null; revealed: number | null }>();
+    .first<{
+      total: number;
+      compendium: number | null;
+      revealed: number | null;
+      stale: number | null;
+    }>();
   return {
     total: Number(row?.total ?? 0),
     compendium: Number(row?.compendium ?? 0),
     revealed: Number(row?.revealed ?? 0),
+    stale: Number(row?.stale ?? 0),
   };
 }
 
@@ -922,6 +960,7 @@ export interface CompendiumCreatureInput {
   xp?: number;
   imageUrl?: string;
   imageFullUrl?: string;
+  gallery?: Array<{ full?: string; thumb?: string; u?: string; t?: string }>;
   speed?: string;
   senses?: string;
   languages?: string;
@@ -941,6 +980,23 @@ function clampNumber(value: unknown, fallback: number, min: number, max: number)
   return Math.min(max, Math.max(min, num));
 }
 
+function serializeGallery(
+  gallery: CompendiumCreatureInput['gallery']
+): string {
+  if (!Array.isArray(gallery)) return '[]';
+  const items = gallery
+    .map((entry) => {
+      if (!entry || typeof entry !== 'object') return null;
+      const full = clip(entry.full ?? entry.u, 500);
+      const thumb = clip(entry.thumb ?? entry.t, 500);
+      if (!full && !thumb) return null;
+      return { full: full || thumb, thumb: thumb || full };
+    })
+    .filter((entry): entry is { full: string; thumb: string } => Boolean(entry))
+    .slice(0, 16);
+  return JSON.stringify(items);
+}
+
 /**
  * Idempotent dnd.su compendium upsert. Matching on `import_key` means repeated
  * imports never duplicate rows, and the DM's reveal flags and portraits survive
@@ -955,9 +1011,9 @@ export async function upsertCompendiumCreatures(
   const statement = db.prepare(
     `INSERT INTO bestiary
        (name, name_en, cr, cr_numeric, creature_type, size, alignment, ac, hp, xp, image_url,
-        image_full_url, speed, senses, languages, description, is_revealed, sort_order,
-        source_title, source_url, import_key, is_compendium)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, 1)
+        image_full_url, gallery_json, speed, senses, languages, description, is_revealed,
+        sort_order, source_title, source_url, import_key, is_compendium, compendium_version)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, 1, ${COMPENDIUM_VERSION})
      ON CONFLICT(import_key) DO UPDATE SET
        name = excluded.name,
        name_en = excluded.name_en,
@@ -971,6 +1027,7 @@ export async function upsertCompendiumCreatures(
        xp = excluded.xp,
        image_url = excluded.image_url,
        image_full_url = excluded.image_full_url,
+       gallery_json = excluded.gallery_json,
        speed = excluded.speed,
        senses = excluded.senses,
        languages = excluded.languages,
@@ -978,7 +1035,8 @@ export async function upsertCompendiumCreatures(
        sort_order = excluded.sort_order,
        source_title = excluded.source_title,
        source_url = excluded.source_url,
-       is_compendium = 1`
+       is_compendium = 1,
+       compendium_version = ${COMPENDIUM_VERSION}`
   );
 
   const statements = items.map((item) =>
@@ -995,6 +1053,7 @@ export async function upsertCompendiumCreatures(
       Math.round(clampNumber(item.xp, 0, 0, 10_000_000)),
       clip(item.imageUrl, 500),
       clip(item.imageFullUrl, 500),
+      serializeGallery(item.gallery),
       clip(item.speed, 200),
       clip(item.senses, 300),
       clip(item.languages, 300),

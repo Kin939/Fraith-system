@@ -240,8 +240,17 @@ export interface BestiaryCreature {
   notesCount: number;
 }
 
+export interface BestiaryGalleryImage {
+  /** Full-size dnd.su scan */
+  full: string;
+  /** Thumbnail served by dnd.su (`_s` variant) */
+  thumb: string;
+}
+
 export interface BestiaryCreatureDetail extends BestiaryCreature {
   description: string;
+  /** Every artwork dnd.su has for this creature */
+  gallery: BestiaryGalleryImage[];
   speed: string;
   senses: string;
   languages: string;
@@ -253,6 +262,8 @@ export interface BestiaryImportStatus {
   total: number;
   compendium: number;
   revealed: number;
+  /** Compendium rows imported before XP/artwork existed and needing a refresh */
+  stale: number;
 }
 
 export type MagicSchool =
