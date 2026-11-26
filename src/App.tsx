@@ -3,6 +3,7 @@ import { AlertTriangle, ChevronLeft, ChevronRight, RotateCcw, X } from 'lucide-r
 import { SelectionFormatToolbar } from './components/common/SelectionFormatToolbar';
 import { Sidebar } from './components/layout/Sidebar';
 import { TabBar } from './components/layout/TabBar';
+import { UpdatePrompt } from './components/layout/UpdatePrompt';
 import { useAuth } from './hooks/useAuth';
 import { useWebSocket } from './hooks/useWebSocket';
 import { useCampaignStore } from './lib/store';
@@ -176,6 +177,7 @@ export const App: React.FC = () => {
       </main>
 
       <SelectionFormatToolbar />
+      <UpdatePrompt />
 
       {/* Quiet Toast Notifications */}
       <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-sm w-full pointer-events-none px-4 sm:px-0">
