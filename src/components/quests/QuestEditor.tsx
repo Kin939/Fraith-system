@@ -1,9 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { Plus, Save, Trash2, Upload } from 'lucide-react';
-import { apiFetch, uploadImageAsset } from '../../lib/api';
+import { Plus, Save, Star, Trash2, Upload } from 'lucide-react';
+import { apiFetch, patchQuestTile, uploadImageAsset } from '../../lib/api';
 import { resolveImageUrl } from '../../lib/artwork';
+import { normalizeQuestPattern } from '../../lib/questStyle';
 import { useCampaignStore } from '../../lib/store';
-import type { Quest, QuestStatus } from '../../lib/types';
+import type { Quest, QuestStatus, QuestTilePattern } from '../../lib/types';
+import { QuestTileEditor, type QuestTileDraft } from './QuestTileEditor';
 
 interface QuestEditorProps {
   initialQuest?: Quest | null;
@@ -14,6 +16,8 @@ export const QuestEditor: React.FC<QuestEditorProps> = ({ initialQuest, onDone }
   const quests = useCampaignStore((s) => s.quests);
   const setQuests = useCampaignStore((s) => s.setQuests);
   const pushToast = useCampaignStore((s) => s.pushToast);
+  const dmFocusQuestId = useCampaignStore((s) => s.dmFocusQuestId);
+  const clearFocusQuest = useCampaignStore((s) => s.clearFocusQuest);
 
   const [editingId, setEditingId] = useState<number | null>(initialQuest?.id ?? null);
   const [title, setTitle] = useState('');
@@ -28,8 +32,13 @@ export const QuestEditor: React.FC<QuestEditorProps> = ({ initialQuest, onDone }
   const [progressTarget, setProgressTarget] = useState(10);
   const [imageKey, setImageKey] = useState<string | null>(null);
   const [status, setStatus] = useState<QuestStatus>('active');
+  const [tileAccent, setTileAccent] = useState<string | null>(null);
+  const [tileEmblem, setTileEmblem] = useState<string | null>(null);
+  const [tilePattern, setTilePattern] = useState<QuestTilePattern>('none');
+  const [isImportant, setIsImportant] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [togglingId, setTogglingId] = useState<number | null>(null);
 
   const loadQuestIntoForm = (q: Quest | null) => {
     if (!q) {
@@ -46,6 +55,10 @@ export const QuestEditor: React.FC<QuestEditorProps> = ({ initialQuest, onDone }
       setProgressTarget(10);
       setImageKey(null);
       setStatus('active');
+      setTileAccent(null);
+      setTileEmblem(null);
+      setTilePattern('none');
+      setIsImportant(false);
       return;
     }
     setEditingId(q.id);
@@ -61,6 +74,10 @@ export const QuestEditor: React.FC<QuestEditorProps> = ({ initialQuest, onDone }
     setProgressTarget(q.progressTarget);
     setImageKey(q.imageKey);
     setStatus(q.status);
+    setTileAccent(q.tileStyle?.accent ?? null);
+    setTileEmblem(q.tileStyle?.emblem ?? null);
+    setTilePattern(normalizeQuestPattern(q.tileStyle?.pattern));
+    setIsImportant(Boolean(q.tileStyle?.isImportant));
   };
 
   useEffect(() => {
@@ -69,16 +86,25 @@ export const QuestEditor: React.FC<QuestEditorProps> = ({ initialQuest, onDone }
     }
   }, [initialQuest]);
 
-  const handleR2Upload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  // Deep link from the "Оформление" button on a quest tile
+  useEffect(() => {
+    if (!dmFocusQuestId) return;
+    const target = quests.find((q) => q.id === dmFocusQuestId);
+    if (target) {
+      loadQuestIntoForm(target);
+      clearFocusQuest();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dmFocusQuestId, quests]);
+
+  const handleCoverUpload = async (file: File) => {
     setUploading(true);
     try {
       const res = await uploadImageAsset(file, 'quests');
       setImageKey(res.key);
       pushToast({
-        title: 'Изображение загружено',
-        message: `Ключ: ${res.key}`,
+        title: 'Иллюстрация загружена',
+        message: 'Не забудьте сохранить квест, чтобы обновить плитку',
         variant: 'success',
       });
     } catch (err) {
@@ -89,6 +115,58 @@ export const QuestEditor: React.FC<QuestEditorProps> = ({ initialQuest, onDone }
       });
     } finally {
       setUploading(false);
+    }
+  };
+
+  const tileDraft: QuestTileDraft = {
+    accent: tileAccent,
+    emblem: tileEmblem,
+    pattern: tilePattern,
+    isImportant,
+    imageKey,
+  };
+
+  const applyTileDraftPatch = (patch: Partial<QuestTileDraft>) => {
+    if (patch.accent !== undefined) setTileAccent(patch.accent);
+    if (patch.emblem !== undefined) setTileEmblem(patch.emblem);
+    if (patch.pattern !== undefined) setTilePattern(normalizeQuestPattern(patch.pattern));
+    if (patch.isImportant !== undefined) setIsImportant(patch.isImportant);
+    if (patch.imageKey !== undefined) setImageKey(patch.imageKey);
+  };
+
+  const previewQuest: Quest = {
+    id: editingId ?? 0,
+    title: title || 'Новый квест',
+    shortDesc: shortDesc || 'Краткое описание появится на плитке',
+    fullDesc,
+    reward,
+    parameters: { location, giver, difficulty, deadline },
+    progressCurrent,
+    progressTarget,
+    imageKey,
+    status,
+    createdAt: new Date().toISOString(),
+    tileStyle: { accent: tileAccent, emblem: tileEmblem, pattern: tilePattern, isImportant },
+  };
+
+  const handleToggleImportant = async (quest: Quest) => {
+    setTogglingId(quest.id);
+    try {
+      const quests = await patchQuestTile(quest.id, {
+        isImportant: !quest.tileStyle?.isImportant,
+      });
+      setQuests(quests);
+      if (editingId === quest.id) {
+        setIsImportant(!quest.tileStyle?.isImportant);
+      }
+    } catch (err) {
+      pushToast({
+        title: 'Не удалось обновить плитку',
+        message: err instanceof Error ? err.message : 'Попробуйте ещё раз',
+        variant: 'error',
+      });
+    } finally {
+      setTogglingId(null);
     }
   };
 
@@ -106,6 +184,10 @@ export const QuestEditor: React.FC<QuestEditorProps> = ({ initialQuest, onDone }
         progressTarget,
         imageKey,
         status,
+        tileAccent,
+        tileEmblem,
+        tilePattern,
+        isImportant,
       };
       const res = editingId
         ? await apiFetch<{ quests: Quest[] }>(`/api/dm/quests/${editingId}`, {
@@ -150,7 +232,7 @@ export const QuestEditor: React.FC<QuestEditorProps> = ({ initialQuest, onDone }
 
   return (
     <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
-      <div className="xl:col-span-5 glass-panel hud-cut p-5 space-y-4">
+      <div className="xl:col-span-3 glass-panel hud-cut p-5 space-y-4">
         <div className="flex items-center justify-between">
           <h4 className="font-medium text-sm text-text">Список квестов ({quests.length})</h4>
           <button
@@ -174,23 +256,56 @@ export const QuestEditor: React.FC<QuestEditorProps> = ({ initialQuest, onDone }
                   : 'bg-bg border-border hover:bg-raised/60'
               }`}
             >
-              <div className="min-w-0">
-                <div className="text-sm font-medium text-text truncate">{q.title}</div>
-                <div className="text-xs text-muted font-mono tabular-nums mt-0.5">
-                  {q.progressCurrent} из {q.progressTarget} · {q.status}
+              <div className="min-w-0 flex items-start gap-1.5">
+                {q.tileStyle?.isImportant && (
+                  <Star
+                    className="w-3.5 h-3.5 shrink-0 mt-0.5"
+                    strokeWidth={1.6}
+                    fill="currentColor"
+                    style={{ color: q.tileStyle?.accent || '#f59e0b' }}
+                  />
+                )}
+                <div className="min-w-0">
+                  <div className="text-sm font-medium text-text truncate">{q.title}</div>
+                  <div className="text-xs text-muted font-mono tabular-nums mt-0.5">
+                    {q.progressCurrent} из {q.progressTarget} · {q.status}
+                    {q.tileStyle?.accent ? ` · ${q.tileStyle.accent}` : ''}
+                  </div>
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  void handleDelete(q.id);
-                }}
-                className="p-1.5 text-muted hover:text-negative transition-colors"
-                title="Удалить квест"
-              >
-                <Trash2 className="w-4 h-4" strokeWidth={1.5} />
-              </button>
+              <div className="flex items-center gap-0.5 shrink-0">
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void handleToggleImportant(q);
+                  }}
+                  disabled={togglingId === q.id}
+                  className={`p-1.5 transition-colors disabled:opacity-50 ${
+                    q.tileStyle?.isImportant
+                      ? 'text-[color:var(--primary)] hover:text-text'
+                      : 'text-muted hover:text-text'
+                  }`}
+                  title={q.tileStyle?.isImportant ? 'Снять метку важного' : 'Отметить важным'}
+                >
+                  <Star
+                    className="w-4 h-4"
+                    strokeWidth={1.5}
+                    fill={q.tileStyle?.isImportant ? 'currentColor' : 'none'}
+                  />
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void handleDelete(q.id);
+                  }}
+                  className="p-1.5 text-muted hover:text-negative transition-colors"
+                  title="Удалить квест"
+                >
+                  <Trash2 className="w-4 h-4" strokeWidth={1.5} />
+                </button>
+              </div>
             </div>
           ))}
         </div>
@@ -198,7 +313,7 @@ export const QuestEditor: React.FC<QuestEditorProps> = ({ initialQuest, onDone }
 
       <form
         onSubmit={handleSubmit}
-        className="xl:col-span-7 glass-panel hud-cut p-6 space-y-4"
+        className="xl:col-span-5 glass-panel hud-cut p-6 space-y-4"
       >
         <h4 className="font-medium text-base text-text">
           {editingId ? `Редактирование квеста #${editingId}` : 'Новый квест'}
@@ -330,19 +445,23 @@ export const QuestEditor: React.FC<QuestEditorProps> = ({ initialQuest, onDone }
             alt="Превью"
             className="w-20 h-14 object-cover border border-border"
           />
-          <div className="space-y-1">
-            <label className="hud-btn-secondary h-8 inline-flex items-center gap-1.5 px-3 text-xs cursor-pointer">
+          <div className="space-y-1 min-w-0">
+            <label className={`hud-btn-secondary h-8 inline-flex items-center gap-1.5 px-3 text-xs cursor-pointer ${uploading ? 'opacity-60 pointer-events-none' : ''}`}>
               <Upload className="w-3.5 h-3.5 text-muted" strokeWidth={1.5} />
               <span>{uploading ? 'Загрузка…' : 'Загрузить иллюстрацию'}</span>
               <input
                 type="file"
                 accept="image/*"
-                onChange={handleR2Upload}
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  e.target.value = '';
+                  if (file) void handleCoverUpload(file);
+                }}
                 className="hidden"
               />
             </label>
-            <div className="text-xs text-muted">
-              Иллюстрация: <code>{imageKey || 'по умолчанию'}</code>
+            <div className="text-xs text-muted truncate">
+              Иллюстрация: <code>{imageKey || 'эмблема плитки'}</code>
             </div>
           </div>
         </div>
@@ -358,6 +477,24 @@ export const QuestEditor: React.FC<QuestEditorProps> = ({ initialQuest, onDone }
           </button>
         </div>
       </form>
+
+      <div className="xl:col-span-4 lg:sticky lg:top-6 self-start">
+        <div className="glass-panel hud-cut p-5">
+          <QuestTileEditor
+            previewQuest={previewQuest}
+            draft={tileDraft}
+            onChange={applyTileDraftPatch}
+            onUploadCover={(file) => void handleCoverUpload(file)}
+            onRemoveCover={() => setImageKey(null)}
+            uploadingCover={uploading}
+          />
+          <p className="mt-3 text-[11px] text-muted leading-relaxed">
+            Подсказка: отметьте квест звёздочкой — он поднимется в начало списка и получит
+            акцентное свечение и бегущий блик. Цвет и эмблема применяются сразу к плитке,
+            предпросмотр выше показывает, как её увидят игроки.
+          </p>
+        </div>
+      </div>
     </div>
   );
 };

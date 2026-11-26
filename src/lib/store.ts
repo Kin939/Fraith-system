@@ -61,6 +61,7 @@ interface CampaignState {
   activeTab: CampaignTabId;
   dmSelectedPlayerId: PlayerId;
   highlightedSpellId: number | null;
+  dmFocusQuestId: number | null;
 
   wsConnected: boolean;
   onlineUsers: OnlineMember[];
@@ -89,6 +90,8 @@ interface CampaignState {
   setDmSelectedPlayerId: (playerId: PlayerId) => void;
   jumpToSpellInCatalog: (spellId: number) => void;
   clearHighlightedSpell: () => void;
+  focusQuestInDm: (questId: number) => void;
+  clearFocusQuest: () => void;
 
   setWsConnected: (connected: boolean) => void;
   setOnlineUsers: (online: OnlineMember[]) => void;
@@ -113,6 +116,7 @@ interface CampaignState {
   ) => void;
   updateCharacterProfileInStore: (playerId: PlayerId, profile: CharacterProfile) => void;
   mergeCharacterMetadataInStore: (playerId: PlayerId, profile: CharacterProfile) => void;
+  applyPlayerAvatar: (playerId: PlayerId, avatarUrl: string | null, userId?: number | null) => void;
   updateJournalInStore: (playerId: PlayerId, journal: JournalEntry) => void;
   updateLearnedSpellsInStore: (playerId: PlayerId, learned: LearnedSpellRecord[]) => void;
 
@@ -142,6 +146,7 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
   activeTab: 'character',
   dmSelectedPlayerId: 1,
   highlightedSpellId: null,
+  dmFocusQuestId: null,
 
   wsConnected: false,
   onlineUsers: [],
@@ -198,6 +203,8 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
 
   jumpToSpellInCatalog: (spellId) => set({ activeTab: 'spells', highlightedSpellId: spellId }),
   clearHighlightedSpell: () => set({ highlightedSpellId: null }),
+  focusQuestInDm: (questId) => set({ activeTab: 'dm', dmFocusQuestId: questId }),
+  clearFocusQuest: () => set({ dmFocusQuestId: null }),
 
   setWsConnected: (wsConnected) => set({ wsConnected }),
   setOnlineUsers: (onlineUsers) => set({ onlineUsers }),
@@ -222,6 +229,26 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
     set((s) => ({
       charactersById: { ...s.charactersById, [playerId]: profile },
     })),
+
+  applyPlayerAvatar: (playerId, avatarUrl, userId) =>
+    set((s) => {
+      const existing = s.charactersById[playerId];
+      const nextUser =
+        s.user &&
+        (s.user.playerId === playerId || (typeof userId === 'number' && s.user.id === userId))
+          ? { ...s.user, avatarUrl }
+      : s.user;
+
+      return {
+        user: nextUser ?? null,
+        charactersById: existing
+          ? { ...s.charactersById, [playerId]: { ...existing, avatarUrl } }
+          : s.charactersById,
+        chatMessages: s.chatMessages.map((m) =>
+          m.senderPlayerId === playerId ? { ...m, senderAvatarUrl: avatarUrl } : m
+        ),
+      };
+    }),
 
   mergeCharacterMetadataInStore: (playerId, incoming) =>
     set((s) => {

@@ -83,6 +83,45 @@ export async function uploadChatAttachment(
   });
 }
 
+export async function uploadPlayerAvatar(
+  file: File,
+  playerId?: number | null
+): Promise<{ avatarUrl: string; url: string; key: string; userId: number }> {
+  const fd = new FormData();
+  fd.append('file', file);
+  if (playerId) fd.append('playerId', String(playerId));
+
+  return apiFetch<{ avatarUrl: string; url: string; key: string; userId: number }>(
+    '/api/profile/avatar',
+    { method: 'POST', body: fd, timeoutMs: 30000 }
+  );
+}
+
+export async function deletePlayerAvatar(
+  playerId?: number | null
+): Promise<{ ok: boolean; userId: number }> {
+  const query = playerId ? `?playerId=${playerId}` : '';
+  return apiFetch<{ ok: boolean; userId: number }>(`/api/profile/avatar${query}`, {
+    method: 'DELETE',
+  });
+}
+
+export async function patchQuestTile(
+  questId: number,
+  patch: {
+    accent?: string | null;
+    emblem?: string | null;
+    pattern?: string | null;
+    isImportant?: boolean;
+  }
+): Promise<import('./types').Quest[]> {
+  const res = await apiFetch<{ quests: import('./types').Quest[] }>(
+    `/api/dm/quests/${questId}/tile`,
+    { method: 'PATCH', body: JSON.stringify(patch) }
+  );
+  return res.quests;
+}
+
 export async function uploadCustomCampaignEmoji(
   file: File,
   name: string

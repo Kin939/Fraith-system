@@ -1,4 +1,5 @@
 import { formatCharacterClassesRu, isSpellAllowedForCharacter } from './lss';
+import { normalizeQuestAccent, normalizeQuestPattern } from './questStyle';
 import { DEFAULT_ANIME_THEME, parseThemeJson } from './theme';
 import type {
   AuthUser,
@@ -69,6 +70,175 @@ export function mapUserRowToAuthUser(row: DbUserRow): AuthUser {
     avatarKey: row.avatar_key,
     theme: row.theme_json ? parseThemeJson(row.theme_json) : { ...DEFAULT_ANIME_THEME },
   };
+}
+
+/**
+ * Turns a stored R2 key (or an already-resolved absolute/data URL) into a browser-loadable URL.
+ */
+export function resolveStoredImageUrl(key?: string | null): string | null {
+  const value = (key || '').trim();
+  if (!value) return null;
+  if (
+    value.startsWith('http://') ||
+    value.startsWith('https://') ||
+    value.startsWith('data:') ||
+    value.startsWith('blob:') ||
+    value.startsWith('/')
+  ) {
+    return value;
+  }
+  return `/api/r2/${encodeURIComponent(value)}`;
+}
+
+function pickPortraitString(value: unknown): string | null {
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    if (
+      trimmed.startsWith('http://') ||
+      trimmed.startsWith('https://') ||
+      trimmed.startsWith('data:') ||
+      trimmed.startsWith('/')
+    ) {
+      return trimmed;
+    }
+    return null;
+  }
+  if (value && typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    for (const key of ['webp', 'jpeg', 'jpg', 'png', 'url', 'path', 'src', 'original']) {
+      const found = pickPortraitString(record[key]);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+/**
+ * Pulls the portrait URL out of a raw Long Story Short character sheet.
+ * Handles both flat sheets and the `{ data: "<json string>" }` wrapper LSS uses.
+ */
+export function extractLssPortraitUrl(rawLssJson?: string | null): string | null {
+  if (!rawLssJson) return null;
+  let root: unknown;
+  try {
+    root = JSON.parse(rawLssJson);
+  } catch {
+    return null;
+  }
+
+  const queue: unknown[] = [root];
+  let guard = 0;
+  while (queue.length > 0 && guard < 64) {
+    guard += 1;
+    const node = queue.shift();
+    if (!node) continue;
+    if (typeof node === 'string') {
+      if (node.trim().startsWith('{') || node.trim().startsWith('[')) {
+        try {
+          queue.push(JSON.parse(node));
+        } catch {
+          // not JSON — ignore
+        }
+      }
+      continue;
+    }
+    if (Array.isArray(node)) {
+      queue.push(...node.slice(0, 8));
+      continue;
+    }
+    if (typeof node !== 'object') continue;
+    const record = node as Record<string, unknown>;
+    for (const key of ['avatar', 'avatarUrl', 'portrait', 'portraitUrl', 'token']) {
+      if (key === 'token') continue;
+      const found = pickPortraitString(record[key]);
+      if (found) return found;
+    }
+    for (const key of ['data', 'sheet', 'character', 'info', 'settings', 'meta']) {
+      if (record[key]) queue.push(record[key]);
+    }
+  }
+  return null;
+}
+
+interface AvatarSourceRow {
+  user_id: number;
+  player_id: PlayerId | null;
+  avatar_key: string | null;
+  raw_lss_json: string | null;
+}
+
+interface AvatarIndex {
+  byUserId: Map<number, string>;
+  byPlayerId: Map<PlayerId, string>;
+}
+
+async function loadAvatarIndex(db: D1Database): Promise<AvatarIndex> {
+  const byUserId = new Map<number, string>();
+  const byPlayerId = new Map<PlayerId, string>();
+  let rows: AvatarSourceRow[] = [];
+  try {
+    const res = await db
+      .prepare(
+        `SELECT u.id AS user_id, u.player_id AS player_id, u.avatar_key AS avatar_key,
+                cp.raw_lss_json AS raw_lss_json
+         FROM users u
+         LEFT JOIN character_profiles cp ON cp.player_id = u.player_id`
+      )
+      .all<AvatarSourceRow>();
+    rows = res.results ?? [];
+  } catch {
+    return { byUserId, byPlayerId };
+  }
+
+  for (const row of rows) {
+    const uploaded = resolveStoredImageUrl(row.avatar_key);
+    const sheetPortrait = uploaded ? null : extractLssPortraitUrl(row.raw_lss_json);
+    const url = uploaded ?? sheetPortrait;
+    if (!url) continue;
+    byUserId.set(row.user_id, url);
+    if (row.player_id && !byPlayerId.has(row.player_id)) {
+      byPlayerId.set(row.player_id, url);
+    }
+  }
+  return { byUserId, byPlayerId };
+}
+
+export async function withUserAvatars<T extends AuthUser>(
+  db: D1Database,
+  users: T[]
+): Promise<T[]> {
+  if (users.length === 0) return users;
+  const index = await loadAvatarIndex(db);
+  return users.map((u) => ({ ...u, avatarUrl: index.byUserId.get(u.id) ?? null }));
+}
+
+export async function withCharacterAvatars(
+  db: D1Database,
+  profiles: CharacterProfile[]
+): Promise<CharacterProfile[]> {
+  if (profiles.length === 0) return profiles;
+  const index = await loadAvatarIndex(db);
+  return profiles.map((p) => ({
+    ...p,
+    avatarUrl: index.byPlayerId.get(p.playerId) ?? extractLssPortraitUrl(p.rawLssJson),
+  }));
+}
+
+export async function setUserAvatarKey(
+  db: D1Database,
+  userId: number,
+  avatarKey: string | null
+): Promise<void> {
+  await db.prepare(`UPDATE users SET avatar_key = ? WHERE id = ?`).bind(avatarKey, userId).run();
+}
+
+export async function getUserAvatarUrl(
+  db: D1Database,
+  userId: number
+): Promise<string | null> {
+  const index = await loadAvatarIndex(db);
+  return index.byUserId.get(userId) ?? null;
 }
 
 export async function getUserByUsername(db: D1Database, username: string): Promise<DbUserRow | null> {
@@ -343,6 +513,10 @@ interface QuestRow {
   image_key: string | null;
   status: QuestStatus;
   created_at: string;
+  tile_accent?: string | null;
+  tile_emblem?: string | null;
+  tile_pattern?: string | null;
+  is_important?: number | null;
 }
 
 function mapQuestRow(row: QuestRow): Quest {
@@ -364,6 +538,12 @@ function mapQuestRow(row: QuestRow): Quest {
     imageKey: row.image_key,
     status: row.status,
     createdAt: row.created_at,
+    tileStyle: {
+      accent: normalizeQuestAccent(row.tile_accent),
+      emblem: (row.tile_emblem || '').trim() || null,
+      pattern: normalizeQuestPattern(row.tile_pattern),
+      isImportant: Boolean(row.is_important),
+    },
   };
 }
 
@@ -371,7 +551,8 @@ export async function listQuests(db: D1Database): Promise<Quest[]> {
   const { results } = await db
     .prepare(
       `SELECT * FROM quests
-       ORDER BY CASE status
+       ORDER BY is_important DESC,
+       CASE status
          WHEN 'active' THEN 0
          WHEN 'available' THEN 1
          WHEN 'completed' THEN 2
@@ -1021,6 +1202,8 @@ async function loadUsersBadgeMap(db: D1Database): Promise<Map<number, ChatPartic
       player_id: PlayerId | null;
     }>();
 
+  const avatarIndex = await loadAvatarIndex(db);
+
   const map = new Map<number, ChatParticipantBadge>();
   for (const row of results) {
     map.set(row.id, {
@@ -1028,6 +1211,7 @@ async function loadUsersBadgeMap(db: D1Database): Promise<Map<number, ChatPartic
       displayName: row.display_name,
       role: row.role,
       playerId: row.player_id,
+      avatarUrl: avatarIndex.byUserId.get(row.id) ?? null,
     });
   }
   return map;
@@ -1223,6 +1407,7 @@ async function hydrateChatMessageRows(
         senderDisplayName: badgeMap.get(r.user_id)?.displayName ?? r.sender_display_name,
         senderRole: r.sender_role,
         senderPlayerId: r.sender_player_id,
+        senderAvatarUrl: badgeMap.get(r.user_id)?.avatarUrl ?? null,
         content: r.content,
         hasAttachments: atts.length > 0,
         hasPoll: r.poll_id !== null,
@@ -1260,6 +1445,7 @@ async function hydrateChatMessageRows(
         senderDisplayName: badgeMap.get(er.user_id)?.displayName ?? er.sender_display_name,
         senderRole: er.sender_role,
         senderPlayerId: er.sender_player_id,
+        senderAvatarUrl: badgeMap.get(er.user_id)?.avatarUrl ?? null,
         content: er.content,
         hasAttachments: parseChatAttachments(er.attachments_json).length > 0,
         hasPoll: er.poll_id !== null,
@@ -1303,6 +1489,7 @@ async function hydrateChatMessageRows(
       senderDisplayName: liveSender?.displayName ?? row.sender_display_name,
       senderRole: row.sender_role,
       senderPlayerId: row.sender_player_id,
+      senderAvatarUrl: liveSender?.avatarUrl ?? null,
       content: row.content,
       replyToId: row.reply_to_id,
       replyPreview: row.reply_to_id ? replyMap.get(row.reply_to_id) ?? null : null,

@@ -54,7 +54,16 @@ import {
   updateLearnedSpellMeta,
   upsertNextSessionBanner,
   upsertUserTheme,
+  setUserAvatarKey,
+  getUserAvatarUrl,
+  withCharacterAvatars,
+  withUserAvatars,
 } from '../../src/lib/db';
+import {
+  normalizeQuestAccent,
+  normalizeQuestPattern,
+} from '../../src/lib/questStyle';
+import { isHudAssetKey } from '../../src/lib/hudIcons';
 import { parseLssCharacterPayload } from '../../src/lib/lss';
 import {
   getChatAttachmentFromR2,
@@ -242,12 +251,131 @@ app.post('/auth/logout', (c) => {
   return c.json({ ok: true });
 });
 
-app.get('/auth/me', (c) => {
+app.get('/auth/me', async (c) => {
   const user = c.get('user');
   if (!user) {
     return c.json({ user: null }, 401);
   }
-  return c.json({ user });
+  const [withAvatar] = await withUserAvatars(c.env.DB, [user]);
+  return c.json({ user: withAvatar });
+});
+
+// ---------------------------------------------------------------------------
+// Character portrait upload (available to every player; DM may target a slot)
+// ---------------------------------------------------------------------------
+
+app.post('/profile/avatar', async (c) => {
+  const user = c.get('user');
+  if (!user) return c.json({ error: 'Необходима авторизация' }, 401);
+
+  let formData: FormData;
+  try {
+    formData = await c.req.formData();
+  } catch {
+    return c.json({ error: 'Некорректные данные формы' }, 400);
+  }
+
+  const file = formData.get('file') as unknown;
+  if (!file || typeof file !== 'object' || !(file instanceof File)) {
+    return c.json({ error: 'Файл портрета не передан' }, 400);
+  }
+
+  const requestedPlayerId = parseValidPlayerId(String(formData.get('playerId') || ''));
+  const targetPlayerId =
+    user.role === 'dm' ? requestedPlayerId ?? user.playerId : user.playerId;
+
+  if (user.role === 'dm' && !targetPlayerId) {
+    return c.json({ error: 'Мастеру нужно указать слот игрока (1–3)' }, 400);
+  }
+  if (targetPlayerId && user.role !== 'dm' && targetPlayerId !== user.playerId) {
+    return c.json({ error: 'Можно менять только свой портрет' }, 403);
+  }
+
+  let targetUserId = user.id;
+  if (user.role === 'dm' && targetPlayerId) {
+    const row = await c.env.DB.prepare(`SELECT id FROM users WHERE player_id = ?`)
+      .bind(targetPlayerId)
+      .first<{ id: number }>();
+    if (!row) return c.json({ error: 'Аккаунт игрока не найден' }, 404);
+    targetUserId = row.id;
+  }
+
+  try {
+    const uploaded = await uploadImageToR2(c.env.BUCKET, c.env.DB, file, 'avatars');
+    await setUserAvatarKey(c.env.DB, targetUserId, uploaded.key);
+
+    const [updatedUser] = await withUserAvatars(c.env.DB, [
+      {
+        ...user,
+        id: targetUserId,
+        playerId: targetPlayerId ?? user.playerId,
+      } as AuthUser,
+    ]);
+
+    const resolvedAvatarUrl = updatedUser?.avatarUrl ?? uploaded.url;
+
+    await broadcastCampaignEvent(
+      c.env,
+      'party:avatars_updated',
+      {
+        userId: targetUserId,
+        playerId: targetPlayerId ?? user.playerId,
+        avatarUrl: resolvedAvatarUrl,
+      },
+      user.id
+    );
+
+    return c.json({
+      key: uploaded.key,
+      url: uploaded.url,
+      avatarUrl: resolvedAvatarUrl,
+      userId: targetUserId,
+      playerId: targetPlayerId ?? user.playerId,
+    });
+  } catch (err) {
+    return c.json(
+      { error: err instanceof Error ? err.message : 'Не удалось загрузить портрет' },
+      400
+    );
+  }
+});
+
+app.delete('/profile/avatar', async (c) => {
+  const user = c.get('user');
+  if (!user) return c.json({ error: 'Необходима авторизация' }, 401);
+
+  const requestedPlayerId = parseValidPlayerId(c.req.query('playerId') || '');
+  const targetPlayerId =
+    user.role === 'dm' ? requestedPlayerId ?? user.playerId : user.playerId;
+
+  let targetUserId = user.id;
+  if (user.role === 'dm' && targetPlayerId) {
+    const row = await c.env.DB.prepare(`SELECT id FROM users WHERE player_id = ?`)
+      .bind(targetPlayerId)
+      .first<{ id: number }>();
+    if (!row) return c.json({ error: 'Аккаунт игрока не найден' }, 404);
+    targetUserId = row.id;
+  }
+
+  await setUserAvatarKey(c.env.DB, targetUserId, null);
+  // Falls back to the character-sheet portrait, if the sheet has one
+  const fallbackAvatarUrl = await getUserAvatarUrl(c.env.DB, targetUserId);
+  await broadcastCampaignEvent(
+    c.env,
+    'party:avatars_updated',
+    {
+      userId: targetUserId,
+      playerId: targetPlayerId ?? user.playerId,
+      avatarUrl: fallbackAvatarUrl,
+    },
+    user.id
+  );
+  return c.json({
+    ok: true,
+    userId: targetUserId,
+    playerId: targetPlayerId ?? user.playerId,
+    avatarUrl: fallbackAvatarUrl,
+  });
 });
 
 // ============================================================================
@@ -280,7 +408,11 @@ app.get('/characters', async (c) => {
   const user = c.get('user');
   if (!user) return c.json({ error: 'Необходима авторизация' }, 401);
 
-  const allProfiles = await listCharacterProfiles(c.env.DB);
+  // Resolve portraits first — the raw sheet JSON is stripped from the summary response.
+  const allProfiles = await withCharacterAvatars(
+    c.env.DB,
+    await listCharacterProfiles(c.env.DB)
+  );
   // Strip bulky rawLssJson from the summary list (full rawLssJson is fetched via /api/player/:id)
   if (user.role === 'dm') {
     return c.json({
@@ -313,11 +445,15 @@ app.get('/player/:id', async (c) => {
     return c.json({ error: 'Вы можете просматривать только своего персонажа' }, 403);
   }
 
-  const [profile, journal, learnedSpells] = await Promise.all([
+  const [profileRow, journal, learnedSpells] = await Promise.all([
     getCharacterProfile(c.env.DB, playerId),
     getJournalEntry(c.env.DB, playerId),
     listLearnedSpellsForPlayer(c.env.DB, playerId),
   ]);
+
+  const profile = profileRow
+    ? (await withCharacterAvatars(c.env.DB, [profileRow]))[0]
+    : null;
 
   return c.json({ profile, journal, learnedSpells });
 });
@@ -641,6 +777,36 @@ app.post('/rolls', async (c) => {
 // Tab 2: Quests (Read for all, CRUD in /api/dm/quests)
 // ============================================================================
 
+interface QuestMutationBody {
+  title: string;
+  shortDesc: string;
+  fullDesc: string;
+  reward?: string;
+  parameters?: Record<string, string>;
+  progressCurrent?: number;
+  progressTarget?: number;
+  imageKey?: string | null;
+  status?: QuestStatus;
+  tileAccent?: string | null;
+  tileEmblem?: string | null;
+  tilePattern?: string | null;
+  isImportant?: boolean;
+}
+
+function normalizeQuestTileStyle(body: QuestMutationBody): {
+  accent: string | null;
+  emblem: string | null;
+  pattern: string;
+  isImportant: boolean;
+} {
+  return {
+    accent: normalizeQuestAccent(body.tileAccent),
+    emblem: isHudAssetKey(body.tileEmblem) ? (body.tileEmblem as string) : null,
+    pattern: normalizeQuestPattern(body.tilePattern),
+    isImportant: Boolean(body.isImportant),
+  };
+}
+
 app.get('/quests', async (c) => {
   const user = c.get('user');
   if (!user) return c.json({ error: 'Необходима авторизация' }, 401);
@@ -651,17 +817,7 @@ app.get('/quests', async (c) => {
 
 app.post('/dm/quests', async (c) => {
   const user = c.get('user')!;
-  const body = await c.req.json<{
-    title: string;
-    shortDesc: string;
-    fullDesc: string;
-    reward?: string;
-    parameters?: Record<string, string>;
-    progressCurrent?: number;
-    progressTarget?: number;
-    imageKey?: string | null;
-    status?: QuestStatus;
-  }>();
+  const body = await c.req.json<QuestMutationBody>();
 
   if (!body.title?.trim() || !body.shortDesc?.trim()) {
     return c.json({ error: 'Укажите название и краткое описание квеста' }, 400);
@@ -673,9 +829,11 @@ app.post('/dm/quests', async (c) => {
     ? (body.status as QuestStatus)
     : 'active';
 
+  const tile = normalizeQuestTileStyle(body);
+
   await c.env.DB.prepare(
-    `INSERT INTO quests (title, short_desc, full_desc, reward, parameters_json, progress_current, progress_target, image_key, status, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`
+    `INSERT INTO quests (title, short_desc, full_desc, reward, parameters_json, progress_current, progress_target, image_key, status, tile_accent, tile_emblem, tile_pattern, is_important, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`
   )
     .bind(
       body.title.trim(),
@@ -686,7 +844,11 @@ app.post('/dm/quests', async (c) => {
       Math.max(0, Math.trunc(body.progressCurrent ?? 0)),
       Math.max(1, Math.trunc(body.progressTarget ?? 1)),
       body.imageKey || null,
-      status
+      status,
+      tile.accent,
+      tile.emblem,
+      tile.pattern,
+      tile.isImportant ? 1 : 0
     )
     .run();
 
@@ -698,23 +860,15 @@ app.post('/dm/quests', async (c) => {
 app.put('/dm/quests/:id', async (c) => {
   const user = c.get('user')!;
   const id = Number.parseInt(c.req.param('id'), 10);
-  const body = await c.req.json<{
-    title: string;
-    shortDesc: string;
-    fullDesc: string;
-    reward?: string;
-    parameters?: Record<string, string>;
-    progressCurrent?: number;
-    progressTarget?: number;
-    imageKey?: string | null;
-    status?: QuestStatus;
-  }>();
+  const body = await c.req.json<QuestMutationBody>();
 
   const status: QuestStatus = ['active', 'completed', 'failed', 'available'].includes(
     body.status as string
   )
     ? (body.status as QuestStatus)
     : 'active';
+
+  const tile = normalizeQuestTileStyle(body);
 
   await c.env.DB.prepare(
     `UPDATE quests
@@ -726,7 +880,11 @@ app.put('/dm/quests/:id', async (c) => {
          progress_current = ?,
          progress_target = ?,
          image_key = ?,
-         status = ?
+         status = ?,
+         tile_accent = ?,
+         tile_emblem = ?,
+         tile_pattern = ?,
+         is_important = ?
      WHERE id = ?`
   )
     .bind(
@@ -739,8 +897,72 @@ app.put('/dm/quests/:id', async (c) => {
       Math.max(1, Math.trunc(body.progressTarget ?? 1)),
       body.imageKey || null,
       status,
+      tile.accent,
+      tile.emblem,
+      tile.pattern,
+      tile.isImportant ? 1 : 0,
       id
     )
+    .run();
+
+  const quests = await listQuests(c.env.DB);
+  await broadcastCampaignEvent(c.env, 'quests:updated', { quests }, user.id);
+  return c.json({ quests });
+});
+
+// Quick tile styling: star/unstar a quest or recolor it without a full edit form.
+app.patch('/dm/quests/:id/tile', async (c) => {
+  const user = c.get('user')!;
+  const id = Number.parseInt(c.req.param('id'), 10);
+  if (!Number.isFinite(id) || id <= 0) {
+    return c.json({ error: 'Некорректный id квеста' }, 400);
+  }
+
+  type TilePatchBody = {
+    accent?: string | null;
+    emblem?: string | null;
+    pattern?: string | null;
+    isImportant?: boolean;
+  };
+
+  const body = await c.req
+    .json<TilePatchBody>()
+    .catch((): TilePatchBody => ({}));
+
+  const current = await c.env.DB.prepare(
+    `SELECT tile_accent, tile_emblem, tile_pattern, is_important FROM quests WHERE id = ?`
+  )
+    .bind(id)
+    .first<{
+      tile_accent: string | null;
+      tile_emblem: string | null;
+      tile_pattern: string | null;
+      is_important: number;
+    }>();
+
+  if (!current) return c.json({ error: 'Квест не найден' }, 404);
+
+  const accent =
+    body.accent === undefined ? current.tile_accent : normalizeQuestAccent(body.accent);
+  const emblem =
+    body.emblem === undefined
+      ? current.tile_emblem
+      : isHudAssetKey(body.emblem)
+        ? (body.emblem as string)
+        : null;
+  const pattern =
+    body.pattern === undefined
+      ? current.tile_pattern || 'none'
+      : normalizeQuestPattern(body.pattern);
+  const isImportant =
+    body.isImportant === undefined ? Boolean(current.is_important) : Boolean(body.isImportant);
+
+  await c.env.DB.prepare(
+    `UPDATE quests
+     SET tile_accent = ?, tile_emblem = ?, tile_pattern = ?, is_important = ?
+     WHERE id = ?`
+  )
+    .bind(accent, emblem, pattern, isImportant ? 1 : 0, id)
     .run();
 
   const quests = await listQuests(c.env.DB);
@@ -1811,12 +2033,13 @@ app.use('/chat/*', async (c, next) => {
 app.get('/chat', async (c) => {
   const limitParam = Number.parseInt(c.req.query('limit') || '200', 10);
   const campaignId = c.env.CAMPAIGN_ID || 'fraith-main';
-  const [messages, nextSession, partyUsers, customEmojis] = await Promise.all([
+  const [messages, nextSession, rawPartyUsers, customEmojis] = await Promise.all([
     listChatMessages(c.env.DB, Number.isFinite(limitParam) ? limitParam : 200),
     getNextSessionBanner(c.env.DB, campaignId),
     listAllUsersWithThemes(c.env.DB),
     listCustomCampaignEmojis(c.env.DB),
   ]);
+  const partyUsers = await withUserAvatars(c.env.DB, rawPartyUsers);
   return c.json({ messages, nextSession, partyUsers, customEmojis });
 });
 
