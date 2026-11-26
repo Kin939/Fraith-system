@@ -1,6 +1,5 @@
 import React from 'react';
 import { Check, GripHorizontal, Lock, Pencil } from 'lucide-react';
-import { HudIcon } from '../common/HudIcon';
 import { resolveImageUrl } from '../../lib/artwork';
 import type { TalentNode as TalentNodeModel } from '../../lib/types';
 
@@ -36,10 +35,10 @@ export const TalentNode: React.FC<TalentNodeProps> = ({
       onClick={() => {
         if (!isDragging) onSelect(node);
       }}
-      className={`w-44 h-44 p-3 flex flex-col items-center justify-between text-center select-none relative group hud-corners transition-all duration-200 ${
+      className={`w-44 h-44 p-3 flex flex-col items-center justify-between text-center select-none relative group hud-cut-sm transition-colors ${
         isDm ? 'cursor-grab active:cursor-grabbing touch-none' : 'cursor-pointer'
       } ${
-        isDragging ? 'z-30 scale-105 rim-card--active' : ''
+        isDragging ? 'z-30 rim-card--active' : ''
       } ${
         isSelectedInEditor ? 'rim-card--active' : ''
       } ${
@@ -47,22 +46,21 @@ export const TalentNode: React.FC<TalentNodeProps> = ({
           ? 'glass-panel rim-card--active'
           : unlockedPrerequisite
             ? 'rim-card'
-            : 'glass-panel opacity-50 border-primary/20 hover:opacity-75'
+            : 'glass-panel opacity-75 border-border hover:opacity-100'
       }`}
     >
-      {/* Top Row: Corner Cost Badge & Status */}
+      {/* Top Row: Cost Keycap & Status */}
       <div className="w-full flex items-center justify-between gap-1">
         <span
-          className={`inline-flex items-center gap-1 font-mono text-[11px] font-extrabold px-1.5 py-0.5 border tabular-nums ${
+          className={`hud-keycap ${
             isUnlocked
-              ? 'bg-primary text-[#040810] border-primary'
+              ? 'text-primary border-primary/50'
               : canAfford && unlockedPrerequisite
-                ? 'bg-primary/15 border-primary/60 text-primary'
-                : 'bg-[#070B14]/90 border-primary/25 text-muted'
+                ? 'text-text'
+                : 'text-muted'
           }`}
         >
-          <HudIcon asset="spark" size="xs" />
-          <span>{node.cost}</span>
+          {node.cost} очк.
         </span>
 
         <div className="flex items-center gap-1">
@@ -74,44 +72,44 @@ export const TalentNode: React.FC<TalentNodeProps> = ({
                 e.stopPropagation();
                 onEditNode(node);
               }}
-              className="w-5 h-5 bg-[#070B14] border border-primary/35 hover:border-primary text-muted hover:text-primary flex items-center justify-center transition-colors"
+              className="w-6 h-6 bg-bg border border-border hover:border-text/20 text-muted hover:text-text flex items-center justify-center transition-colors"
               title="Редактировать узел"
             >
-              <Pencil className="w-2.5 h-2.5" />
+              <Pencil className="w-3 h-3" strokeWidth={1.5} />
             </button>
           )}
 
           {isDm && (
             <span
-              className="text-muted/60 group-hover:text-primary transition-colors"
+              className="text-muted group-hover:text-secondary transition-colors"
               title="Перетащите плитку мышью"
             >
-              <GripHorizontal className="w-3.5 h-3.5" />
+              <GripHorizontal className="w-3.5 h-3.5" strokeWidth={1.5} />
             </span>
           )}
 
           {isUnlocked ? (
             <span
-              className="w-5 h-5 bg-primary/20 border border-primary text-primary flex items-center justify-center"
+              className="w-5 h-5 bg-positive/10 border border-positive/30 text-positive flex items-center justify-center"
               title="Талант открыт для всей группы"
             >
-              <Check className="w-3.5 h-3.5" />
+              <Check className="w-3.5 h-3.5" strokeWidth={1.5} />
             </span>
           ) : !unlockedPrerequisite ? (
             <span
-              className="w-5 h-5 bg-[#070B14] border border-primary/20 text-muted flex items-center justify-center"
+              className="w-5 h-5 bg-bg border border-border text-muted flex items-center justify-center"
               title="Требуется предыдущий талант"
             >
-              <Lock className="w-3 h-3" />
+              <Lock className="w-3 h-3" strokeWidth={1.5} />
             </span>
           ) : null}
         </div>
       </div>
 
-      {/* Square R2 / HUD Artwork Tile */}
+      {/* Square R2 / Artwork Tile */}
       <div
-        className={`w-16 h-16 overflow-hidden border pointer-events-none bg-[#070B14] ${
-          isUnlocked ? 'border-primary shadow-rim' : 'border-primary/35'
+        className={`w-16 h-16 overflow-hidden border pointer-events-none bg-deep ${
+          isUnlocked ? 'border-primary/60' : 'border-border'
         }`}
       >
         <img
@@ -119,23 +117,23 @@ export const TalentNode: React.FC<TalentNodeProps> = ({
           alt={node.title}
           draggable={false}
           className={`w-full h-full object-cover ${
-            !isUnlocked && !unlockedPrerequisite ? 'grayscale' : ''
+            !isUnlocked && !unlockedPrerequisite ? 'grayscale opacity-75' : ''
           }`}
         />
       </div>
 
       {/* Title & Status */}
       <div className="w-full space-y-0.5 pointer-events-none">
-        <div className="font-anime font-bold text-xs uppercase tracking-wide leading-tight line-clamp-2">
+        <div className="font-medium text-xs text-text leading-snug line-clamp-2">
           {node.title}
         </div>
-        <div className="font-mono text-[10px] uppercase tracking-wider">
+        <div className="text-xs">
           {isUnlocked ? (
-            <span className="text-primary font-bold">ACTIVE // UNLOCKED</span>
+            <span className="text-positive">Открыт</span>
           ) : unlockedPrerequisite ? (
-            <span className="text-muted">AVAILABLE</span>
+            <span className="text-secondary">Доступен</span>
           ) : (
-            <span className="text-muted/70">LOCKED</span>
+            <span className="text-muted">Закрыт</span>
           )}
         </div>
       </div>

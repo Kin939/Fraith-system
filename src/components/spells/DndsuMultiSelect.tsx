@@ -159,10 +159,10 @@ export function DndsuMultiSelect<T extends number | string>({
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className={`w-full flex items-center justify-between gap-2 px-3 py-2 rounded-xl text-xs border transition-all text-left ${
+        className={`w-full h-9 flex items-center justify-between gap-2 px-3 text-xs border transition-colors text-left ${
           selected.length > 0
-            ? 'bg-primary/15 border-primary/60 text-text font-semibold'
-            : 'bg-bg/75 border-border text-muted hover:text-text hover:border-primary/40'
+            ? 'bg-raised border-primary/50 text-text font-medium'
+            : 'bg-bg border-border text-secondary hover:text-text'
         }`}
       >
         <span className="truncate">{summaryText}</span>
@@ -181,14 +181,15 @@ export function DndsuMultiSelect<T extends number | string>({
                   onChange([]);
                 }
               }}
-              className="p-0.5 rounded hover:bg-primary/25 text-primary"
+              className="p-0.5 text-muted hover:text-negative"
               title="Очистить"
             >
-              <X className="w-3 h-3" />
+              <X className="w-3.5 h-3.5" strokeWidth={1.5} />
             </span>
           )}
           <ChevronDown
-            className={`w-3.5 h-3.5 transition-transform ${open ? 'rotate-180 text-primary' : ''}`}
+            className={`w-4 h-4 text-muted transition-transform ${open ? 'rotate-180 text-text' : ''}`}
+            strokeWidth={1.5}
           />
         </div>
       </button>
@@ -199,15 +200,15 @@ export function DndsuMultiSelect<T extends number | string>({
           <div
             ref={menuRef}
             style={menuStyle}
-            className="z-[120] rounded-2xl border border-primary/55 bg-surface shadow-[0_18px_48px_rgba(0,0,0,0.75)] overflow-hidden backdrop-blur-xl"
+            className="z-[120] hud-cut-sm border border-border bg-surface shadow-glass overflow-hidden"
           >
             {(allowSelectAll || selected.length > 0) && (
-              <div className="px-3 py-2 border-b border-border bg-bg/80 flex items-center justify-between gap-2 text-[11px]">
+              <div className="px-3 py-2 border-b border-border bg-deep flex items-center justify-between gap-2 text-xs">
                 {allowSelectAll && !single ? (
                   <button
                     type="button"
                     onClick={handleSelectAll}
-                    className="text-accent hover:underline font-medium"
+                    className="text-primary hover:underline font-medium"
                   >
                     Выбрать все
                   </button>
@@ -217,7 +218,7 @@ export function DndsuMultiSelect<T extends number | string>({
                 <button
                   type="button"
                   onClick={() => onChange([])}
-                  className="text-rose-300 hover:underline font-medium"
+                  className="text-muted hover:text-negative transition-colors"
                 >
                   Очистить
                 </button>
@@ -225,15 +226,18 @@ export function DndsuMultiSelect<T extends number | string>({
             )}
 
             {totalItems > 10 && (
-              <div className="p-2 border-b border-border bg-bg/60">
+              <div className="p-2 border-b border-border bg-bg">
                 <div className="relative">
-                  <Search className="w-3.5 h-3.5 text-muted absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <Search
+                    className="w-3.5 h-3.5 text-muted absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none"
+                    strokeWidth={1.5}
+                  />
                   <input
                     type="text"
                     value={filterText}
                     onChange={(e) => setFilterText(e.target.value)}
-                    placeholder="Быстрый фильтр..."
-                    className="w-full bg-bg/90 border border-border rounded-lg pl-8 pr-2.5 py-1.5 text-xs text-text focus:outline-none focus:border-primary"
+                    placeholder="Быстрый фильтр…"
+                    className="w-full h-8 bg-surface border border-border pl-8 pr-2.5 text-xs text-text focus:outline-none focus:border-primary/60"
                   />
                 </div>
               </div>
@@ -246,7 +250,7 @@ export function DndsuMultiSelect<T extends number | string>({
                 filteredGroups.map((group, gIdx) => (
                   <div key={`${group.title}-${gIdx}`}>
                     {group.title && (
-                      <div className="px-2.5 pt-2 pb-1 text-[10px] font-bold uppercase tracking-wider text-accent/90">
+                      <div className="px-2.5 pt-2 pb-1 text-xs font-medium text-muted">
                         {group.title}
                       </div>
                     )}
@@ -258,14 +262,16 @@ export function DndsuMultiSelect<T extends number | string>({
                           key={String(val)}
                           type="button"
                           onClick={() => toggleItem(val)}
-                          className={`w-full flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg text-xs text-left transition-colors ${
+                          className={`w-full flex items-center justify-between gap-2 px-2.5 py-1.5 text-xs text-left transition-colors ${
                             active
-                              ? 'bg-primary/20 text-text font-semibold'
-                              : 'text-text/85 hover:bg-bg/70'
+                              ? 'bg-raised text-text font-medium'
+                              : 'text-secondary hover:bg-raised/60 hover:text-text'
                           }`}
                         >
                           <span className="truncate">{item.title}</span>
-                          {active && <Check className="w-3.5 h-3.5 text-primary shrink-0" />}
+                          {active && (
+                            <Check className="w-3.5 h-3.5 text-primary shrink-0" strokeWidth={1.5} />
+                          )}
                         </button>
                       );
                     })}

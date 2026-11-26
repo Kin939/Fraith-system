@@ -57,13 +57,13 @@ export const BestiaryEditor: React.FC = () => {
       const res = await uploadImageAsset(file, 'bestiary');
       setImageKey(res.key);
       pushToast({
-        title: 'Портрет существа загружен в R2',
+        title: 'Портрет существа загружен',
         message: res.key,
         variant: 'success',
       });
     } catch (err) {
       pushToast({
-        title: 'Ошибка R2',
+        title: 'Ошибка загрузки',
         message: err instanceof Error ? err.message : 'Не удалось загрузить файл',
         variant: 'error',
       });
@@ -99,14 +99,14 @@ export const BestiaryEditor: React.FC = () => {
       setBestiary(res.creatures);
       pushToast({
         title: editingId ? 'Запись бестиария обновлена' : 'Существо добавлено',
-        message: 'Сортировка по CR пересчитана и отправлена игрокам.',
+        message: 'Бестиарий синхронизирован у всех участников',
         variant: 'success',
       });
       if (!editingId) selectCreature(null);
     } catch (err) {
       pushToast({
         title: 'Ошибка сохранения',
-        message: err instanceof Error ? err.message : 'Проверьте введённые данные',
+        message: err instanceof Error ? err.message : 'Проверьте данные',
         variant: 'error',
       });
     } finally {
@@ -135,17 +135,17 @@ export const BestiaryEditor: React.FC = () => {
   };
 
   return (
-    <div className="grid grid-cols-1 xl:grid-cols-12 gap-5">
-      <div className="xl:col-span-5 glass-panel rounded-3xl p-4 space-y-3">
+    <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
+      <div className="xl:col-span-5 glass-panel hud-cut p-5 space-y-4">
         <div className="flex items-center justify-between">
-          <h4 className="font-anime font-bold text-sm">Существа по CR ({creatures.length})</h4>
+          <h4 className="font-medium text-sm text-text">Существа по опасности ({creatures.length})</h4>
           <button
             type="button"
             onClick={() => selectCreature(null)}
-            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-primary/20 text-primary text-xs font-semibold"
+            className="hud-btn-secondary h-8 px-3 text-xs inline-flex items-center gap-1.5"
           >
-            <Plus className="w-3.5 h-3.5" />
-            Добавить
+            <Plus className="w-3.5 h-3.5" strokeWidth={1.5} />
+            <span>Добавить</span>
           </button>
         </div>
 
@@ -154,20 +154,20 @@ export const BestiaryEditor: React.FC = () => {
             <div
               key={c.id}
               onClick={() => selectCreature(c)}
-              className={`p-3 rounded-2xl border cursor-pointer flex items-center justify-between gap-2 ${
+              className={`p-3 border cursor-pointer transition-colors flex items-center justify-between gap-2 ${
                 editingId === c.id
-                  ? 'bg-primary/15 border-primary'
-                  : 'bg-bg/50 border-border hover:border-primary/40'
+                  ? 'bg-raised border-primary/60'
+                  : 'bg-bg border-border hover:bg-raised/60'
               }`}
             >
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
-                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-primary/20 text-primary">
-                    CR {c.cr}
+                  <span className="hud-keycap">
+                    {c.cr}
                   </span>
-                  <span className="text-sm font-semibold truncate">{c.name}</span>
+                  <span className="text-sm font-medium text-text truncate">{c.name}</span>
                 </div>
-                <div className="text-[11px] text-muted mt-0.5">{c.creatureType}</div>
+                <div className="text-xs text-muted mt-1">{c.creatureType}</div>
               </div>
 
               <div className="flex items-center gap-1 shrink-0">
@@ -177,12 +177,16 @@ export const BestiaryEditor: React.FC = () => {
                     e.stopPropagation();
                     void quickToggleReveal(c);
                   }}
-                  title={c.isRevealed ? 'Скрыть (заглушка ???)' : 'Открыть игрокам'}
-                  className={`p-1.5 rounded-lg ${
-                    c.isRevealed ? 'text-emerald-400' : 'text-amber-300'
+                  title={c.isRevealed ? 'Скрыть от игроков' : 'Открыть игрокам'}
+                  className={`p-1.5 transition-colors ${
+                    c.isRevealed ? 'text-positive' : 'text-muted hover:text-text'
                   }`}
                 >
-                  {c.isRevealed ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+                  {c.isRevealed ? (
+                    <Eye className="w-4 h-4" strokeWidth={1.5} />
+                  ) : (
+                    <EyeOff className="w-4 h-4" strokeWidth={1.5} />
+                  )}
                 </button>
                 <button
                   type="button"
@@ -190,9 +194,9 @@ export const BestiaryEditor: React.FC = () => {
                     e.stopPropagation();
                     void handleDelete(c.id);
                   }}
-                  className="p-1.5 rounded-lg text-muted hover:text-rose-400"
+                  className="p-1.5 text-muted hover:text-negative transition-colors"
                 >
-                  <Trash2 className="w-4 h-4" />
+                  <Trash2 className="w-4 h-4" strokeWidth={1.5} />
                 </button>
               </div>
             </div>
@@ -202,79 +206,78 @@ export const BestiaryEditor: React.FC = () => {
 
       <form
         onSubmit={handleSubmit}
-        className="xl:col-span-7 glass-panel rounded-3xl p-5 space-y-4"
+        className="xl:col-span-7 glass-panel hud-cut p-6 space-y-4"
       >
-        <h4 className="font-anime font-bold text-base uppercase">
-          // {editingId ? `Редактирование существа #${editingId}` : 'Новое существо бестиария'}
+        <h4 className="font-medium text-base text-text">
+          {editingId ? `Редактирование существа #${editingId}` : 'Новое существо бестиария'}
         </h4>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div className="sm:col-span-2">
-            <label className="block text-xs text-muted mb-1">Имя существа *</label>
+            <label className="block text-xs text-secondary mb-1.5">Имя существа</label>
             <input
               required
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Древний Теневой Дракон"
-              className="anime-input w-full text-sm"
+              placeholder="Древний теневой дракон"
+              className="anime-input w-full h-9 text-sm"
             />
           </div>
 
           <div>
-            <label className="block text-xs text-muted mb-1">Уровень опасности (CR) *</label>
+            <label className="block text-xs text-secondary mb-1.5">Уровень опасности (CR)</label>
             <input
               required
               value={cr}
               onChange={(e) => setCr(e.target.value)}
-              placeholder="1/4, 1/2, 2, 13..."
-              className="anime-input w-full text-sm"
+              placeholder="1/4, 1/2, 2, 13"
+              className="anime-input w-full h-9 text-sm font-mono"
             />
           </div>
 
           <div>
-            <label className="block text-xs text-muted mb-1">Тип существа</label>
+            <label className="block text-xs text-secondary mb-1.5">Тип существа</label>
             <input
               value={creatureType}
               onChange={(e) => setCreatureType(e.target.value)}
-              className="anime-input w-full text-sm"
+              className="anime-input w-full h-9 text-sm"
             />
           </div>
 
           <div>
-            <label className="block text-xs text-muted mb-1">Класс Доспеха (AC)</label>
+            <label className="block text-xs text-secondary mb-1.5">Класс доспеха (КД)</label>
             <input
               type="number"
               value={ac}
               onChange={(e) => setAc(Number(e.target.value))}
-              className="anime-input w-full text-sm"
+              className="anime-input w-full h-9 text-sm font-mono"
             />
           </div>
 
           <div>
-            <label className="block text-xs text-muted mb-1">Хиты (HP)</label>
+            <label className="block text-xs text-secondary mb-1.5">Хиты</label>
             <input
               value={hp}
               onChange={(e) => setHp(e.target.value)}
-              className="anime-input w-full text-sm"
+              className="anime-input w-full h-9 text-sm font-mono"
             />
           </div>
         </div>
 
-        <label className="flex items-center gap-2.5 p-3 rounded-2xl bg-bg/60 border border-border cursor-pointer text-sm">
+        <label className="flex items-center gap-2.5 p-3 bg-bg border border-border cursor-pointer text-xs text-secondary">
           <input
             type="checkbox"
             checked={isRevealed}
             onChange={(e) => setIsRevealed(e.target.checked)}
-            className="w-4 h-4 accent-purple-500"
+            className="w-4 h-4"
           />
           <span>
-            Открыто в бестиарии (<code>is_revealed = 1</code>). Если выключено — игроки видят только
-            круглый портрет с <strong>?</strong> и <strong>???</strong>.
+            Открыто игрокам. Пока выключено — в бестиарии отображается силуэт и подпись «???».
           </span>
         </label>
 
         <div>
-          <label className="block text-xs text-muted mb-1">Описание, повадки и способности</label>
+          <label className="block text-xs text-secondary mb-1.5">Описание, повадки и особенности</label>
           <textarea
             rows={4}
             value={description}
@@ -283,16 +286,16 @@ export const BestiaryEditor: React.FC = () => {
           />
         </div>
 
-        <div className="flex flex-wrap items-center gap-3 p-3 rounded-2xl bg-bg/60 border border-border">
+        <div className="flex flex-wrap items-center gap-3 p-3 bg-bg border border-border">
           <img
             src={resolveImageUrl(imageKey, 'dragon')}
             alt="Портрет"
-            className="w-16 h-16 rounded-full object-cover border border-primary"
+            className="w-16 h-16 rounded-full object-cover border border-border"
           />
           <div className="space-y-1">
-            <label className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-surface border border-border hover:border-primary text-xs font-medium cursor-pointer">
-              <Upload className="w-3.5 h-3.5 text-primary" />
-              <span>{uploading ? 'Загрузка...' : 'Загрузить портрет в R2'}</span>
+            <label className="hud-btn-secondary h-8 inline-flex items-center gap-1.5 px-3 text-xs cursor-pointer">
+              <Upload className="w-3.5 h-3.5 text-muted" strokeWidth={1.5} />
+              <span>{uploading ? 'Загрузка…' : 'Загрузить портрет'}</span>
               <input
                 type="file"
                 accept="image/*"
@@ -300,8 +303,8 @@ export const BestiaryEditor: React.FC = () => {
                 className="hidden"
               />
             </label>
-            <div className="text-[11px] text-muted">
-              Ключ R2: <code>{imageKey || 'preset'}</code>
+            <div className="text-xs text-muted">
+              Портрет: <code>{imageKey || 'по умолчанию'}</code>
             </div>
           </div>
         </div>
@@ -310,10 +313,10 @@ export const BestiaryEditor: React.FC = () => {
           <button
             type="submit"
             disabled={saving}
-            className="anime-btn-primary px-5 py-2.5 text-xs inline-flex items-center gap-2"
+            className="anime-btn-primary h-10 px-5 text-xs inline-flex items-center gap-2"
           >
-            <Save className="w-4 h-4" />
-            <span>{saving ? 'Сохранение...' : editingId ? 'Обновить существо' : 'Создать существо'}</span>
+            <Save className="w-4 h-4" strokeWidth={1.5} />
+            <span>{saving ? 'Сохранение…' : editingId ? 'Сохранить существо' : 'Создать существо'}</span>
           </button>
         </div>
       </form>

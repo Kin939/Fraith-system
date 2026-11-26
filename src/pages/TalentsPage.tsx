@@ -16,7 +16,14 @@ export const TalentsPage: React.FC = () => {
   const [spawnPos, setSpawnPos] = useState<{ x: number; y: number }>({ x: 80, y: 80 });
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
+      <div>
+        <h1 className="font-medium text-2xl text-text">Дерево талантов</h1>
+        <p className="text-sm text-secondary mt-1">
+          Общие навыки и усиления отряда, открываемые за вдохновение
+        </p>
+      </div>
+
       <InspirationCounter points={inspirationPoints} isDm={Boolean(isDm)} />
 
       <TalentTree

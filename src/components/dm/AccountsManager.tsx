@@ -33,11 +33,9 @@ export const AccountsManager: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
-  // Per-player password edit drafts
   const [playerDrafts, setPlayerDrafts] = useState<Record<number, string>>({});
   const [savingUserId, setSavingUserId] = useState<number | null>(null);
 
-  // DM self password change form
   const [dmCurrentPassword, setDmCurrentPassword] = useState('');
   const [dmNewPassword, setDmNewPassword] = useState('');
   const [savingDmPassword, setSavingDmPassword] = useState(false);
@@ -93,7 +91,7 @@ export const AccountsManager: React.FC = () => {
     if (nextPassword.length < 6) {
       pushToast({
         title: 'Слишком короткий пароль',
-        message: 'Пароль игрока должен содержать минимум 6 символов.',
+        message: 'Пароль игрока должен содержать минимум 6 символов',
         variant: 'warning',
       });
       return;
@@ -111,7 +109,7 @@ export const AccountsManager: React.FC = () => {
       setAccounts(res.accounts);
       pushToast({
         title: `Пароль ${acc.username} обновлён`,
-        message: 'Старые сессии этого игрока сброшены, новый пароль сохранён в этой вкладке.',
+        message: 'Старые сессии сброшены, новый пароль сохранён',
         variant: 'success',
       });
     } catch (err) {
@@ -133,7 +131,7 @@ export const AccountsManager: React.FC = () => {
     if (dmNewPassword.trim().length < 6) {
       pushToast({
         title: 'Слишком короткий пароль',
-        message: 'Новый пароль Мастера должен содержать минимум 6 символов.',
+        message: 'Новый пароль Мастера должен содержать минимум 6 символов',
         variant: 'warning',
       });
       return;
@@ -151,14 +149,14 @@ export const AccountsManager: React.FC = () => {
       setDmCurrentPassword('');
       setDmNewPassword('');
       pushToast({
-        title: 'Пароль Мастера (dm) изменён',
-        message: 'Все посторонние сессии принудительно завершены.',
+        title: 'Пароль Мастера изменён',
+        message: 'Все посторонние сессии завершены',
         variant: 'success',
       });
     } catch (err) {
       pushToast({
-        title: 'Не удалось изменить пароль DM',
-        message: err instanceof Error ? err.message : 'Проверьте текущий пароль Мастера',
+        title: 'Не удалось изменить пароль Мастера',
+        message: err instanceof Error ? err.message : 'Проверьте текущий пароль',
         variant: 'error',
       });
     } finally {
@@ -169,27 +167,23 @@ export const AccountsManager: React.FC = () => {
   const playerAccounts = accounts.filter((a) => a.role === 'player');
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       {/* Players Credentials Grid */}
-      <div className="glass-panel rounded-3xl p-5 space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-2xl bg-primary/20 border border-primary/40 flex items-center justify-center text-primary">
-              <KeyRound className="w-4 h-4" />
-            </div>
-            <div>
-              <h2 className="font-anime font-bold text-base uppercase">
-                // Индивидуальные пароли игроков (хранятся только у Мастера)
-              </h2>
-              <p className="text-xs text-muted">
-                У каждого игрока свой отдельный логин и пароль. Отправьте каждому игроку его пару для входа.
-              </p>
-            </div>
+      <div className="glass-panel hud-cut p-6 space-y-5">
+        <div className="flex items-start gap-3">
+          <KeyRound className="w-4 h-4 text-muted mt-1 shrink-0" strokeWidth={1.5} />
+          <div>
+            <h2 className="font-medium text-base text-text">
+              Индивидуальные доступы игроков
+            </h2>
+            <p className="text-xs text-secondary mt-0.5">
+              У каждого игрока свой логин и пароль. Скопируйте пару и отправьте участнику кампании.
+            </p>
           </div>
         </div>
 
         {loading ? (
-          <div className="py-8 text-center text-xs text-muted">Загрузка доступов аккаунтов...</div>
+          <div className="py-8 text-center text-xs text-muted">Загрузка доступов…</div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
             {playerAccounts.map((acc) => {
@@ -201,23 +195,23 @@ export const AccountsManager: React.FC = () => {
               return (
                 <div
                   key={acc.id}
-                  className="p-4 rounded-2xl bg-bg/70 border border-border space-y-3.5 flex flex-col justify-between"
+                  className="p-4 bg-bg border border-border hud-cut-sm space-y-4 flex flex-col justify-between"
                 >
                   <div className="space-y-3">
                     <div className="flex items-start justify-between gap-2">
                       <div>
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-primary/20 text-primary border border-primary/40">
-                            Слот #{pid}
+                        <div className="flex items-center gap-2">
+                          <span className="hud-keycap">
+                            Игрок {pid}
                           </span>
-                          <span className="font-anime font-bold text-sm text-text">
+                          <span className="font-medium text-sm text-text">
                             {char?.characterName || acc.displayName}
                           </span>
                         </div>
-                        <div className="text-xs text-muted mt-1 flex items-center gap-1.5">
-                          <UserCheck className="w-3.5 h-3.5 text-accent" />
+                        <div className="text-xs text-secondary mt-1.5 flex items-center gap-1.5">
+                          <UserCheck className="w-3.5 h-3.5 text-muted" strokeWidth={1.5} />
                           <span>Логин:</span>
-                          <code className="font-mono font-bold text-text">{acc.username}</code>
+                          <code className="font-mono text-text">{acc.username}</code>
                         </div>
                       </div>
 
@@ -227,27 +221,27 @@ export const AccountsManager: React.FC = () => {
                           setDmSelectedPlayerId(pid);
                           setActiveTab('character');
                         }}
-                        className="px-2.5 py-1.5 rounded-xl bg-surface border border-border hover:border-primary/50 text-[11px] font-semibold text-muted hover:text-text inline-flex items-center gap-1 transition-colors"
-                        title="Открыть лист этого игрока во вкладке «Персонаж»"
+                        className="h-8 px-2.5 bg-surface border border-border text-xs text-secondary hover:text-text inline-flex items-center gap-1.5 transition-colors"
+                        title="Открыть лист этого игрока"
                       >
-                        <Eye className="w-3.5 h-3.5 text-primary" />
+                        <Eye className="w-3.5 h-3.5 text-muted" strokeWidth={1.5} />
                         <span>Лист</span>
                       </button>
                     </div>
 
                     {/* Current Active Password Readout + Copy */}
-                    <div className="p-3 rounded-xl bg-surface/80 border border-primary/25 space-y-2">
-                      <div className="flex items-center justify-between text-[11px] text-muted">
-                        <span>Действующий пароль игрока:</span>
+                    <div className="p-3 bg-surface border border-border space-y-2.5">
+                      <div className="flex items-center justify-between text-xs text-muted">
+                        <span>Текущий пароль</span>
                         {acc.updatedAt && (
-                          <span>
+                          <span className="font-mono tabular-nums">
                             {new Date(acc.updatedAt + 'Z').toLocaleDateString('ru-RU')}
                           </span>
                         )}
                       </div>
 
                       <div className="flex items-center justify-between gap-2">
-                        <code className="font-mono font-bold text-sm text-accent select-all break-all">
+                        <code className="font-mono text-sm text-text select-all break-all">
                           {acc.plainPassword || '—'}
                         </code>
                         <button
@@ -259,13 +253,13 @@ export const AccountsManager: React.FC = () => {
                               `Пароль для ${acc.username} скопирован`
                             )
                           }
-                          className="p-1.5 rounded-lg bg-bg/80 border border-border hover:border-accent text-muted hover:text-text transition-colors shrink-0"
-                          title="Скопировать только пароль"
+                          className="w-8 h-8 bg-bg border border-border text-muted hover:text-text flex items-center justify-center transition-colors shrink-0"
+                          title="Скопировать пароль"
                         >
                           {copiedId === `pwd-${acc.id}` ? (
-                            <Check className="w-3.5 h-3.5 text-emerald-400" />
+                            <Check className="w-3.5 h-3.5 text-positive" strokeWidth={1.5} />
                           ) : (
-                            <Copy className="w-3.5 h-3.5" />
+                            <Copy className="w-3.5 h-3.5" strokeWidth={1.5} />
                           )}
                         </button>
                       </div>
@@ -276,24 +270,24 @@ export const AccountsManager: React.FC = () => {
                           void copyText(
                             `pair-${acc.id}`,
                             `Логин: ${acc.username}\nПароль: ${acc.plainPassword || ''}`,
-                            `Данные входа для Игрока #${pid} скопированы`
+                            `Данные входа для игрока ${pid} скопированы`
                           )
                         }
-                        className="w-full py-1.5 px-3 rounded-xl bg-primary/15 hover:bg-primary/25 border border-primary/35 text-xs font-semibold text-primary inline-flex items-center justify-center gap-1.5 transition-colors"
+                        className="w-full h-8 px-3 bg-raised border border-border hover:border-text/20 text-xs text-text inline-flex items-center justify-center gap-1.5 transition-colors"
                       >
                         {copiedId === `pair-${acc.id}` ? (
-                          <Check className="w-3.5 h-3.5 text-emerald-400" />
+                          <Check className="w-3.5 h-3.5 text-positive" strokeWidth={1.5} />
                         ) : (
-                          <Copy className="w-3.5 h-3.5" />
+                          <Copy className="w-3.5 h-3.5 text-muted" strokeWidth={1.5} />
                         )}
-                        <span>Скопировать логин + пароль</span>
+                        <span>Скопировать логин и пароль</span>
                       </button>
                     </div>
 
                     {/* Change / Regenerate Player Password */}
-                    <div className="space-y-1.5 pt-1">
-                      <label className="block text-[11px] text-muted">
-                        Задать новый пароль для {acc.username}:
+                    <div className="space-y-1.5">
+                      <label className="block text-xs text-secondary">
+                        Новый пароль для {acc.username}
                       </label>
                       <div className="flex items-center gap-1.5">
                         <input
@@ -305,8 +299,8 @@ export const AccountsManager: React.FC = () => {
                               [acc.id]: e.target.value,
                             }))
                           }
-                          placeholder="Новый пароль (от 6 симв.)"
-                          className="anime-input w-full text-xs font-mono"
+                          placeholder="От 6 символов"
+                          className="anime-input w-full h-9 text-xs font-mono"
                         />
                         <button
                           type="button"
@@ -316,10 +310,10 @@ export const AccountsManager: React.FC = () => {
                               [acc.id]: generatePlayerPassword(pid),
                             }))
                           }
-                          className="p-2 rounded-xl bg-surface border border-border hover:border-accent text-muted hover:text-accent transition-colors shrink-0"
-                          title="Сгенерировать случайный пароль"
+                          className="w-9 h-9 bg-surface border border-border text-muted hover:text-text flex items-center justify-center transition-colors shrink-0"
+                          title="Сгенерировать пароль"
                         >
-                          <RefreshCw className="w-3.5 h-3.5" />
+                          <RefreshCw className="w-3.5 h-3.5" strokeWidth={1.5} />
                         </button>
                       </div>
                     </div>
@@ -329,14 +323,14 @@ export const AccountsManager: React.FC = () => {
                     type="button"
                     disabled={savingUserId === acc.id || !isChanged || draftPwd.trim().length < 6}
                     onClick={() => void handleSavePlayerPassword(acc)}
-                    className="anime-btn-primary w-full py-2 text-xs inline-flex items-center justify-center gap-1.5"
+                    className="anime-btn-primary w-full h-9 text-xs inline-flex items-center justify-center gap-1.5"
                   >
-                    <Save className="w-3.5 h-3.5" />
+                    <Save className="w-3.5 h-3.5" strokeWidth={1.5} />
                     <span>
                       {savingUserId === acc.id
-                        ? 'Сохранение...'
+                        ? 'Сохранение…'
                         : isChanged
-                          ? 'Обновить пароль игрока'
+                          ? 'Обновить пароль'
                           : 'Пароль актуален'}
                     </span>
                   </button>
@@ -348,58 +342,58 @@ export const AccountsManager: React.FC = () => {
       </div>
 
       {/* DM Own Password Security Card */}
-      <div className="glass-panel rounded-3xl p-5 border border-amber-500/30 space-y-4">
-        <div className="flex items-start gap-3">
-          <div className="w-9 h-9 rounded-2xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-300 shrink-0">
-            <Crown className="w-4 h-4" />
+      <div className="glass-panel hud-cut p-6 space-y-4">
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          <div className="flex items-start gap-3">
+            <Crown className="w-4 h-4 text-muted mt-1 shrink-0" strokeWidth={1.5} />
+            <div>
+              <h3 className="font-medium text-base text-text">
+                Защита аккаунта Мастера (<code>dm</code>)
+              </h3>
+              <p className="text-xs text-secondary mt-0.5">
+                Пароль Мастера хранится только в виде криптографического хэша bcrypt с версионированием сессий.
+              </p>
+            </div>
           </div>
-          <div>
-            <h3 className="font-anime font-bold text-sm uppercase flex items-center gap-2 flex-wrap">
-              <span>// Защита аккаунта Мастера (`dm`)</span>
-              <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/40 text-emerald-300">
-                <ShieldCheck className="w-3 h-3" />
-                Защищено bcrypt + версией сессии
-              </span>
-            </h3>
-            <p className="text-xs text-muted mt-0.5">
-              Пароль Мастера хранится только в виде криптографического хэша (не выводится на экран), а вход без него заблокирован. Ниже вы можете при желании сменить пароль `dm`.
-            </p>
-          </div>
+          <span className="inline-flex items-center gap-1.5 text-xs text-positive">
+            <ShieldCheck className="w-4 h-4" strokeWidth={1.5} />
+            <span>Сессия защищена</span>
+          </span>
         </div>
 
         <form onSubmit={handleChangeDmPassword} className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
           <div>
-            <label className="block text-xs text-muted mb-1">Текущий пароль DM</label>
+            <label className="block text-xs text-secondary mb-1.5">Текущий пароль Мастера</label>
             <input
               type="password"
               required
               value={dmCurrentPassword}
               onChange={(e) => setDmCurrentPassword(e.target.value)}
-              placeholder="Текущий пароль dm..."
-              className="anime-input w-full text-xs"
+              placeholder="Текущий пароль"
+              className="anime-input w-full h-9 text-xs"
             />
           </div>
 
           <div>
-            <label className="block text-xs text-muted mb-1">Новый пароль DM (от 6 символов)</label>
+            <label className="block text-xs text-secondary mb-1.5">Новый пароль (от 6 символов)</label>
             <input
               type="password"
               required
               minLength={6}
               value={dmNewPassword}
               onChange={(e) => setDmNewPassword(e.target.value)}
-              placeholder="Новый секретный пароль..."
-              className="anime-input w-full text-xs"
+              placeholder="Новый пароль"
+              className="anime-input w-full h-9 text-xs"
             />
           </div>
 
           <button
             type="submit"
             disabled={savingDmPassword || !dmCurrentPassword || dmNewPassword.trim().length < 6}
-            className="anime-btn-primary py-2.5 px-4 text-xs inline-flex items-center justify-center gap-1.5"
+            className="anime-btn-primary h-9 px-4 text-xs inline-flex items-center justify-center gap-1.5"
           >
-            <Lock className="w-3.5 h-3.5" />
-            <span>{savingDmPassword ? 'Обновление...' : 'Сменить пароль DM'}</span>
+            <Lock className="w-3.5 h-3.5" strokeWidth={1.5} />
+            <span>{savingDmPassword ? 'Обновление…' : 'Сменить пароль Мастера'}</span>
           </button>
         </form>
       </div>

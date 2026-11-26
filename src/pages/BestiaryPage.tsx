@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { Crown } from 'lucide-react';
 import { BestiaryDetail } from '../components/bestiary/BestiaryDetail';
 import { BestiaryTile } from '../components/bestiary/BestiaryTile';
-import { HudFrame } from '../components/common/HudFrame';
 import { apiFetch } from '../lib/api';
 import { useCampaignStore } from '../lib/store';
 import type { BestiaryCreature } from '../lib/types';
@@ -34,34 +33,39 @@ export const BestiaryPage: React.FC = () => {
     setBestiary(res.creatures);
     pushToast({
       title: !creature.isRevealed
-        ? `Существо «${creature.name}» открыто игрокам!`
-        : `«${creature.name}» скрыто в ???`,
-      message: 'Бестиарий обновлён у всех подключённых участников.',
+        ? `Существо «${creature.name}» открыто игрокам`
+        : `Существо «${creature.name}» скрыто`,
+      message: 'Бестиарий обновлён у всех участников за столом',
       variant: 'info',
     });
   };
 
   return (
-    <div className="space-y-5">
-      <HudFrame
-        code={`THREAT ARCHIVE // IDENTIFIED ${revealedCount}/${creatures.length}`}
-        title="Бестиарий"
-        subtitle="Классификация угроз по уровню опасности (CR) с динамической неоновой индикацией"
-        rightSlot={
-          isDm ? (
-            <button
-              type="button"
-              onClick={() => setActiveTab('dm')}
-              className="anime-btn-primary px-3.5 py-2 text-xs inline-flex items-center gap-1.5"
-            >
-              <Crown className="w-3.5 h-3.5" />
-              <span>Редактор бестиария (DM)</span>
-            </button>
-          ) : undefined
-        }
-      >
-        <div className="hidden" aria-hidden="true" />
-      </HudFrame>
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <div className="flex items-baseline gap-3">
+            <h1 className="font-medium text-2xl text-text">Бестиарий</h1>
+            <span className="font-mono text-xs text-muted tabular-nums">
+              Открыто {revealedCount} из {creatures.length}
+            </span>
+          </div>
+          <p className="text-sm text-secondary mt-1">
+            Существа и противники, с которыми столкнулся отряд
+          </p>
+        </div>
+
+        {isDm && (
+          <button
+            type="button"
+            onClick={() => setActiveTab('dm')}
+            className="hud-btn-secondary h-10 px-4 text-xs inline-flex items-center gap-2"
+          >
+            <Crown className="w-4 h-4 text-muted" strokeWidth={1.5} />
+            <span>Редактор бестиария</span>
+          </button>
+        )}
+      </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
         {creatures.map((creature) => (

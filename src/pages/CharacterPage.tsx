@@ -33,24 +33,24 @@ export const CharacterPage: React.FC = () => {
     await syncLssData({ reset: true });
     pushToast({
       title: 'Слот персонажа очищен',
-      message: 'Теперь можно создать нового героя или загрузить .json из Long Story Short.',
+      message: 'Можно создать нового героя или импортировать .json из Long Story Short',
       variant: 'info',
     });
   }, [syncLssData, pushToast]);
 
   if (!profile) {
     return (
-      <div className="space-y-4">
+      <div className="space-y-6">
         {isDm && <PlayerSwitcher />}
-        <div className="glass-panel hud-corners hud-cut p-8 text-center font-mono text-xs uppercase tracking-widest text-muted">
-          LOADING OPERATOR SLOT // P0{activePlayerId}...
+        <div className="glass-panel hud-cut p-8 text-center text-sm text-muted">
+          Загрузка листа игрока {activePlayerId}…
         </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       {isDm && <PlayerSwitcher />}
 
       <LssSheetEmbed

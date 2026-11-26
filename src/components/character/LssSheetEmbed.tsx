@@ -67,7 +67,6 @@ export const LssSheetEmbed: React.FC<LssSheetEmbedProps> = ({
     }
   }, [externalOpenImport]);
 
-  // Preserve postMessage sync listener when embedded LSS iframe mode is open
   useEffect(() => {
     if (viewMode !== 'iframe') return;
     const onMessage = (ev: MessageEvent) => {
@@ -92,12 +91,12 @@ export const LssSheetEmbed: React.FC<LssSheetEmbedProps> = ({
       await onSyncJson(parsed);
       pushToast({
         title: 'Чарник импортирован',
-        message: `Файл «${file.name}» успешно загружен в тактический лист.`,
+        message: `Файл «${file.name}» загружен в лист персонажа`,
         variant: 'success',
       });
     } catch (err) {
       pushToast({
-        title: 'Ошибка чтения .json файла',
+        title: 'Ошибка чтения JSON',
         message: err instanceof Error ? err.message : 'Проверьте экспорт из Long Story Short',
         variant: 'error',
       });
@@ -118,8 +117,8 @@ export const LssSheetEmbed: React.FC<LssSheetEmbedProps> = ({
       const parsed = JSON.parse(jsonText) as unknown;
       await onSyncJson(parsed);
       pushToast({
-        title: 'Чарник персонажа загружен',
-        message: 'Данные персонажа синхронизированы.',
+        title: 'Чарник загружен',
+        message: 'Данные персонажа синхронизированы',
         variant: 'success',
       });
       setImportModalOpen(false);
@@ -159,40 +158,37 @@ export const LssSheetEmbed: React.FC<LssSheetEmbedProps> = ({
   const iframeSrc = profile.lssEmbedUrl?.trim() || LSS_CHARACTER_LIST_EMBED_URL;
 
   return (
-    <div className="glass-panel hud-corners hud-cut overflow-hidden flex flex-col">
-      {/* HUD Frame Header: CHARACTER SHEET // SYNC */}
-      <div className="px-4 py-2.5 border-b border-primary/35 bg-[#070B14]/85 flex flex-wrap items-center justify-between gap-2">
+    <div className="glass-panel hud-cut overflow-hidden flex flex-col">
+      {/* Quiet Sheet Toolbar */}
+      <div className="px-4 py-3 border-b border-border bg-deep flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3 flex-wrap">
-          <span className="font-mono text-[11px] font-bold uppercase tracking-[0.18em] px-2.5 py-1 bg-primary/15 text-primary border border-primary/50">
-            CHARACTER SHEET // SYNC
-          </span>
-          <span className="font-mono text-[11px] text-muted uppercase">
-            SLOT P0{profile.playerId}
-          </span>
-          <div className="inline-flex items-center border border-primary/30 bg-[#070B14]">
+          <span className="text-sm font-medium text-text">Лист персонажа</span>
+          <span className="text-xs text-muted">Игрок {profile.playerId}</span>
+
+          <div className="inline-flex items-center border border-border bg-bg p-0.5">
             <button
               type="button"
               onClick={() => setViewMode('native')}
-              className={`px-2.5 py-1 text-[10px] font-mono uppercase tracking-wider inline-flex items-center gap-1 transition-colors ${
+              className={`h-7 px-2.5 text-xs inline-flex items-center gap-1.5 transition-colors ${
                 viewMode === 'native'
-                  ? 'bg-primary text-[#040810] font-bold'
+                  ? 'bg-raised text-text font-medium'
                   : 'text-muted hover:text-text'
               }`}
             >
-              <ScrollText className="w-3 h-3" />
-              <span>HUD SHEET</span>
+              <ScrollText className="w-3.5 h-3.5" strokeWidth={1.5} />
+              <span>Нативный лист</span>
             </button>
             <button
               type="button"
               onClick={() => setViewMode('iframe')}
-              className={`px-2.5 py-1 text-[10px] font-mono uppercase tracking-wider inline-flex items-center gap-1 transition-colors ${
+              className={`h-7 px-2.5 text-xs inline-flex items-center gap-1.5 transition-colors ${
                 viewMode === 'iframe'
-                  ? 'bg-primary text-[#040810] font-bold'
+                  ? 'bg-raised text-text font-medium'
                   : 'text-muted hover:text-text'
               }`}
             >
-              <Monitor className="w-3 h-3" />
-              <span>LSS IFRAME</span>
+              <Monitor className="w-3.5 h-3.5" strokeWidth={1.5} />
+              <span>Окно LSS</span>
             </button>
           </div>
         </div>
@@ -202,22 +198,22 @@ export const LssSheetEmbed: React.FC<LssSheetEmbedProps> = ({
             <button
               type="button"
               onClick={() => setDmAllowEdit((v) => !v)}
-              className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-mono uppercase tracking-wide border transition-colors ${
+              className={`h-8 inline-flex items-center gap-1.5 px-3 text-xs border transition-colors ${
                 dmAllowEdit
-                  ? 'border-amber-400/60 bg-amber-500/15 text-amber-200 font-bold'
-                  : 'border-primary/30 bg-[#070B14] text-muted hover:text-text'
+                  ? 'border-warning/40 bg-warning/10 text-warning font-medium'
+                  : 'border-border bg-surface text-secondary hover:text-text'
               }`}
               title="Разрешить Мастеру редактировать поля чарника этого игрока"
             >
               {dmAllowEdit ? (
                 <>
-                  <Unlock className="w-3.5 h-3.5" />
-                  <span>DM EDIT: ON</span>
+                  <Unlock className="w-3.5 h-3.5" strokeWidth={1.5} />
+                  <span>Правка Мастером</span>
                 </>
               ) : (
                 <>
-                  <Lock className="w-3.5 h-3.5" />
-                  <span>DM EDIT</span>
+                  <Lock className="w-3.5 h-3.5" strokeWidth={1.5} />
+                  <span>Только просмотр</span>
                 </>
               )}
             </button>
@@ -227,11 +223,11 @@ export const LssSheetEmbed: React.FC<LssSheetEmbedProps> = ({
             <button
               type="button"
               onClick={handleExportJson}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs border border-primary/30 bg-[#070B14] text-muted hover:text-primary hover:border-primary transition-colors"
-              title="Скачать чарник в формате .json (совместим с Long Story Short)"
+              className="h-8 inline-flex items-center gap-1.5 px-3 text-xs border border-border bg-surface text-secondary hover:text-text transition-colors"
+              title="Скачать чарник в формате .json"
             >
-              <Download className="w-3.5 h-3.5 text-primary" />
-              <span>Экспорт .json</span>
+              <Download className="w-3.5 h-3.5 text-muted" strokeWidth={1.5} />
+              <span>Экспорт</span>
             </button>
           )}
 
@@ -239,10 +235,10 @@ export const LssSheetEmbed: React.FC<LssSheetEmbedProps> = ({
             <button
               type="button"
               onClick={() => setImportModalOpen(true)}
-              className="hud-btn-secondary inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold"
+              className="hud-btn-secondary h-8 inline-flex items-center gap-1.5 px-3 text-xs"
             >
-              <FileJson className="w-3.5 h-3.5 text-primary" />
-              <span>Импорт .json</span>
+              <FileJson className="w-3.5 h-3.5 text-muted" strokeWidth={1.5} />
+              <span>Импорт JSON</span>
             </button>
           )}
 
@@ -250,32 +246,35 @@ export const LssSheetEmbed: React.FC<LssSheetEmbedProps> = ({
             type="button"
             onClick={() => void onRefreshCache()}
             disabled={syncing}
-            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs border border-primary/30 bg-[#070B14] text-muted hover:text-primary hover:border-primary transition-colors"
+            className="w-8 h-8 inline-flex items-center justify-center border border-border bg-surface text-muted hover:text-text transition-colors"
             title="Синхронизировать с сервером"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${syncing ? 'animate-spin text-primary' : ''}`} />
+            <RefreshCw
+              className={`w-3.5 h-3.5 ${syncing ? 'animate-spin text-primary' : ''}`}
+              strokeWidth={1.5}
+            />
           </button>
 
           {hasCharacter && canEdit && (
             <button
               type="button"
               onClick={() => void onResetSlot()}
-              className="p-1.5 border border-primary/30 bg-[#070B14] text-muted hover:text-rose-300 hover:border-rose-500/50 transition-colors"
+              className="w-8 h-8 inline-flex items-center justify-center border border-border bg-surface text-muted hover:text-negative transition-colors"
               title="Очистить слот персонажа"
             >
-              <RotateCcw className="w-3.5 h-3.5" />
+              <RotateCcw className="w-3.5 h-3.5" strokeWidth={1.5} />
             </button>
           )}
         </div>
       </div>
 
-      {/* Main Sheet Body: Native 3-Page Sheet or Embedded Long Story Short Iframe */}
+      {/* Main Sheet Body */}
       {viewMode === 'iframe' ? (
-        <div className="w-full bg-[#070B14] relative">
+        <div className="w-full bg-bg relative">
           <iframe
             src={iframeSrc}
-            title={`Long Story Short — Player ${profile.playerId}`}
-            className="w-full h-[780px] border-0 bg-[#070B14]"
+            title={`Long Story Short — Игрок ${profile.playerId}`}
+            className="w-full h-[780px] border-0 bg-bg"
             allow="clipboard-read; clipboard-write"
           />
         </div>
@@ -295,16 +294,13 @@ export const LssSheetEmbed: React.FC<LssSheetEmbedProps> = ({
         />
       )}
 
-      {/* Telemetry Footer */}
-      <div className="px-4 py-2 bg-[#070B14]/85 border-t border-primary/25 font-mono text-[10px] uppercase tracking-wider text-muted flex flex-wrap items-center justify-between gap-2">
-        <span>
-          PROTOCOL: <strong className="text-primary">LSS .JSON + POSTMESSAGE</strong> // AUTO-SAVE ACTIVE
-        </span>
-        <span className="tabular-nums">
-          LAST SYNC:{' '}
+      {/* Quiet Sync Footer */}
+      <div className="px-4 py-2.5 bg-deep border-t border-border text-xs text-muted flex flex-wrap items-center justify-between gap-2">
+        <span>Автосохранение листа Long Story Short включено</span>
+        <span className="font-mono tabular-nums">
           {profile.lastSyncedAt
-            ? new Date(profile.lastSyncedAt).toLocaleString('ru-RU')
-            : 'PENDING'}
+            ? `Обновлено ${new Date(profile.lastSyncedAt).toLocaleString('ru-RU')}`
+            : 'Ещё не синхронизировано'}
         </span>
       </div>
 
@@ -312,22 +308,19 @@ export const LssSheetEmbed: React.FC<LssSheetEmbedProps> = ({
       {importModalOpen && (
         <div
           onClick={() => setImportModalOpen(false)}
-          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
+          className="fixed inset-0 z-50 bg-black/75 flex items-center justify-center p-4"
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="glass-panel neon-border hud-corners hud-cut max-w-xl w-full p-6 space-y-4"
+            className="glass-panel hud-cut max-w-xl w-full p-6 space-y-4 shadow-glass"
           >
-            <div className="flex items-start justify-between gap-3 border-b border-primary/25 pb-3">
+            <div className="flex items-start justify-between gap-3 border-b border-border pb-3">
               <div>
-                <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-primary">
-                  // IMPORT LSS PAYLOAD
-                </div>
-                <h3 className="font-anime font-bold text-lg uppercase">
-                  Импорт чарника Long Story Short (.json)
+                <h3 className="font-medium text-base text-text">
+                  Импорт листа из Long Story Short
                 </h3>
-                <p className="text-xs text-muted mt-1">
-                  Экспортируйте своего персонажа в файл <code>.json</code> в Long Story Short (схема{' '}
+                <p className="text-xs text-secondary mt-1">
+                  Экспортируйте персонажа в файл <code>.json</code> (схема{' '}
                   <a
                     href={LSS_SCHEMA_V1_URL}
                     target="_blank"
@@ -336,23 +329,23 @@ export const LssSheetEmbed: React.FC<LssSheetEmbedProps> = ({
                   >
                     character.json
                   </a>
-                  ) и загрузите ниже.
+                  ) и выберите его ниже или вставьте текст.
                 </p>
               </div>
 
               <button
                 type="button"
                 onClick={() => setImportModalOpen(false)}
-                className="p-1.5 border border-primary/30 text-muted hover:text-text"
+                className="p-1 text-muted hover:text-text transition-colors"
               >
-                <X className="w-4 h-4" />
+                <X className="w-4 h-4" strokeWidth={1.5} />
               </button>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2">
-              <label className="anime-btn-primary inline-flex items-center gap-2 px-4 py-2 text-xs cursor-pointer">
-                <Upload className="w-4 h-4" />
-                <span>Выбрать .json файл персонажа</span>
+            <div>
+              <label className="hud-btn-secondary inline-flex items-center gap-2 h-9 px-4 text-xs cursor-pointer">
+                <Upload className="w-4 h-4 text-muted" strokeWidth={1.5} />
+                <span>Выбрать файл .json</span>
                 <input
                   type="file"
                   accept=".json,application/json"
@@ -367,7 +360,7 @@ export const LssSheetEmbed: React.FC<LssSheetEmbedProps> = ({
               value={jsonText}
               onChange={(e) => setJsonText(e.target.value)}
               rows={8}
-              placeholder="Или вставьте содержимое экспортированного .json файла из Long Story Short..."
+              placeholder="Содержимое .json файла"
               className="anime-input w-full font-mono text-xs"
             />
 
@@ -375,7 +368,7 @@ export const LssSheetEmbed: React.FC<LssSheetEmbedProps> = ({
               <button
                 type="button"
                 onClick={() => setImportModalOpen(false)}
-                className="px-4 py-2 border border-primary/30 text-xs font-mono uppercase text-muted hover:text-text"
+                className="h-9 px-4 border border-border text-xs text-secondary hover:text-text transition-colors"
               >
                 Отмена
               </button>
@@ -383,9 +376,9 @@ export const LssSheetEmbed: React.FC<LssSheetEmbedProps> = ({
                 type="button"
                 disabled={importing || !jsonText.trim()}
                 onClick={() => void handleApplyJsonImport()}
-                className="anime-btn-primary px-4 py-2 text-xs"
+                className="anime-btn-primary h-9 px-4 text-xs"
               >
-                {importing ? 'Загрузка...' : 'Импортировать чарник'}
+                {importing ? 'Импорт…' : 'Импортировать'}
               </button>
             </div>
           </div>

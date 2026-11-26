@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
   BookOpen,
-  Crown,
   Eye,
   KeyRound,
   Palette,
@@ -41,20 +40,20 @@ export const DmPage: React.FC = () => {
 
   if (user?.role !== 'dm') {
     return (
-      <div className="glass-panel rounded-3xl p-8 text-center text-rose-300 text-sm">
-        Доступ к этой вкладке открыт исключительно для Мастера (роль dm).
+      <div className="glass-panel hud-cut p-8 text-center text-negative text-sm">
+        Доступ к разделу открыт только Мастеру кампании
       </div>
     );
   }
 
   const sections: Array<{ id: DmSection; label: string; icon: React.ReactNode }> = [
-    { id: 'accounts', label: 'Пароли и доступы', icon: <KeyRound className="w-4 h-4" /> },
-    { id: 'quests', label: 'Квесты + R2', icon: <ScrollText className="w-4 h-4" /> },
-    { id: 'bestiary', label: 'Бестиарий + CR', icon: <Skull className="w-4 h-4" /> },
-    { id: 'spells', label: 'Заклинания / Homebrew', icon: <BookOpen className="w-4 h-4" /> },
-    { id: 'talents', label: 'Таланты и Вдохновения', icon: <Sparkles className="w-4 h-4" /> },
-    { id: 'roster', label: 'Герои и лимиты', icon: <Users className="w-4 h-4" /> },
-    { id: 'themes', label: 'Темы аккаунтов', icon: <Palette className="w-4 h-4" /> },
+    { id: 'accounts', label: 'Пароли и доступы', icon: <KeyRound className="w-4 h-4" strokeWidth={1.5} /> },
+    { id: 'quests', label: 'Квесты', icon: <ScrollText className="w-4 h-4" strokeWidth={1.5} /> },
+    { id: 'bestiary', label: 'Бестиарий', icon: <Skull className="w-4 h-4" strokeWidth={1.5} /> },
+    { id: 'spells', label: 'Заклинания', icon: <BookOpen className="w-4 h-4" strokeWidth={1.5} /> },
+    { id: 'talents', label: 'Таланты и вдохновение', icon: <Sparkles className="w-4 h-4" strokeWidth={1.5} /> },
+    { id: 'roster', label: 'Герои и лимиты', icon: <Users className="w-4 h-4" strokeWidth={1.5} /> },
+    { id: 'themes', label: 'Темы аккаунтов', icon: <Palette className="w-4 h-4" strokeWidth={1.5} /> },
   ];
 
   const handleSaveCharacterSettings = async (profile: CharacterProfile) => {
@@ -68,8 +67,8 @@ export const DmPage: React.FC = () => {
       );
       updateCharacterProfileInStore(profile.playerId, res.profile);
       pushToast({
-        title: `Игрок #${profile.playerId} обновлён`,
-        message: 'Класс, максимум заклинаний и ссылка LSS сохранены.',
+        title: `Игрок ${profile.playerId} обновлён`,
+        message: 'Класс, максимум заклинаний и настройки героя сохранены',
         variant: 'success',
       });
     } catch (err) {
@@ -82,29 +81,16 @@ export const DmPage: React.FC = () => {
   };
 
   return (
-    <div className="space-y-5">
-      {/* DM Header */}
-      <div className="glass-panel neon-border hud-corners hud-cut p-5 flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-center gap-3.5">
-          <div className="w-12 h-12 bg-[#070B14] border border-primary shadow-rim flex items-center justify-center">
-            <Crown className="w-6 h-6 text-primary" />
-          </div>
-          <div>
-            <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-primary">
-              ARCHITECT CONSOLE // LEVEL 99 CLEARANCE
-            </div>
-            <h1 className="font-anime font-extrabold text-xl uppercase">
-              // Пульт Архитектора Кампании (DM)
-            </h1>
-            <p className="text-xs text-muted">
-              Управление паролями игроков, квестами, бестиарием, заклинаниями, деревом талантов и темами аккаунтов
-            </p>
-          </div>
-        </div>
+    <div className="space-y-6">
+      <div>
+        <h1 className="font-medium text-2xl text-text">Панель Мастера</h1>
+        <p className="text-sm text-secondary mt-1">
+          Управление доступами игроков, контентом кампании и персональными акцентами
+        </p>
       </div>
 
       {/* Sub-navigation */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-1">
+      <div className="flex items-center gap-1 overflow-x-auto bg-surface border border-border p-1">
         {sections.map((sec) => {
           const active = section === sec.id;
           return (
@@ -112,20 +98,19 @@ export const DmPage: React.FC = () => {
               key={sec.id}
               type="button"
               onClick={() => setSection(sec.id)}
-              className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs font-bold whitespace-nowrap transition-all ${
+              className={`h-9 inline-flex items-center gap-2 px-3.5 text-xs whitespace-nowrap transition-colors ${
                 active
-                  ? 'anime-btn-primary'
-                  : 'glass-panel text-muted hover:text-text hover:border-primary/40'
+                  ? 'bg-raised text-text font-medium shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]'
+                  : 'text-secondary hover:text-text'
               }`}
             >
-              {sec.icon}
+              <span className={active ? 'text-primary' : 'text-muted'}>{sec.icon}</span>
               <span>{sec.label}</span>
             </button>
           );
         })}
       </div>
 
-      {/* Active Section */}
       {section === 'accounts' && <AccountsManager />}
       {section === 'quests' && <QuestEditor />}
       {section === 'bestiary' && <BestiaryEditor />}
@@ -171,46 +156,45 @@ const CharacterRosterCard: React.FC<{
   };
 
   useEffect(() => {
-    // Only overwrite draft from incoming WebSocket profile updates if DM has no unsaved edits here
     if (!dirty && !saving) {
       setDraft({ ...profile });
     }
   }, [profile, dirty, saving]);
 
   return (
-    <div className="glass-panel hud-corners hud-cut p-5 space-y-3">
-      <div className="flex items-center justify-between gap-2">
-        <div className="font-anime font-bold text-base uppercase text-primary">
-          // Игрок #{profile.playerId}
+    <div className="glass-panel hud-cut p-5 space-y-4">
+      <div className="flex items-center justify-between gap-2 border-b border-border pb-3">
+        <div className="font-medium text-base text-text">
+          Игрок {profile.playerId}
         </div>
         <button
           type="button"
           onClick={onInspectSheet}
-          className="px-2.5 py-1 rounded-xl bg-bg/70 border border-border hover:border-primary/50 text-xs text-muted hover:text-text inline-flex items-center gap-1 transition-colors"
+          className="h-8 px-2.5 bg-bg border border-border text-xs text-secondary hover:text-text inline-flex items-center gap-1.5 transition-colors"
         >
-          <Eye className="w-3.5 h-3.5 text-primary" />
+          <Eye className="w-3.5 h-3.5 text-muted" strokeWidth={1.5} />
           <span>Открыть лист</span>
         </button>
       </div>
 
       <div>
-        <label className="block text-xs text-muted mb-1">Имя персонажа</label>
+        <label className="block text-xs text-secondary mb-1.5">Имя персонажа</label>
         <input
           value={draft.characterName}
           onChange={(e) => updateDraft({ characterName: e.target.value })}
-          className="anime-input w-full text-sm"
+          className="anime-input w-full h-9 text-sm"
         />
       </div>
 
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="block text-xs text-muted mb-1">Класс (офиц. / HB dnd.su)</label>
+          <label className="block text-xs text-secondary mb-1.5">Класс</label>
           <input
             list={`dm-class-list-${profile.playerId}`}
             value={draft.charClass}
             onChange={(e) => updateDraft({ charClass: e.target.value })}
-            placeholder="Волшебник / Магус / Шаман..."
-            className="anime-input w-full text-sm"
+            placeholder="Волшебник, Магус…"
+            className="anime-input w-full h-9 text-sm"
           />
           <datalist id={`dm-class-list-${profile.playerId}`}>
             {Object.entries(DND_OFFICIAL_CLASS_LABELS_RU).map(([en, ru]) => (
@@ -220,53 +204,53 @@ const CharacterRosterCard: React.FC<{
             ))}
             {DND_HOMEBREW_CLASSES_META.map((hb) => (
               <option key={hb.key} value={hb.key}>
-                {hb.labelRu} (HB • {hb.source})
+                {hb.labelRu} ({hb.source})
               </option>
             ))}
           </datalist>
         </div>
         <div>
-          <label className="block text-xs text-muted mb-1">Уровень</label>
+          <label className="block text-xs text-secondary mb-1.5">Уровень</label>
           <input
             type="number"
             min={0}
             max={20}
             value={draft.level}
             onChange={(e) => updateDraft({ level: Number(e.target.value) })}
-            className="anime-input w-full text-sm"
+            className="anime-input w-full h-9 text-sm font-mono"
           />
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="block text-xs text-muted mb-1">Раса</label>
+          <label className="block text-xs text-secondary mb-1.5">Раса / вид</label>
           <input
             value={draft.race}
             onChange={(e) => updateDraft({ race: e.target.value })}
-            className="anime-input w-full text-sm"
+            className="anime-input w-full h-9 text-sm"
           />
         </div>
         <div>
-          <label className="block text-xs text-muted mb-1">Макс. заклинаний</label>
+          <label className="block text-xs text-secondary mb-1.5">Макс. заклинаний</label>
           <input
             type="number"
             min={0}
             value={draft.maxSpells}
             onChange={(e) => updateDraft({ maxSpells: Number(e.target.value) })}
-            className="anime-input w-full text-sm"
+            className="anime-input w-full h-9 text-sm font-mono"
           />
         </div>
       </div>
 
       <div>
-        <label className="block text-xs text-muted mb-1">Архетип / Подкласс</label>
+        <label className="block text-xs text-secondary mb-1.5">Подкласс</label>
         <input
           list={`dm-subclass-list-${profile.playerId}`}
           value={draft.subclass}
           onChange={(e) => updateDraft({ subclass: e.target.value })}
-          placeholder="Орден Демиургов / Школа Прорицания..."
-          className="anime-input w-full text-xs"
+          placeholder="Школа прорицания…"
+          className="anime-input w-full h-9 text-xs"
         />
         {(() => {
           const normCls = normalizeDndClass(draft.charClass);
@@ -282,19 +266,19 @@ const CharacterRosterCard: React.FC<{
         })()}
       </div>
 
-      <label className="flex items-start gap-2.5 p-2.5 rounded-2xl bg-bg/60 border border-border cursor-pointer hover:border-primary/50 transition-colors">
+      <label className="flex items-start gap-2.5 p-3 bg-bg border border-border cursor-pointer hover:border-text/20 transition-colors">
         <input
           type="checkbox"
           checked={Boolean(draft.allowOffClassSpells)}
           onChange={(e) => updateDraft({ allowOffClassSpells: e.target.checked })}
-          className="mt-0.5 accent-primary"
+          className="mt-0.5"
         />
         <span className="text-xs leading-snug">
-          <span className="font-semibold text-text block">
-            Разрешить заклинания не своего класса
+          <span className="font-medium text-text block">
+            Разрешить заклинания вне класса
           </span>
-          <span className="text-[11px] text-muted">
-            Позволяет игроку самостоятельно изучать заклинания любых классов (Тайные знания, черты, мультикласс и т.д.)
+          <span className="text-xs text-muted mt-0.5 block">
+            Позволяет игроку изучать заклинания любых классов (Тайные знания, черты, мультикласс)
           </span>
         </span>
       </label>
@@ -311,10 +295,10 @@ const CharacterRosterCard: React.FC<{
             setSaving(false);
           }
         }}
-        className="anime-btn-primary w-full py-2 text-xs inline-flex items-center justify-center gap-1.5"
+        className="anime-btn-primary w-full h-9 text-xs inline-flex items-center justify-center gap-1.5"
       >
-        <Save className="w-3.5 h-3.5" />
-        <span>{saving ? 'Сохранение...' : dirty ? 'Сохранить профиль *' : 'Сохранить профиль'}</span>
+        <Save className="w-3.5 h-3.5" strokeWidth={1.5} />
+        <span>{saving ? 'Сохранение…' : dirty ? 'Сохранить изменения' : 'Сохранить профиль'}</span>
       </button>
     </div>
   );

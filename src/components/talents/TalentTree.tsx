@@ -124,7 +124,6 @@ export const TalentTree: React.FC<TalentTreeProps> = ({
     const finalY = dragPos.y;
     const movedNodeId = meta.nodeId;
 
-    // Optimistic local update so tile stays right where dropped without jump
     const optimisticNodes = nodes.map((n) =>
       n.id === movedNodeId ? { ...n, positionX: finalX, positionY: finalY } : n
     );
@@ -175,22 +174,22 @@ export const TalentTree: React.FC<TalentTreeProps> = ({
   };
 
   return (
-    <div className="glass-panel hud-corners hud-cut overflow-hidden">
+    <div className="glass-panel hud-cut overflow-hidden">
       {/* Top Hint / DM Action Strip */}
-      <div className="px-5 py-3 border-b border-primary/30 bg-[#070B14]/80 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2 text-xs text-muted">
+      <div className="px-5 py-3 border-b border-border bg-deep flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2 text-xs text-secondary">
           {isDm ? (
             <>
-              <Move className="w-4 h-4 text-accent shrink-0" />
+              <Move className="w-4 h-4 text-muted shrink-0" strokeWidth={1.5} />
               <span>
-                Перетаскивайте плитки талантов мышью в любое место холста (позиция сохраняется автоматически). Двойной клик по пустому месту — создать плитку.
+                Перетаскивайте плитки талантов мышью в нужное место холста. Двойной клик по пустому месту создаёт узел.
               </span>
             </>
           ) : (
             <>
-              <Sparkles className="w-4 h-4 text-accent shrink-0" />
+              <Sparkles className="w-4 h-4 text-muted shrink-0" strokeWidth={1.5} />
               <span>
-                Таланты открываются сразу для всей группы за общий пул Вдохновений.
+                Таланты открываются сразу для всей группы за общий пул вдохновения
               </span>
             </>
           )}
@@ -203,40 +202,39 @@ export const TalentTree: React.FC<TalentTreeProps> = ({
               const offset = (nodes.length % 5) * 48;
               onRequestCreateAt(80 + offset, 80 + offset);
             }}
-            className="anime-btn-primary px-3.5 py-1.5 text-xs inline-flex items-center gap-1.5 shrink-0"
+            className="anime-btn-primary h-8 px-3.5 text-xs inline-flex items-center gap-1.5 shrink-0"
           >
-            <Plus className="w-3.5 h-3.5" />
+            <Plus className="w-3.5 h-3.5" strokeWidth={1.5} />
             <span>Добавить талант</span>
           </button>
         )}
       </div>
 
       {/* Scrollable Interactive Canvas */}
-      <div className="overflow-auto p-4">
+      <div className="overflow-auto p-4 bg-bg">
         <div
           ref={canvasRef}
           onPointerMove={handlePointerMoveCanvas}
           onPointerUp={() => void handlePointerUpCanvas()}
           onDoubleClick={handleCanvasDoubleClick}
-          className="relative border border-primary/25 bg-[#070B14]/85 mx-auto"
+          className="relative border border-border bg-deep mx-auto"
           style={{
             width: `${canvasWidth}px`,
             height: `${canvasHeight}px`,
-            backgroundImage:
-              'radial-gradient(color-mix(in srgb, var(--primary) 26%, transparent) 1.25px, transparent 1.25px)',
+            backgroundImage: 'radial-gradient(rgba(238, 240, 245, 0.07) 1px, transparent 1px)',
             backgroundSize: '24px 24px',
           }}
         >
           {nodes.length === 0 && (
             <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-6 pointer-events-none">
-              <Sparkles className="w-8 h-8 text-primary/50 mb-2" />
-              <div className="font-anime font-bold text-sm text-text/90">
+              <Sparkles className="w-6 h-6 text-muted mb-2" strokeWidth={1.5} />
+              <div className="font-medium text-sm text-text">
                 Дерево талантов пока пусто
               </div>
               <div className="text-xs text-muted max-w-sm mt-1">
                 {isDm
-                  ? 'Нажмите «Добавить талант» или дважды кликните в нужном месте холста, чтобы разместить первую плитку.'
-                  : 'Мастер ещё не разместил узлы талантов кампании.'}
+                  ? 'Нажмите «Добавить талант» или дважды кликните по холсту, чтобы разместить первый узел'
+                  : 'Мастер ещё не разместил узлы талантов кампании'}
               </div>
             </div>
           )}
@@ -279,12 +277,11 @@ export const TalentTree: React.FC<TalentTreeProps> = ({
                     bothUnlocked
                       ? 'var(--primary)'
                       : parentUnlocked
-                        ? 'var(--accent)'
-                        : 'rgba(143, 163, 191, 0.35)'
+                        ? 'rgba(238, 240, 245, 0.35)'
+                        : 'rgba(238, 240, 245, 0.12)'
                   }
-                  strokeOpacity={bothUnlocked ? 0.92 : parentUnlocked ? 0.65 : 0.4}
-                  strokeWidth={bothUnlocked ? 3.5 : 2.5}
-                  strokeDasharray={bothUnlocked ? undefined : '7 5'}
+                  strokeWidth={bothUnlocked ? 2.5 : 1.5}
+                  strokeDasharray={bothUnlocked ? undefined : '6 5'}
                 />
               );
             })}
@@ -323,9 +320,7 @@ export const TalentTree: React.FC<TalentTreeProps> = ({
       </div>
 
       <TalentDetail
-        node={
-          detailNode ? (nodeMap.get(detailNode.id) ?? detailNode) : null
-        }
+        node={detailNode ? (nodeMap.get(detailNode.id) ?? detailNode) : null}
         parentNode={
           detailNode?.parentId ? (nodeMap.get(detailNode.parentId) ?? null) : null
         }

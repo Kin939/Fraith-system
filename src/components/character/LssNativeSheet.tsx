@@ -435,11 +435,11 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
   }) => {
     const heroName = sheet?.name || profile.characterName || `Игрок ${profile.playerId}`;
     pushToast({
-      title: `[DICE] ${heroName}: ${params.title} — ${params.total}${
+      title: `${heroName}: ${params.title} — ${params.total}${
         params.critKind === 'success'
-          ? ' // КРИТ!'
+          ? ' (крит. успех)'
           : params.critKind === 'failure'
-            ? ' // ПРОВАЛ!'
+            ? ' (крит. провал)'
             : ''
       }`,
       message: `${params.formula} → ${params.breakdown}`,
@@ -1462,23 +1462,22 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
           const f = e.dataTransfer.files?.[0];
           if (f) void onQuickUploadFile(f);
         }}
-        className={`p-8 sm:p-14 text-center space-y-5 transition-colors min-h-[440px] flex flex-col items-center justify-center ${
-          dragOver ? 'bg-primary/15' : 'bg-bg/40'
+        className={`p-8 sm:p-12 text-center space-y-5 transition-colors min-h-[420px] flex flex-col items-center justify-center ${
+          dragOver ? 'bg-raised' : 'bg-bg'
         }`}
       >
-        <div className="w-16 h-16 rounded-3xl bg-primary/15 border border-primary/40 flex items-center justify-center text-primary shadow-neon">
-          <ScrollText className="w-8 h-8" />
+        <div className="w-12 h-12 bg-surface border border-border flex items-center justify-center text-muted">
+          <ScrollText className="w-6 h-6" strokeWidth={1.5} />
         </div>
 
         <div className="max-w-lg space-y-2">
-          <h3 className="font-anime font-extrabold text-xl">
-            Классический лист персонажа D&amp;D 5e
+          <h3 className="font-medium text-lg text-text">
+            Лист персонажа D&amp;D 5e
           </h3>
-          <p className="text-xs sm:text-sm text-muted leading-relaxed">
-            Создайте героя с нуля прямо на сайте или перетащите готовый файл{' '}
-            <code className="text-accent">.json</code> из Long Story Short. Все 3 страницы
-            классического чарника (характеристики с навыками, бой, портрет, магия, снаряжение и
-            броски кубиков) откроются в стиле нашего сайта.
+          <p className="text-xs sm:text-sm text-secondary leading-relaxed">
+            Создайте героя с нуля или перетащите файл{' '}
+            <code className="text-text">.json</code> из Long Story Short. Характеристики, бой,
+            портрет, заклинания, снаряжение и броски откроются прямо на сайте.
           </p>
         </div>
 
@@ -1487,14 +1486,14 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
             <button
               type="button"
               onClick={() => void handleCreateBlankSheet()}
-              className="anime-btn-primary px-5 py-2.5 text-xs sm:text-sm inline-flex items-center gap-2"
+              className="anime-btn-primary h-10 px-4 text-xs inline-flex items-center gap-2"
             >
-              <UserPlus className="w-4 h-4" />
-              <span>Создать лист с нуля</span>
+              <UserPlus className="w-4 h-4" strokeWidth={1.5} />
+              <span>Создать с нуля</span>
             </button>
 
-            <label className="px-4 py-2.5 rounded-xl bg-accent/15 border border-accent/45 hover:bg-accent/25 text-accent text-xs sm:text-sm font-bold inline-flex items-center gap-2 cursor-pointer transition-colors">
-              <Upload className="w-4 h-4" />
+            <label className="hud-btn-secondary h-10 px-4 text-xs inline-flex items-center gap-2 cursor-pointer">
+              <Upload className="w-4 h-4 text-muted" strokeWidth={1.5} />
               <span>Загрузить .json из LSS</span>
               <input
                 type="file"
@@ -1511,15 +1510,14 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
             <button
               type="button"
               onClick={onOpenImportModal}
-              className="px-4 py-2.5 rounded-xl bg-surface border border-border hover:border-primary text-xs font-medium text-muted hover:text-text transition-colors"
+              className="h-10 px-4 bg-surface border border-border hover:border-text/20 text-xs text-secondary hover:text-text transition-colors"
             >
               Вставить текст JSON
             </button>
           </div>
         ) : (
           <div className="text-xs text-muted">
-            Игрок ещё не создал персонажа. Нажмите «Правка Мастером» выше, чтобы заполнить или
-            импортировать лист за игрока.
+            Игрок ещё не создал персонажа. Нажмите «Только просмотр» выше, чтобы разрешить правку Мастером.
           </div>
         )}
       </div>
@@ -1567,13 +1565,13 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
             <button
               type="button"
               onClick={() => handleD20Roll(`Проверка: ${ab.fullRu}`, ab.checkBonus)}
-              className="w-14 h-14 rounded-full bg-surface border-2 border-primary/65 hover:border-accent shadow-neon flex flex-col items-center justify-center transition-transform hover:scale-105"
+              className="w-14 h-14 rounded-full bg-surface border-2 border-primary/65 hover:border-accent  flex flex-col items-center justify-center transition-transform hover:scale-105"
               title={`Бросить проверку ${ab.fullRu} (1к20${formatSigned(ab.checkBonus)})`}
             >
-              <span className="font-anime font-extrabold text-xl leading-none text-text">
+              <span className="font-anime font-semibold text-xl leading-none text-text">
                 {formatSigned(ab.mod)}
               </span>
-              <span className="text-[8px] uppercase tracking-wider text-muted mt-0.5">мод</span>
+              <span className="text-[11px]  text-muted mt-0.5">мод</span>
             </button>
 
             <div className="flex flex-col items-center">
@@ -1607,7 +1605,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                         cur.score = Math.min(30, Math.max(1, Number(e.target.value) || 10));
                       })
                     }
-                    className="anime-input w-12 py-0.5 px-1 text-center font-anime font-extrabold text-sm"
+                    className="anime-input w-12 py-0.5 px-1 text-center font-anime font-semibold text-sm"
                   />
                   <button
                     type="button"
@@ -1626,11 +1624,11 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                   </button>
                 </div>
               ) : (
-                <div className="px-3 py-1.5 rounded-xl bg-surface/85 border border-border text-center min-w-[52px]">
-                  <div className="font-anime font-extrabold text-base leading-none text-accent">
+                <div className="px-3 py-1.5  bg-surface/85 border border-border text-center min-w-[52px]">
+                  <div className="font-anime font-semibold text-base leading-none text-accent">
                     {ab.score}
                   </div>
-                  <div className="text-[8px] uppercase tracking-wider text-muted mt-0.5">
+                  <div className="text-[11px]  text-muted mt-0.5">
                     знач.
                   </div>
                 </div>
@@ -1767,7 +1765,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                 key={tab.id}
                 type="button"
                 onClick={() => setPage(tab.id)}
-                className={`px-3.5 py-2 rounded-xl text-xs font-bold inline-flex items-center gap-1.5 whitespace-nowrap transition-all ${
+                className={`px-3.5 py-2  text-xs font-bold inline-flex items-center gap-1.5 whitespace-nowrap transition-colors ${
                   active
                     ? 'anime-btn-primary'
                     : 'bg-bg/75 border border-border text-muted hover:text-text hover:border-primary/40'
@@ -1783,10 +1781,10 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
         {/* Roll Mode + Quick Dice Tray + Edit Numbers */}
         <div className="flex items-center gap-1.5 flex-wrap">
           {dirtySaving && (
-            <span className="text-[10px] text-accent animate-pulse mr-1">Сохранение...</span>
+            <span className="text-[11px] text-accent  mr-1">Сохранение...</span>
           )}
 
-          <div className="inline-flex items-center bg-bg/85 p-0.5 rounded-xl border border-border">
+          <div className="inline-flex items-center bg-bg/85 p-0.5  border border-border">
             {(
               [
                 { id: 'normal', label: '1к20', cls: 'bg-primary/25 text-text border-primary/50' },
@@ -1806,7 +1804,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                 key={m.id}
                 type="button"
                 onClick={() => setRollMode(m.id)}
-                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border border-transparent transition-all ${
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border border-transparent transition-colors ${
                   rollMode === m.id ? m.cls : 'text-muted hover:text-text'
                 }`}
               >
@@ -1818,7 +1816,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
           <button
             type="button"
             onClick={() => setDiceDrawerOpen((v) => !v)}
-            className={`px-2.5 py-1.5 rounded-xl border text-xs font-semibold inline-flex items-center gap-1 transition-colors ${
+            className={`px-2.5 py-1.5  border text-xs font-semibold inline-flex items-center gap-1 transition-colors ${
               diceDrawerOpen
                 ? 'bg-accent/20 border-accent/50 text-accent'
                 : 'bg-bg/75 border-border text-muted hover:text-text'
@@ -1833,7 +1831,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
             <button
               type="button"
               onClick={() => setEditUnlocked((v) => !v)}
-              className={`px-3 py-1.5 rounded-xl border text-xs font-bold inline-flex items-center gap-1.5 transition-all ${
+              className={`px-3 py-1.5  border text-xs font-bold inline-flex items-center gap-1.5 transition-colors ${
                 editUnlocked
                   ? 'bg-amber-500/20 border-amber-400/60 text-amber-200'
                   : 'bg-bg/75 border-border text-muted hover:text-text'
@@ -1849,7 +1847,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
 
       {/* Collapsible Polyhedral Dice Bar */}
       {diceDrawerOpen && (
-        <div className="p-2.5 rounded-2xl bg-bg/85 border border-accent/35 flex flex-wrap items-center justify-between gap-2">
+        <div className="p-2.5 hud-cut-sm bg-bg/85 border border-accent/35 flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-1.5 flex-wrap">
             <span className="text-[11px] text-muted px-1">Быстрый бросок:</span>
             {([4, 6, 8, 10, 12, 20, 100] as const).map((sides) => (
@@ -1902,10 +1900,10 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                 {/* Character Name */}
                 <div className="flex items-center justify-between gap-2 border-b border-border/80 pb-1.5">
                   <div className="min-w-0">
-                    <div className="font-anime font-extrabold text-lg sm:text-xl text-text truncate">
+                    <div className="font-anime font-semibold text-lg sm:text-xl text-text truncate">
                       {sheet.name}
                     </div>
-                    <div className="text-[9px] uppercase tracking-widest text-muted">
+                    <div className="text-[11px]  text-muted">
                       Имя персонажа
                     </div>
                   </div>
@@ -1927,7 +1925,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                     <div className="text-xs font-semibold text-text truncate">
                       {sheet.background || '—'}
                     </div>
-                    <div className="text-[9px] uppercase tracking-wider text-muted">
+                    <div className="text-[11px]  text-muted">
                       Предыстория
                     </div>
                   </div>
@@ -1935,19 +1933,19 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                     <div className="text-xs font-bold text-accent truncate">
                       {sheet.classLabel || '—'}
                     </div>
-                    <div className="text-[9px] uppercase tracking-wider text-muted">Класс</div>
+                    <div className="text-[11px]  text-muted">Класс</div>
                   </div>
                   <div className="border-b border-border/60 pb-1 min-w-0">
                     <div className="text-xs font-semibold text-text truncate">
                       {sheet.race || '—'}
                     </div>
-                    <div className="text-[9px] uppercase tracking-wider text-muted">Вид / Раса</div>
+                    <div className="text-[11px]  text-muted">Вид / Раса</div>
                   </div>
                   <div className="border-b border-border/60 pb-1 min-w-0">
                     <div className="text-xs font-semibold text-primary truncate">
                       {sheet.subclass || '—'}
                     </div>
-                    <div className="text-[9px] uppercase tracking-wider text-muted">Подкласс</div>
+                    <div className="text-[11px]  text-muted">Подкласс</div>
                   </div>
                 </div>
               </div>
@@ -1957,13 +1955,13 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                 type="button"
                 disabled={!canEdit}
                 onClick={() => setHeroModalOpen(true)}
-                className="w-20 h-20 rounded-full bg-surface border-2 border-primary/70 shadow-neon flex flex-col items-center justify-center shrink-0 hover:border-accent transition-colors"
+                className="w-20 h-20 rounded-full bg-surface border-2 border-primary/70  flex flex-col items-center justify-center shrink-0 hover:border-accent transition-colors"
                 title="Уровень персонажа"
               >
-                <span className="font-anime font-extrabold text-2xl leading-none text-text">
+                <span className="font-anime font-semibold text-2xl leading-none text-text">
                   {sheet.level}
                 </span>
-                <span className="text-[9px] uppercase tracking-wider text-muted mt-1">
+                <span className="text-[11px]  text-muted mt-1">
                   Уровень
                 </span>
               </button>
@@ -1973,7 +1971,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
             <div className="xl:col-span-7 grid grid-cols-2 sm:grid-cols-12 gap-2.5">
               {/* Armor Class Shield */}
               <div className="col-span-1 sm:col-span-3 sheet-frame sheet-frame--accent p-3 flex flex-col items-center justify-between text-center">
-                <div className="text-[9px] font-extrabold uppercase tracking-wider text-muted">
+                <div className="text-[11px] font-semibold  text-muted">
                   Класс защиты
                 </div>
 
@@ -1990,7 +1988,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                     className="anime-input w-full py-1 px-1.5 text-xs text-center font-mono my-1"
                   />
                 ) : (
-                  <div className="font-anime font-extrabold text-3xl text-primary flex items-center gap-1 my-0.5">
+                  <div className="font-anime font-semibold text-3xl text-primary flex items-center gap-1 my-0.5">
                     <Shield className="w-5 h-5 text-accent" />
                     <span>{sheet.combat.ac}</span>
                   </div>
@@ -2008,7 +2006,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                       };
                     }, true)
                   }
-                  className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border transition-colors ${
+                  className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold border transition-colors ${
                     sheet.combat.shieldEquipped
                       ? 'bg-accent/20 border-accent text-accent'
                       : 'bg-surface/70 border-border text-muted hover:text-text'
@@ -2020,7 +2018,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
 
               {/* Hit Points Box */}
               <div className="col-span-1 sm:col-span-4 sheet-frame p-3 flex flex-col justify-between">
-                <div className="flex items-center justify-between text-[9px] font-extrabold uppercase tracking-wider text-muted">
+                <div className="flex items-center justify-between text-[11px] font-semibold  text-muted">
                   <span>Хиты</span>
                   {sheet.combat.hpTemp > 0 && (
                     <span className="text-cyan-300">+{sheet.combat.hpTemp} врем.</span>
@@ -2042,7 +2040,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                         }
                         className="anime-input w-full py-0.5 px-1 text-xs text-center"
                       />
-                      <div className="text-[8px] text-muted">Тек.</div>
+                      <div className="text-[11px] text-muted">Тек.</div>
                     </div>
                     <div>
                       <input
@@ -2057,7 +2055,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                         }
                         className="anime-input w-full py-0.5 px-1 text-xs text-center"
                       />
-                      <div className="text-[8px] text-muted">Макс.</div>
+                      <div className="text-[11px] text-muted">Макс.</div>
                     </div>
                     <div>
                       <input
@@ -2072,14 +2070,14 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                         }
                         className="anime-input w-full py-0.5 px-1 text-xs text-center"
                       />
-                      <div className="text-[8px] text-cyan-300">Врем.</div>
+                      <div className="text-[11px] text-cyan-300">Врем.</div>
                     </div>
                   </div>
                 ) : (
                   <div className="my-1 space-y-1">
                     <div className="flex items-baseline justify-between">
                       <span
-                        className={`font-anime font-extrabold text-2xl leading-none ${
+                        className={`font-anime font-semibold text-2xl leading-none ${
                           sheet.combat.hpCurrent === 0 ? 'text-rose-400' : 'text-emerald-300'
                         }`}
                       >
@@ -2091,7 +2089,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                     </div>
                     <div className="w-full h-1.5 rounded-full bg-surface overflow-hidden">
                       <div
-                        className={`h-full transition-all duration-300 ${
+                        className={`h-full transition-colors duration-300 ${
                           hpRatio <= 25
                             ? 'bg-rose-500'
                             : hpRatio <= 55
@@ -2121,7 +2119,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                         adjustHp(-n);
                         setHpDeltaInput('');
                       }}
-                      className="flex-1 py-0.5 rounded-md bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/40 text-[10px] font-bold text-rose-200"
+                      className="flex-1 py-0.5 rounded-md bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/40 text-[11px] font-bold text-rose-200"
                       title="Нанести урон (по пустому полю — -1)"
                     >
                       Урон
@@ -2133,7 +2131,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                         adjustHp(n);
                         setHpDeltaInput('');
                       }}
-                      className="flex-1 py-0.5 rounded-md bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-[10px] font-bold text-emerald-200"
+                      className="flex-1 py-0.5 rounded-md bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-[11px] font-bold text-emerald-200"
                       title="Исцелить (по пустому полю — +1)"
                     >
                       Леч.
@@ -2144,11 +2142,11 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
 
               {/* Hit Dice Box */}
               <div className="col-span-1 sm:col-span-2 sheet-frame p-3 flex flex-col items-center justify-between text-center">
-                <div className="text-[9px] font-extrabold uppercase tracking-wider text-muted">
+                <div className="text-[11px] font-semibold  text-muted">
                   Кости хитов
                 </div>
 
-                <div className="font-anime font-extrabold text-lg text-text">
+                <div className="font-anime font-semibold text-lg text-text">
                   {sheet.combat.hitDiceCurrent} / {sheet.level}
                 </div>
 
@@ -2175,7 +2173,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                     <button
                       type="button"
                       onClick={handleSpendHitDie}
-                      className="px-1.5 py-0.5 bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-[10px] font-bold inline-flex items-center justify-center"
+                      className="px-1.5 py-0.5 bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-[11px] font-bold inline-flex items-center justify-center"
                       title="Потратить 1 кость хитов для броска исцеления"
                     >
                       <HudIcon asset="dice" size="xs" />
@@ -2187,13 +2185,13 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
               {/* Death Saves Box (Always visible in top-right, just like Classic LSS!) */}
               <div className="col-span-1 sm:col-span-3 sheet-frame p-3 flex flex-col justify-between">
                 <div className="flex items-center justify-between">
-                  <span className="text-[9px] font-extrabold uppercase tracking-wider text-muted">
+                  <span className="text-[11px] font-semibold  text-muted">
                     Спас. смерти
                   </span>
                   <button
                     type="button"
                     onClick={handleDeathSaveRoll}
-                    className="text-[10px] text-rose-300 hover:text-rose-200 font-bold inline-flex items-center gap-0.5"
+                    className="text-[11px] text-rose-300 hover:text-rose-200 font-bold inline-flex items-center gap-0.5"
                     title="Бросить спасбросок от смерти (1к20)"
                   >
                     <Dices className="w-3 h-3" />
@@ -2202,7 +2200,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                 </div>
 
                 <div className="space-y-1.5 my-1">
-                  <div className="flex items-center justify-between text-[10px]">
+                  <div className="flex items-center justify-between text-[11px]">
                     <span className="text-emerald-300 font-semibold">Успехи</span>
                     <div className="flex items-center gap-1.5">
                       {[1, 2, 3].map((i) => {
@@ -2232,7 +2230,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-between text-[10px]">
+                  <div className="flex items-center justify-between text-[11px]">
                     <span className="text-rose-300 font-semibold">Провалы</span>
                     <div className="flex items-center gap-1.5">
                       {[1, 2, 3].map((i) => {
@@ -2271,7 +2269,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
             <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
               <div className="flex items-center gap-2 flex-wrap">
                 <Crown className="w-4 h-4 text-amber-400 shrink-0" />
-                <span className="font-anime font-extrabold uppercase tracking-wider text-[11px] text-text">
+                <span className="font-anime font-semibold  text-[11px] text-text">
                   Шкала опыта (XP)
                 </span>
                 <span className="font-mono font-bold text-accent">
@@ -2290,10 +2288,10 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                       type="button"
                       disabled={xpSaving}
                       onClick={() => void handleDmUpdateXp({ levelUp: true })}
-                      className="px-2.5 py-1 rounded-lg bg-amber-500/25 hover:bg-amber-500/35 border border-amber-400 text-amber-200 text-[11px] font-extrabold inline-flex items-center gap-1 animate-pulse"
+                      className="px-2.5 py-1 bg-warning/15 hover:bg-warning/25 border border-warning/40 text-warning text-xs font-medium inline-flex items-center gap-1 transition-colors"
                     >
-                      <ArrowUpCircle className="w-3.5 h-3.5" />
-                      <span>Повысить до {sheet.level + 1} ур.!</span>
+                      <ArrowUpCircle className="w-3.5 h-3.5" strokeWidth={1.5} />
+                      <span>Повысить до {sheet.level + 1} ур.</span>
                     </button>
                   )}
 
@@ -2302,11 +2300,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                       key={delta}
                       type="button"
                       onClick={() => void handleDmUpdateXp({ delta })}
-                      className={`px-2 py-0.5 rounded-lg text-[11px] font-bold border transition-colors ${
-                        delta < 0
-                          ? 'bg-rose-500/15 border-rose-500/35 text-rose-300 hover:bg-rose-500/25'
-                          : 'bg-primary/15 border-primary/40 text-primary hover:bg-primary/25'
-                      }`}
+                      className="px-2 py-0.5 text-xs font-mono border border-border bg-surface hover:bg-raised text-secondary hover:text-text transition-colors tabular-nums"
                     >
                       {delta > 0 ? `+${delta}` : delta}
                     </button>
@@ -2320,28 +2314,24 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                       );
                       setXpSettingsOpen((v) => !v);
                     }}
-                    className="p-1 rounded-lg bg-surface border border-border text-muted hover:text-accent"
-                    title="Точное управление опытом и порогом уровня (только Мастер)"
+                    className="p-1 bg-surface border border-border text-muted hover:text-text transition-colors"
+                    title="Точное управление опытом и порогом уровня"
                   >
-                    <Settings2 className="w-3.5 h-3.5" />
+                    <Settings2 className="w-3.5 h-3.5" strokeWidth={1.5} />
                   </button>
                 </div>
               ) : (
-                <span className="text-[11px] text-muted">
+                <span className="text-xs text-muted">
                   Начисляется Мастером
                 </span>
               )}
             </div>
 
-            {/* Neon XP Progress Track */}
-            <div className="w-full h-2.5 rounded-full bg-surface border border-border/80 overflow-hidden p-0.5">
+            {/* Quiet XP Progress Track */}
+            <div className="w-full h-1.5 bg-deep overflow-hidden">
               <div
-                className="h-full rounded-full transition-all duration-500"
-                style={{
-                  width: `${xpInfo.percent}%`,
-                  background: 'linear-gradient(90deg, var(--primary), var(--accent))',
-                  boxShadow: '0 0 12px var(--glow)',
-                }}
+                className="h-full transition-colors bg-primary"
+                style={{ width: `${xpInfo.percent}%` }}
               />
             </div>
 
@@ -2417,10 +2407,10 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
             <div className="lg:col-span-3 space-y-3">
               {/* Proficiency Bonus Plaque */}
               <div className="sheet-frame px-3.5 py-2.5 flex items-center justify-between">
-                <span className="text-[11px] font-extrabold uppercase tracking-wider text-muted">
+                <span className="text-[11px] font-semibold  text-muted">
                   Бонус владения
                 </span>
-                <span className="px-3 py-1 rounded-xl bg-primary/20 border border-primary/45 font-anime font-extrabold text-base text-primary">
+                <span className="px-3 py-1  bg-primary/20 border border-primary/45 font-anime font-semibold text-base text-primary">
                   {formatSigned(sheet.proficiencyBonus)}
                 </span>
               </div>
@@ -2431,7 +2421,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
 
               {/* Exhaustion 6 Checkboxes */}
               <div className="sheet-frame p-3 space-y-2">
-                <div className="flex items-center justify-between text-[10px] font-extrabold uppercase tracking-wider text-muted">
+                <div className="flex items-center justify-between text-[11px] font-semibold  text-muted">
                   <span>Истощение</span>
                   {sheet.exhaustion > 0 && (
                     <span className="text-rose-400">Ступень {sheet.exhaustion}</span>
@@ -2450,7 +2440,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                             s.exhaustion = active && sheet.exhaustion === lvl ? lvl - 1 : lvl;
                           }, true)
                         }
-                        className={`flex-1 h-6 rounded-md border text-[10px] font-bold transition-colors ${
+                        className={`flex-1 h-6 rounded-md border text-[11px] font-bold transition-colors ${
                           active
                             ? 'bg-rose-500/30 border-rose-400 text-rose-200'
                             : 'bg-surface border-border text-muted/60 hover:border-rose-400/50'
@@ -2472,7 +2462,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                     s.inspiration = !sheet.inspiration;
                   }, true)
                 }
-                className={`w-full sheet-frame p-3 flex items-center justify-between transition-all ${
+                className={`w-full sheet-frame p-3 flex items-center justify-between transition-colors ${
                   sheet.inspiration
                     ? 'neon-border bg-accent/15'
                     : 'hover:border-accent/45'
@@ -2480,17 +2470,17 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                 title="Активировать или потратить «Второй шанс» персонажа"
               >
                 <div className="text-left">
-                  <div className="text-[11px] font-extrabold uppercase tracking-wider text-text">
+                  <div className="text-[11px] font-semibold  text-text">
                     Второй шанс
                   </div>
-                  <div className="text-[10px] text-muted">
+                  <div className="text-[11px] text-muted">
                     {sheet.inspiration ? 'Активен — готов к использованию' : 'Не активен'}
                   </div>
                 </div>
                 <div
-                  className={`w-8 h-8 border-2 flex items-center justify-center transition-all ${
+                  className={`w-8 h-8 border-2 flex items-center justify-center transition-colors ${
                     sheet.inspiration
-                      ? 'bg-primary/25 border-primary text-primary shadow-rim scale-105'
+                      ? 'bg-primary/25 border-primary text-primary  scale-105'
                       : 'bg-surface border-border opacity-40'
                   }`}
                 >
@@ -2518,7 +2508,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
 
                 <div className="p-3 space-y-2.5 text-xs">
                   <div className="space-y-1">
-                    <div className="text-[10px] uppercase tracking-wider text-muted font-bold">
+                    <div className="text-[11px]  text-muted font-bold">
                       Доспехи
                     </div>
                     <div className="flex flex-wrap gap-1.5">
@@ -2548,7 +2538,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                                 : 'bg-surface/60 border-border text-muted'
                             }`}
                           >
-                            <span className="text-[10px] text-primary">{on ? '◆' : '◇'}</span>
+                            <span className="text-[11px] text-primary">{on ? '◆' : '◇'}</span>
                             <span>{lbl}</span>
                           </button>
                         );
@@ -2557,7 +2547,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                   </div>
 
                   <div className="space-y-1">
-                    <div className="text-[10px] uppercase tracking-wider text-muted font-bold">
+                    <div className="text-[11px]  text-muted font-bold">
                       Оружие
                     </div>
                     <div className="flex flex-wrap gap-1.5">
@@ -2586,7 +2576,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                                 : 'bg-surface/60 border-border text-muted'
                             }`}
                           >
-                            <span className="text-[10px] text-primary">{on ? '◆' : '◇'}</span>
+                            <span className="text-[11px] text-primary">{on ? '◆' : '◇'}</span>
                             <span>{lbl}</span>
                           </button>
                         );
@@ -2595,7 +2585,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                   </div>
 
                   <div className="pt-2 border-t border-border/60 space-y-1">
-                    <div className="text-[10px] uppercase tracking-wider text-muted font-bold">
+                    <div className="text-[11px]  text-muted font-bold">
                       Инструменты и языки
                     </div>
                     <div className="sheet-grid-paper rounded-lg p-2 min-h-[48px] text-xs text-text/90 whitespace-pre-line">
@@ -2621,7 +2611,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
                 {/* Initiative */}
                 <div className="sheet-frame p-2.5 text-center">
-                  <div className="text-[9px] font-extrabold uppercase tracking-wider text-muted">
+                  <div className="text-[11px] font-semibold  text-muted">
                     Инициатива
                   </div>
                   {editUnlocked && canEdit ? (
@@ -2639,7 +2629,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                     <button
                       type="button"
                       onClick={() => handleD20Roll('Инициатива', sheet.combat.initiative)}
-                      className="mt-1 font-anime font-extrabold text-xl text-primary hover:text-accent inline-flex items-center gap-1"
+                      className="mt-1 font-anime font-semibold text-xl text-primary hover:text-accent inline-flex items-center gap-1"
                       title="Нажмите для броска инициативы"
                     >
                       <span>{formatSigned(sheet.combat.initiative)}</span>
@@ -2650,7 +2640,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
 
                 {/* Speed */}
                 <div className="sheet-frame p-2.5 text-center">
-                  <div className="text-[9px] font-extrabold uppercase tracking-wider text-muted">
+                  <div className="text-[11px] font-semibold  text-muted">
                     Скорость
                   </div>
                   {editUnlocked && canEdit ? (
@@ -2665,7 +2655,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                       className="anime-input w-full py-0.5 px-1 text-xs text-center mt-1"
                     />
                   ) : (
-                    <div className="mt-1 font-anime font-extrabold text-lg text-text">
+                    <div className="mt-1 font-anime font-semibold text-lg text-text">
                       {sheet.combat.speed}
                     </div>
                   )}
@@ -2676,10 +2666,10 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                   className="sheet-frame p-2.5 text-center"
                   title={`Пассивная Проницательность: ${sheet.combat.passiveInsight} • Пассивный Анализ: ${sheet.combat.passiveInvestigation}`}
                 >
-                  <div className="text-[9px] font-extrabold uppercase tracking-wider text-muted">
+                  <div className="text-[11px] font-semibold  text-muted">
                     П. Восприятие
                   </div>
-                  <div className="mt-1 font-anime font-extrabold text-xl text-text">
+                  <div className="mt-1 font-anime font-semibold text-xl text-text">
                     {sheet.combat.passivePerception}
                   </div>
                 </div>
@@ -2692,7 +2682,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                     sheet.conditions.length > 0 ? 'border-rose-500/60 bg-rose-500/10' : ''
                   }`}
                 >
-                  <div className="text-[9px] font-extrabold uppercase tracking-wider text-muted">
+                  <div className="text-[11px] font-semibold  text-muted">
                     Состояния
                   </div>
                   <div className="mt-1 text-xs font-bold truncate text-rose-300">
@@ -2709,7 +2699,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                   <button
                     type="button"
                     onClick={handleShortRest}
-                    className="px-3 py-1 rounded-xl bg-surface border border-border hover:border-accent text-[11px] font-semibold text-muted hover:text-accent inline-flex items-center gap-1"
+                    className="px-3 py-1  bg-surface border border-border hover:border-accent text-[11px] font-semibold text-muted hover:text-accent inline-flex items-center gap-1"
                   >
                     <Sun className="w-3.5 h-3.5" />
                     <span>Короткий отдых</span>
@@ -2717,7 +2707,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                   <button
                     type="button"
                     onClick={handleLongRest}
-                    className="px-3 py-1 rounded-xl bg-primary/15 border border-primary/40 hover:bg-primary/25 text-[11px] font-semibold text-primary inline-flex items-center gap-1"
+                    className="px-3 py-1  bg-primary/15 border border-primary/40 hover:bg-primary/25 text-[11px] font-semibold text-primary inline-flex items-center gap-1"
                   >
                     <Moon className="w-3.5 h-3.5" />
                     <span>Длинный отдых</span>
@@ -2726,7 +2716,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
               )}
 
               {conditionsOpen && (
-                <div className="p-3 rounded-2xl bg-surface/95 border border-rose-500/40 flex flex-wrap gap-1.5">
+                <div className="p-3 hud-cut-sm bg-surface/95 border border-rose-500/40 flex flex-wrap gap-1.5">
                   {DND_CONDITIONS_RU.map((cond) => {
                     const active = sheet.conditions.includes(cond);
                     return (
@@ -2765,7 +2755,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                     <button
                       type="button"
                       onClick={() => openWeaponModalFor()}
-                      className="px-2 py-0.5 rounded bg-primary/20 text-primary hover:bg-primary/30 text-[10px] inline-flex items-center gap-1"
+                      className="px-2 py-0.5 rounded bg-primary/20 text-primary hover:bg-primary/30 text-[11px] inline-flex items-center gap-1"
                     >
                       <Plus className="w-3 h-3" />
                       <span>Добавить</span>
@@ -2867,7 +2857,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                   ) : (
                     <table className="w-full text-xs border-collapse">
                       <thead>
-                        <tr className="text-[10px] uppercase tracking-wider text-muted border-b border-border/70">
+                        <tr className="text-[11px]  text-muted border-b border-border/70">
                           <th className="text-left py-1 px-1.5">Название</th>
                           <th className="text-center py-1 px-1.5">Попадание</th>
                           <th className="text-center py-1 px-1.5">Урон / Вид</th>
@@ -2901,7 +2891,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                                 {w.damageResolved}
                               </button>
                               {w.damageType && (
-                                <span className="block text-[10px] text-muted">
+                                <span className="block text-[11px] text-muted">
                                   {w.damageType}
                                 </span>
                               )}
@@ -2948,7 +2938,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                           setResFormOpen(false);
                           setResPresetsOpen((v) => !v);
                         }}
-                        className="px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-200 hover:bg-cyan-500/30 border border-cyan-400/35 text-[10px] font-bold inline-flex items-center gap-1"
+                        className="px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-200 hover:bg-cyan-500/30 border border-cyan-400/35 text-[11px] font-bold inline-flex items-center gap-1"
                         title="Быстро добавить готовый шаблон: Кости плута, Пси-заряды мистика, Кости превосходства, Ци, Магус..."
                       >
                         <Sparkles className="w-3 h-3" />
@@ -2963,7 +2953,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                             openResourceEditor();
                           }
                         }}
-                        className="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 border border-amber-400/35 text-[10px] font-bold inline-flex items-center gap-1"
+                        className="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 border border-amber-400/35 text-[11px] font-bold inline-flex items-center gap-1"
                       >
                         <Plus className="w-3 h-3" />
                         <span>Свой ресурс</span>
@@ -2976,7 +2966,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                 {resPresetsOpen && canEdit && (
                   <div className="p-3 bg-surface/95 border-b border-border space-y-2.5 text-xs">
                     <div className="flex items-center justify-between">
-                      <span className="font-anime font-bold text-[11px] uppercase tracking-wider text-cyan-300">
+                      <span className="font-anime font-bold text-[11px]  text-cyan-300">
                         Выберите готовый шаблон уникального ресурса (авторасчёт под {sheet.level} ур.):
                       </span>
                       <button
@@ -3000,7 +2990,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                             <div className="font-bold text-xs text-text truncate">
                               {preset.title}
                             </div>
-                            <div className="text-[10px] text-muted leading-snug">
+                            <div className="text-[11px] text-muted leading-snug">
                               {preset.subtitle}
                             </div>
                           </div>
@@ -3073,7 +3063,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
 
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                       <div>
-                        <label className="block text-[10px] text-muted mb-0.5">Макс. зарядов</label>
+                        <label className="block text-[11px] text-muted mb-0.5">Макс. зарядов</label>
                         <input
                           type="number"
                           min={1}
@@ -3084,7 +3074,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                         />
                       </div>
                       <div>
-                        <label className="block text-[10px] text-muted mb-0.5">
+                        <label className="block text-[11px] text-muted mb-0.5">
                           Авто-формула макс.
                         </label>
                         <input
@@ -3095,7 +3085,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                         />
                       </div>
                       <div>
-                        <label className="block text-[10px] text-muted mb-0.5">
+                        <label className="block text-[11px] text-muted mb-0.5">
                           Кость ресурса (опц.)
                         </label>
                         <input
@@ -3106,7 +3096,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                         />
                       </div>
                       <div>
-                        <label className="block text-[10px] text-muted mb-0.5">
+                        <label className="block text-[11px] text-muted mb-0.5">
                           Лимит за раз (Пси)
                         </label>
                         <input
@@ -3192,23 +3182,23 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                         return (
                           <div
                             key={r.id}
-                            className="p-3 rounded-xl bg-surface/80 border border-border space-y-2 flex flex-col justify-between"
+                            className="p-3  bg-surface/80 border border-border space-y-2 flex flex-col justify-between"
                           >
                             {/* Top Row: Title + Meta + Counter + Edit/Delete */}
                             <div className="flex items-start justify-between gap-2">
                               <div className="min-w-0">
                                 <div className="flex items-center gap-1.5 flex-wrap">
                                   <HudIcon asset={r.glyph} size="xs" />
-                                  <span className="text-xs font-extrabold text-text truncate">
+                                  <span className="text-xs font-semibold text-text truncate">
                                     {r.name}
                                   </span>
                                   {r.spendLimit > 0 && (
-                                    <span className="px-1.5 py-0.5 rounded bg-cyan-500/15 border border-cyan-400/35 text-[9px] font-bold text-cyan-200">
+                                    <span className="px-1.5 py-0.5 rounded bg-cyan-500/15 border border-cyan-400/35 text-[11px] font-bold text-cyan-200">
                                       Лимит: {r.spendLimit}
                                     </span>
                                   )}
                                 </div>
-                                <div className="text-[10px] text-muted flex items-center gap-1.5 flex-wrap mt-0.5">
+                                <div className="text-[11px] text-muted flex items-center gap-1.5 flex-wrap mt-0.5">
                                   {r.restLabel && <span>↻ {r.restLabel}</span>}
                                   {r.maxExpr && (
                                     <span className="font-mono opacity-70">({r.maxExpr})</span>
@@ -3286,7 +3276,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                                           t.current = nextCur;
                                         }, true);
                                       }}
-                                      className={`w-3.5 h-3.5 rotate-45 border transition-all ${
+                                      className={`w-3.5 h-3.5 rotate-45 border transition-colors ${
                                         filled ? style.pipFilled : style.pipEmpty
                                       }`}
                                       title={`Заряд ${idx + 1} из ${r.max}`}
@@ -3298,7 +3288,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                               <div className="space-y-1.5">
                                 <div className="w-full h-2 rounded-full bg-bg border border-border/80 overflow-hidden">
                                   <div
-                                    className={`h-full transition-all duration-300 ${style.bar}`}
+                                    className={`h-full transition-colors duration-300 ${style.bar}`}
                                     style={{ width: `${pct}%` }}
                                   />
                                 </div>
@@ -3310,14 +3300,14 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                               <div className="flex items-center justify-between gap-1.5 flex-wrap pt-0.5">
                                 {psiQuickSteps.length > 0 && canEdit && (
                                   <div className="flex items-center gap-1 flex-wrap">
-                                    <span className="text-[9px] uppercase text-muted">Трата:</span>
+                                    <span className="text-[11px] uppercase text-muted">Трата:</span>
                                     {psiQuickSteps.map((step) => (
                                       <button
                                         key={step}
                                         type="button"
                                         disabled={r.current < step}
                                         onClick={() => handleSpendResourceAmount(r, -step)}
-                                        className="px-1.5 py-0.5 rounded bg-cyan-500/15 hover:bg-cyan-500/25 disabled:opacity-35 border border-cyan-400/40 text-[10px] font-mono font-bold text-cyan-200"
+                                        className="px-1.5 py-0.5 rounded bg-cyan-500/15 hover:bg-cyan-500/25 disabled:opacity-35 border border-cyan-400/40 text-[11px] font-mono font-bold text-cyan-200"
                                       >
                                         -{step}
                                       </button>
@@ -3330,7 +3320,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                                     <button
                                       type="button"
                                       onClick={() => handleRollResourceDie(r, false)}
-                                      className={`px-2 py-0.5 rounded-lg border text-[10px] font-mono font-bold inline-flex items-center gap-1 transition-colors ${style.rollBtn}`}
+                                      className={`px-2 py-0.5 rounded-lg border text-[11px] font-mono font-bold inline-flex items-center gap-1 transition-colors ${style.rollBtn}`}
                                       title="Бросить кость ресурса без траты заряда (напр. Скрытая атака)"
                                     >
                                       <Dices className="w-3 h-3" />
@@ -3341,7 +3331,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                                         type="button"
                                         disabled={r.current <= 0}
                                         onClick={() => handleRollResourceDie(r, true)}
-                                        className="px-2 py-0.5 bg-primary/20 hover:bg-primary/30 disabled:opacity-35 border border-primary/45 text-[10px] font-bold text-primary inline-flex items-center gap-1"
+                                        className="px-2 py-0.5 bg-primary/20 hover:bg-primary/30 disabled:opacity-35 border border-primary/45 text-[11px] font-bold text-primary inline-flex items-center gap-1"
                                         title="Потратить 1 кость из пула и сразу бросить её в лог"
                                       >
                                         <span>-1</span>
@@ -3354,7 +3344,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                             )}
 
                             {r.notes && (
-                              <div className="text-[10px] text-muted border-t border-border/50 pt-1">
+                              <div className="text-[11px] text-muted border-t border-border/50 pt-1">
                                 <FormattedText text={r.notes} characterName={sheet.name} />
                               </div>
                             )}
@@ -3492,7 +3482,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                     <img
                       src={sheet.avatarUrl}
                       alt={sheet.name}
-                      className="max-h-[420px] w-full object-contain rounded-xl border border-border/70"
+                      className="max-h-[420px] w-full object-contain  border border-border/70"
                     />
                   ) : (
                     <div className="text-center space-y-2 text-muted py-12">
@@ -3593,17 +3583,17 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                     <option value="wis">Мудрость (МДР)</option>
                     <option value="cha">Харизма (ХАР)</option>
                   </select>
-                  <div className="text-[9px] uppercase tracking-wider text-muted mt-0.5 px-1">
+                  <div className="text-[11px]  text-muted mt-0.5 px-1">
                     Характеристика заклинателя
                   </div>
                 </div>
 
                 <div className="space-y-1.5 pt-1 border-t border-border/60 text-xs">
                   <div className="flex items-center justify-between px-2 py-1.5 rounded-lg bg-surface/75 border border-border">
-                    <span className="text-[10px] uppercase text-muted font-bold">
+                    <span className="text-[11px] uppercase text-muted font-bold">
                       Модификатор
                     </span>
-                    <span className="font-anime font-extrabold text-base text-text">
+                    <span className="font-anime font-semibold text-base text-text">
                       {sheet.spellcasting.abilityMod !== null
                         ? formatSigned(sheet.spellcasting.abilityMod)
                         : '—'}
@@ -3611,10 +3601,10 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                   </div>
 
                   <div className="flex items-center justify-between px-2 py-1.5 rounded-lg bg-surface/75 border border-border">
-                    <span className="text-[10px] uppercase text-muted font-bold">
+                    <span className="text-[11px] uppercase text-muted font-bold">
                       Сл спасброска
                     </span>
-                    <span className="font-anime font-extrabold text-base text-primary">
+                    <span className="font-anime font-semibold text-base text-primary">
                       {sheet.spellcasting.saveDc ?? '—'}
                     </span>
                   </div>
@@ -3630,11 +3620,11 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                     }
                     className="w-full flex items-center justify-between px-2 py-1.5 rounded-lg bg-accent/15 hover:bg-accent/25 border border-accent/40 disabled:opacity-50"
                   >
-                    <span className="text-[10px] uppercase text-accent font-bold inline-flex items-center gap-1">
+                    <span className="text-[11px] uppercase text-accent font-bold inline-flex items-center gap-1">
                       <Dices className="w-3.5 h-3.5" />
                       <span>Бонус атаки</span>
                     </span>
-                    <span className="font-anime font-extrabold text-base text-accent">
+                    <span className="font-anime font-semibold text-base text-accent">
                       {sheet.spellcasting.attackBonus !== null
                         ? formatSigned(sheet.spellcasting.attackBonus)
                         : '—'}
@@ -3648,7 +3638,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                 {/* SIZE | CARRYING CAPACITY | HIGH JUMP | LONG JUMP (matching image-5.png!) */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   <div className="sheet-frame p-2.5 text-center">
-                    <div className="text-[9px] font-extrabold uppercase tracking-wider text-muted">
+                    <div className="text-[11px] font-semibold  text-muted">
                       Размер
                     </div>
                     {canEdit ? (
@@ -3676,28 +3666,28 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                   </div>
 
                   <div className="sheet-frame p-2.5 text-center">
-                    <div className="text-[9px] font-extrabold uppercase tracking-wider text-muted">
+                    <div className="text-[11px] font-semibold  text-muted">
                       Грузоподъёмн.
                     </div>
-                    <div className="mt-1 font-anime font-extrabold text-xs text-text">
+                    <div className="mt-1 font-anime font-semibold text-xs text-text">
                       {sheet.physical.carryCapacity}
                     </div>
                   </div>
 
                   <div className="sheet-frame p-2.5 text-center">
-                    <div className="text-[9px] font-extrabold uppercase tracking-wider text-muted">
+                    <div className="text-[11px] font-semibold  text-muted">
                       Прыжок В.
                     </div>
-                    <div className="mt-1 font-anime font-extrabold text-xs text-text">
+                    <div className="mt-1 font-anime font-semibold text-xs text-text">
                       {sheet.physical.highJump}
                     </div>
                   </div>
 
                   <div className="sheet-frame p-2.5 text-center">
-                    <div className="text-[9px] font-extrabold uppercase tracking-wider text-muted">
+                    <div className="text-[11px] font-semibold  text-muted">
                       Прыжок Д.
                     </div>
-                    <div className="mt-1 font-anime font-extrabold text-xs text-text">
+                    <div className="mt-1 font-anime font-semibold text-xs text-text">
                       {sheet.physical.longJump}
                     </div>
                   </div>
@@ -3711,7 +3701,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                       <button
                         type="button"
                         onClick={() => setConfigureSlotsOpen((v) => !v)}
-                        className="text-[10px] text-accent hover:underline font-bold"
+                        className="text-[11px] text-accent hover:underline font-bold"
                       >
                         {configureSlotsOpen ? 'Готово' : 'Максимум ячеек'}
                       </button>
@@ -3723,7 +3713,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                       <div className="grid grid-cols-3 sm:grid-cols-9 gap-1.5">
                         {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((lvl) => (
                           <div key={lvl} className="text-center">
-                            <div className="text-[10px] text-muted">{lvl}-й</div>
+                            <div className="text-[11px] text-muted">{lvl}-й</div>
                             <input
                               type="number"
                               min={0}
@@ -3813,7 +3803,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                               <span className="font-bold text-muted w-8">{lvl}-й</span>
                               <div className="flex items-center gap-1 flex-wrap justify-end">
                                 {info.total === 0 ? (
-                                  <span className="text-[10px] text-muted/50">—</span>
+                                  <span className="text-[11px] text-muted/50">—</span>
                                 ) : (
                                   Array.from({ length: info.total }).map((_, idx) => {
                                     const free = idx < available;
@@ -3905,7 +3895,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
               <div className="sheet-frame__header">
                 <div className="flex items-center gap-2">
                   <span>Заговоры и подготовленные заклинания</span>
-                  <span className="px-2 py-0.2 rounded bg-primary/20 text-primary text-[10px] font-mono">
+                  <span className="px-2 py-0.2 rounded bg-primary/20 text-primary text-[11px] font-mono">
                     Изучено: {learnedSpells.length} / {profile.maxSpells}
                   </span>
                 </div>
@@ -3914,7 +3904,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                   <button
                     type="button"
                     onClick={() => setManualSpellFormOpen((v) => !v)}
-                    className="px-2 py-0.5 rounded bg-primary/20 text-primary hover:bg-primary/30 text-[10px] inline-flex items-center gap-1"
+                    className="px-2 py-0.5 rounded bg-primary/20 text-primary hover:bg-primary/30 text-[11px] inline-flex items-center gap-1"
                   >
                     <Plus className="w-3 h-3" />
                     <span>Записать вручную</span>
@@ -4078,7 +4068,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                 ) : (
                   <table className="w-full text-xs border-collapse">
                     <thead>
-                      <tr className="text-[10px] uppercase tracking-wider text-muted border-b border-border/80">
+                      <tr className="text-[11px]  text-muted border-b border-border/80">
                         <th className="text-left py-1.5 px-1.5 w-10">Ур.</th>
                         <th className="text-left py-1.5 px-1.5">Название</th>
                         <th className="text-left py-1.5 px-1.5">Применение / Заряды</th>
@@ -4136,7 +4126,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                                     <ExternalLink className="w-3 h-3 text-accent shrink-0" />
                                   </button>
                                   {rec.grantedByDm && (
-                                    <span className="px-1.5 py-0.2 rounded bg-amber-500/20 border border-amber-400/40 text-amber-200 text-[9px] font-bold">
+                                    <span className="px-1.5 py-0.2 rounded bg-amber-500/20 border border-amber-400/40 text-amber-200 text-[11px] font-bold">
                                       DM
                                     </span>
                                   )}
@@ -4145,7 +4135,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                               <td className="py-1.5 px-1.5">
                                 <div className="flex items-center gap-1.5 flex-wrap">
                                   <span
-                                    className={`px-1.5 py-0.5 rounded border text-[10px] font-semibold ${badge.className}`}
+                                    className={`px-1.5 py-0.5 rounded border text-[11px] font-semibold ${badge.className}`}
                                   >
                                     {badge.text}
                                   </span>
@@ -4186,7 +4176,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                                     </div>
                                   )}
                                   {usesPips && eff.maxUses > 6 && (
-                                    <span className="font-mono text-[10px] text-emerald-300">
+                                    <span className="font-mono text-[11px] text-emerald-300">
                                       {remainingUses}/{eff.maxUses}
                                     </span>
                                   )}
@@ -4194,9 +4184,9 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                               </td>
                               <td className="py-1.5 px-1.5 text-[11px] text-muted">
                                 <div>{sp.castingTime}</div>
-                                <div className="text-[10px] opacity-75">{sp.spellRange}</div>
+                                <div className="text-[11px] opacity-75">{sp.spellRange}</div>
                               </td>
-                              <td className="py-1.5 px-1.5 text-center font-mono text-[10px]">
+                              <td className="py-1.5 px-1.5 text-center font-mono text-[11px]">
                                 <span
                                   className={
                                     sp.concentration ? 'text-amber-300 font-bold' : 'text-muted/35'
@@ -4220,7 +4210,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                               <td className="py-1.5 px-1.5 text-[11px] text-muted">
                                 <div>{MAGIC_SCHOOL_LABELS_RU[sp.school] || sp.school}</div>
                                 {eff.note && (
-                                  <div className="text-[10px] text-accent truncate max-w-[160px]">
+                                  <div className="text-[11px] text-accent truncate max-w-[160px]">
                                     {eff.note}
                                   </div>
                                 )}
@@ -4236,7 +4226,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                                       ...eff,
                                     })
                                   }
-                                  className="px-2 py-0.5 bg-primary/20 hover:bg-primary/30 border border-primary/40 text-[10px] font-bold text-primary mr-1 inline-flex items-center gap-1"
+                                  className="px-2 py-0.5 bg-primary/20 hover:bg-primary/30 border border-primary/40 text-[11px] font-bold text-primary mr-1 inline-flex items-center gap-1"
                                   title="Применить заклинание (с учётом ячеек / зарядов отдыха / ресурса / ∞)"
                                 >
                                   <HudIcon asset="spark" size="xs" />
@@ -4311,7 +4301,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                             <td className="py-1.5 px-1.5">
                               <div className="flex items-center gap-1.5 flex-wrap">
                                 <span
-                                  className={`px-1.5 py-0.5 rounded border text-[10px] font-semibold ${badge.className}`}
+                                  className={`px-1.5 py-0.5 rounded border text-[11px] font-semibold ${badge.className}`}
                                 >
                                   {badge.text}
                                 </span>
@@ -4355,9 +4345,9 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                             </td>
                             <td className="py-1.5 px-1.5 text-[11px] text-muted">
                               <div>{ms.castingTime}</div>
-                              <div className="text-[10px] opacity-75">{ms.range}</div>
+                              <div className="text-[11px] opacity-75">{ms.range}</div>
                             </td>
-                            <td className="py-1.5 px-1.5 text-center font-mono text-[10px]">
+                            <td className="py-1.5 px-1.5 text-center font-mono text-[11px]">
                               <span className={ms.concentration ? 'text-amber-300 font-bold' : 'text-muted/35'}>
                                 {ms.concentration ? '◆К' : '◇К'}
                               </span>{' '}
@@ -4371,7 +4361,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                             <td className="py-1.5 px-1.5 text-[11px] text-muted">
                               <FormattedText text={ms.notes} characterName={sheet.name} />
                               {eff.note && (
-                                <div className="text-[10px] text-accent">{eff.note}</div>
+                                <div className="text-[11px] text-accent">{eff.note}</div>
                               )}
                             </td>
                             <td className="py-1.5 px-1 text-right whitespace-nowrap">
@@ -4385,7 +4375,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                                     ...eff,
                                   })
                                 }
-                                className="px-2 py-0.5 bg-primary/20 hover:bg-primary/30 border border-primary/40 text-[10px] font-bold text-primary mr-1 inline-flex items-center gap-1"
+                                className="px-2 py-0.5 bg-primary/20 hover:bg-primary/30 border border-primary/40 text-[11px] font-bold text-primary mr-1 inline-flex items-center gap-1"
                               >
                                 <HudIcon asset="spark" size="xs" />
                                 <span>Каст</span>
@@ -4470,7 +4460,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                     ] as const
                   ).map(([k, lbl]) => (
                     <div key={k} className="p-1.5 rounded-lg bg-surface/65 border border-border/70">
-                      <div className="text-[9px] uppercase text-muted">{lbl}</div>
+                      <div className="text-[11px] uppercase text-muted">{lbl}</div>
                       {canEdit ? (
                         <input
                           value={sheet.subInfoMap[k] ?? ''}
@@ -4529,7 +4519,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                       return (
                         <div key={k}>
                           {k !== 'background' && (
-                            <span className="text-[10px] font-bold uppercase text-accent block">
+                            <span className="text-[11px] font-bold uppercase text-accent block">
                               {entry.label}:
                             </span>
                           )}
@@ -4545,7 +4535,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                 </div>
 
                 <div className="pt-1 border-t border-border/70">
-                  <div className="text-[9px] uppercase tracking-wider text-muted">
+                  <div className="text-[11px]  text-muted">
                     Мировоззрение
                   </div>
                   {canEdit ? (
@@ -4593,7 +4583,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
 
                 {/* Attunement Diamonds */}
                 <div className="pt-2 border-t border-border/70 space-y-2">
-                  <div className="text-[10px] font-extrabold uppercase tracking-wider text-muted">
+                  <div className="text-[11px] font-semibold  text-muted">
                     Настройка на магические предметы
                   </div>
 
@@ -4710,9 +4700,9 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                   ).map(({ key, label, color }) => (
                     <div
                       key={key}
-                      className="p-2 rounded-xl bg-surface/80 border border-border"
+                      className="p-2  bg-surface/80 border border-border"
                     >
-                      <div className={`text-[10px] font-extrabold ${color}`}>{label}</div>
+                      <div className={`text-[11px] font-semibold ${color}`}>{label}</div>
                       {canEdit ? (
                         <input
                           type="number"
@@ -4725,10 +4715,10 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                               setLssField(cObj, key, val);
                             });
                           }}
-                          className="w-full bg-transparent text-center font-anime font-extrabold text-sm mt-0.5 focus:outline-none"
+                          className="w-full bg-transparent text-center font-anime font-semibold text-sm mt-0.5 focus:outline-none"
                         />
                       ) : (
-                        <div className="font-anime font-extrabold text-sm mt-0.5">
+                        <div className="font-anime font-semibold text-sm mt-0.5">
                           {sheet.coins[key]}
                         </div>
                       )}
@@ -4741,13 +4731,13 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                     <button
                       type="button"
                       onClick={() => setCoinManageOpen((v) => !v)}
-                      className="w-full py-1.5 rounded-xl bg-primary/15 hover:bg-primary/25 border border-primary/40 text-xs font-bold text-primary transition-colors"
+                      className="w-full py-1.5  bg-primary/15 hover:bg-primary/25 border border-primary/40 text-xs font-bold text-primary transition-colors"
                     >
                       Управлять
                     </button>
 
                     {coinManageOpen && (
-                      <div className="p-2.5 rounded-xl bg-surface border border-border flex items-center gap-1.5 text-xs">
+                      <div className="p-2.5  bg-surface border border-border flex items-center gap-1.5 text-xs">
                         <input
                           type="number"
                           min={1}
@@ -4826,11 +4816,11 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="glass-panel neon-border rounded-3xl max-w-2xl w-full p-6 space-y-4"
+            className="glass-panel neon-border hud-cut max-w-2xl w-full p-6 space-y-4"
           >
             <div className="flex items-center justify-between gap-2">
               <div>
-                <h3 className="font-anime font-extrabold text-base uppercase tracking-wide text-primary">
+                <h3 className="font-anime font-semibold text-base uppercase tracking-wide text-primary">
                   {editingBlock.title}
                 </h3>
                 <p className="text-[11px] text-muted mt-0.5">
@@ -4841,7 +4831,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                 <button
                   type="button"
                   onClick={() => setRichPreviewMode((v) => !v)}
-                  className={`px-3 py-1 rounded-xl border text-xs font-semibold transition-colors ${
+                  className={`px-3 py-1  border text-xs font-semibold transition-colors ${
                     richPreviewMode
                       ? 'bg-accent/20 border-accent/50 text-accent'
                       : 'border-border text-muted hover:text-text'
@@ -4855,7 +4845,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                     setEditingBlock(null);
                     setRichPreviewMode(false);
                   }}
-                  className="p-1.5 rounded-xl border border-border text-muted hover:text-text"
+                  className="p-1.5  border border-border text-muted hover:text-text"
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -4863,7 +4853,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
             </div>
 
             {richPreviewMode ? (
-              <div className="sheet-grid-paper rounded-2xl p-4 min-h-[220px] max-h-[380px] overflow-y-auto border border-border">
+              <div className="sheet-grid-paper hud-cut-sm p-4 min-h-[220px] max-h-[380px] overflow-y-auto border border-border">
                 {editingBlock.text.trim() ? (
                   <FormattedText
                     text={editingBlock.text}
@@ -4891,7 +4881,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                   setEditingBlock(null);
                   setRichPreviewMode(false);
                 }}
-                className="px-4 py-2 rounded-xl border border-border text-xs text-muted"
+                className="px-4 py-2  border border-border text-xs text-muted"
               >
                 Отмена
               </button>
@@ -4926,11 +4916,11 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
           <form
             onClick={(e) => e.stopPropagation()}
             onSubmit={(e) => void handleSaveSpellCastConfigModal(e)}
-            className="glass-panel neon-border rounded-3xl max-w-md w-full p-6 space-y-4 text-xs"
+            className="glass-panel neon-border hud-cut max-w-md w-full p-6 space-y-4 text-xs"
           >
             <div className="flex items-center justify-between gap-2">
               <div>
-                <h3 className="font-anime font-extrabold text-base text-primary">
+                <h3 className="font-anime font-semibold text-base text-primary">
                   Способ применения заклинания
                 </h3>
                 <p className="text-xs text-accent font-semibold mt-0.5">
@@ -4940,7 +4930,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
               <button
                 type="button"
                 onClick={() => setEditingSpellCast(null)}
-                className="p-1.5 rounded-xl border border-border text-muted hover:text-text"
+                className="p-1.5  border border-border text-muted hover:text-text"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -5071,7 +5061,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
               <button
                 type="button"
                 onClick={() => setEditingSpellCast(null)}
-                className="px-4 py-2 rounded-xl border border-border text-muted"
+                className="px-4 py-2  border border-border text-muted"
               >
                 Отмена
               </button>
@@ -5140,7 +5130,7 @@ const RichNodesView: React.FC<{ nodes: LssRichParagraph[]; characterName?: strin
           return (
             <details
               key={idx}
-              className="rounded-xl bg-surface/80 border border-border px-3 py-2"
+              className=" bg-surface/80 border border-border px-3 py-2"
             >
               <summary className="cursor-pointer font-semibold text-accent">
                 {node.title}
@@ -5251,14 +5241,14 @@ const HeroIdentityModal: React.FC<HeroIdentityModalProps> = ({ sheet, onClose, o
             alignment: alignment.trim(),
           });
         }}
-        className="glass-panel neon-border rounded-3xl max-w-lg w-full p-6 space-y-4"
+        className="glass-panel neon-border hud-cut max-w-lg w-full p-6 space-y-4"
       >
         <div className="flex items-center justify-between">
-          <h3 className="font-anime font-extrabold text-lg">Шапка персонажа</h3>
+          <h3 className="font-anime font-semibold text-lg">Шапка персонажа</h3>
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 rounded-xl border border-border text-muted hover:text-text"
+            className="p-1.5  border border-border text-muted hover:text-text"
           >
             <X className="w-4 h-4" />
           </button>
@@ -5410,7 +5400,7 @@ const HeroIdentityModal: React.FC<HeroIdentityModalProps> = ({ sheet, onClose, o
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 rounded-xl border border-border text-xs text-muted"
+            className="px-4 py-2  border border-border text-xs text-muted"
           >
             Отмена
           </button>

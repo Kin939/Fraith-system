@@ -60,15 +60,15 @@ export const JournalEditor: React.FC<JournalEditorProps> = ({ playerId, journal,
       }
       if (manualToast) {
         pushToast({
-          title: 'Журнал сохранён',
-          message: 'Записи вашего персонажа обновлены в базе D1.',
+          title: 'Дневник сохранён',
+          message: 'Записи персонажа обновлены',
           variant: 'success',
         });
       }
     } catch (err) {
       if (manualToast) {
         pushToast({
-          title: 'Ошибка сохранения журнала',
+          title: 'Ошибка сохранения дневника',
           message: err instanceof Error ? err.message : 'Попробуйте снова',
           variant: 'error',
         });
@@ -150,47 +150,46 @@ export const JournalEditor: React.FC<JournalEditorProps> = ({ playerId, journal,
   };
 
   return (
-    <div className="glass-panel hud-neon-top hud-corners p-5 space-y-3.5">
-      <div className="flex items-center justify-between gap-2 flex-wrap">
+    <div className="glass-panel hud-neon-top p-5 space-y-4">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-2.5">
-          <BookText className="w-4 h-4 text-primary" />
-          <div>
-            <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-primary">
-              JOURNAL // PERSONAL LOG
-            </div>
-            <h3 className="font-anime font-bold text-base uppercase">
-              Личный журнал приключенца
-            </h3>
-          </div>
+          <BookText className="w-4 h-4 text-muted" strokeWidth={1.5} />
+          <h3 className="font-medium text-base text-text">
+            Личный дневник
+          </h3>
         </div>
 
         {readOnly ? (
-          <span className="inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider px-2.5 py-1 bg-[#070B14]/80 border border-primary/30 text-muted">
-            <Eye className="w-3.5 h-3.5 text-primary" />
-            READ-ONLY // MASTER VIEW
+          <span className="inline-flex items-center gap-1.5 text-xs text-muted">
+            <Eye className="w-4 h-4" strokeWidth={1.5} />
+            <span>Просмотр Мастера</span>
           </span>
         ) : (
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={() => setPreviewMode((v) => !v)}
-              className={`px-2.5 py-1.5 text-xs font-mono uppercase tracking-wider border inline-flex items-center gap-1.5 transition-colors ${
-                previewMode
-                  ? 'bg-primary/15 border-primary text-primary'
-                  : 'bg-[#070B14]/80 border-primary/30 text-muted hover:text-text'
-              }`}
+              className="h-8 px-3 text-xs border border-border bg-raised text-secondary hover:text-text inline-flex items-center gap-1.5 transition-colors"
             >
-              {previewMode ? <Edit3 className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-              <span>{previewMode ? 'Редактор' : 'Чтение'}</span>
+              {previewMode ? (
+                <Edit3 className="w-3.5 h-3.5" strokeWidth={1.5} />
+              ) : (
+                <Eye className="w-3.5 h-3.5" strokeWidth={1.5} />
+              )}
+              <span>{previewMode ? 'Редактировать' : 'Чтение'}</span>
             </button>
             <button
               type="button"
               disabled={saving || !dirty}
               onClick={handleManualSave}
-              className="anime-btn-primary px-3.5 py-1.5 text-xs inline-flex items-center gap-1.5"
+              className="anime-btn-primary h-8 px-3 text-xs inline-flex items-center gap-1.5"
             >
-              {dirty ? <Save className="w-3.5 h-3.5" /> : <Check className="w-3.5 h-3.5" />}
-              <span>{saving ? 'Сохранение...' : dirty ? 'Сохранить' : 'Сохранено'}</span>
+              {dirty ? (
+                <Save className="w-3.5 h-3.5" strokeWidth={1.5} />
+              ) : (
+                <Check className="w-3.5 h-3.5" strokeWidth={1.5} />
+              )}
+              <span>{saving ? 'Сохранение…' : dirty ? 'Сохранить' : 'Сохранено'}</span>
             </button>
           </div>
         )}
@@ -204,8 +203,8 @@ export const JournalEditor: React.FC<JournalEditorProps> = ({ playerId, journal,
           setTitle(e.target.value);
           scheduleAutoSave();
         }}
-        placeholder="Название дневника..."
-        className="anime-input w-full text-sm font-semibold"
+        placeholder="Заголовок дневника"
+        className="anime-input w-full h-10 text-sm font-medium"
       />
 
       {previewMode ? (
@@ -213,8 +212,8 @@ export const JournalEditor: React.FC<JournalEditorProps> = ({ playerId, journal,
           onClick={() => {
             if (!readOnly) setPreviewMode(false);
           }}
-          className={`min-h-[10rem] p-3.5 bg-[#070B14]/75 border border-primary/25 text-sm ${
-            !readOnly ? 'cursor-text hover:border-primary/60' : ''
+          className={`min-h-[10rem] p-4 bg-bg border border-border text-sm ${
+            !readOnly ? 'cursor-text hover:border-text/20 transition-colors' : ''
           }`}
         >
           {content.trim() ? (
@@ -222,8 +221,8 @@ export const JournalEditor: React.FC<JournalEditorProps> = ({ playerId, journal,
           ) : (
             <span className="text-muted text-xs">
               {readOnly
-                ? 'У этого героя пока нет записей в личном журнале...'
-                : 'Нажмите, чтобы начать вести записи...'}
+                ? 'У героя пока нет записей'
+                : 'Нажмите, чтобы начать вести записи'}
             </span>
           )}
         </div>
@@ -242,20 +241,18 @@ export const JournalEditor: React.FC<JournalEditorProps> = ({ playerId, journal,
             }
           }}
           rows={7}
-          placeholder="Ведите заметки о тайнах кампании, уликах и NPC. Выделите любой фрагмент текста, чтобы сделать его жирным, курсивом, цветным или кликабельным броском кубиков."
+          placeholder="Заметки о кампании, уликах и персонажах. Выделите текст для панели форматирования или формул броска."
           className="anime-input w-full text-sm leading-relaxed resize-y"
         />
       )}
 
-      <div className="font-mono text-[10px] uppercase tracking-wider text-muted flex flex-wrap items-center justify-between gap-2">
+      <div className="text-xs text-muted flex flex-wrap items-center justify-between gap-2">
         <span>
-          {!readOnly
-            ? 'AUTO-SAVE // ВЫДЕЛИТЕ ТЕКСТ ДЛЯ ПАНЕЛИ ВЁРСТКИ (CTRL+B / CTRL+I)'
-            : 'TABLE // JOURNAL_ENTRIES'}
+          {!readOnly ? 'Автосохранение включено · выделите текст для форматирования' : ''}
         </span>
         {journal?.updatedAt && (
-          <span className="tabular-nums">
-            SYNC: {new Date(journal.updatedAt).toLocaleString('ru-RU')}
+          <span className="font-mono tabular-nums">
+            {new Date(journal.updatedAt).toLocaleString('ru-RU')}
           </span>
         )}
       </div>

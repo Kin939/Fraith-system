@@ -1,7 +1,6 @@
 import React, { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react';
 import {
   BookMarked,
-  BookOpen,
   ChevronDown,
   Crown,
   HelpCircle,
@@ -13,7 +12,6 @@ import {
   SlidersHorizontal,
   Sparkles,
 } from 'lucide-react';
-import { HudIcon } from '../components/common/HudIcon';
 import { PlayerSwitcher } from '../components/dm/PlayerSwitcher';
 import { DndsuMultiSelect } from '../components/spells/DndsuMultiSelect';
 import { SpellCard } from '../components/spells/SpellCard';
@@ -108,7 +106,6 @@ export const SpellsPage: React.FC = () => {
     [learnedRecords]
   );
 
-  // Load official spells + filters immediately, then prefetch homebrew catalog right after
   useEffect(() => {
     let cancelled = false;
     setLoadingOfficial(true);
@@ -123,7 +120,6 @@ export const SpellsPage: React.FC = () => {
           setSelectedSpellId((prev) => prev ?? off[0].id);
         }
 
-        // Load all 2,084 homebrew spells from static asset
         return loadHomebrewDndsuSpells().then((hb) => {
           if (cancelled) return;
           setHomebrewSpells(hb);
@@ -142,7 +138,6 @@ export const SpellsPage: React.FC = () => {
     };
   }, []);
 
-  // Reset pagination cap when switching category or filters
   useEffect(() => {
     setVisibleLimit(240);
   }, [category, deferredFilters]);
@@ -155,7 +150,6 @@ export const SpellsPage: React.FC = () => {
     return map;
   }, [officialSpells, homebrewSpells, customDmSpells]);
 
-  // Handle jumpToSpellInCatalog(spellId) from Tab 1 CharacterPage or internal card links
   const selectAndRevealSpell = useCallback(
     (targetId: number) => {
       const target = allSpellsMap.get(targetId);
@@ -228,7 +222,6 @@ export const SpellsPage: React.FC = () => {
     [filteredSpells, visibleLimit, viewMode]
   );
 
-  // Group displayed spells just like dnd.su (Alphabetical А..Я / Level 0..9 / School)
   const groupedSpells = useMemo(() => {
     const groups: Array<{ key: string; title: string; items: Spell[] }> = [];
     const map = new Map<string, { key: string; title: string; items: Spell[] }>();
@@ -238,7 +231,7 @@ export const SpellsPage: React.FC = () => {
       let title: string;
       if (filters.sortBy === 'level') {
         key = `lvl-${sp.level}`;
-        title = sp.level === 0 ? 'Заговоры (0 уровень)' : `${sp.level} уровень`;
+        title = sp.level === 0 ? 'Заговоры · 0 круг' : `${sp.level} круг`;
       } else if (filters.sortBy === 'school') {
         const sRu = MAGIC_SCHOOL_LABELS_RU[sp.school] || sp.school;
         key = `sch-${sRu}`;
@@ -260,7 +253,6 @@ export const SpellsPage: React.FC = () => {
     return groups;
   }, [displayedSpells, filters.sortBy]);
 
-  // Keep selectedSpellId pointing to a valid spell
   const selectedSpell: Spell | null = useMemo(() => {
     if (selectedSpellId !== null) {
       const exact = allSpellsMap.get(selectedSpellId);
@@ -303,91 +295,87 @@ export const SpellsPage: React.FC = () => {
     ((category === 'homebrew' || category === 'all') && loadingHomebrew && homebrewSpells.length === 0);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       {user?.role === 'dm' && <PlayerSwitcher />}
 
-      {/* Top dnd.su Header + Category Tabs (Официальные / Homebrew / Все / Изученные) */}
-      <div className="relative z-30 glass-panel rounded-3xl p-4 sm:p-5 space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-2xl bg-primary/20 border border-primary/40 flex items-center justify-center text-primary shrink-0">
-              <BookOpen className="w-5 h-5" />
-            </div>
-            <div>
-              <h1 className="font-anime font-extrabold text-lg sm:text-xl flex items-center gap-2 flex-wrap">
-                <span>Заклинания D&amp;D 5e</span>
-                <span className="text-xs font-normal px-2 py-0.5 rounded-lg bg-bg/70 border border-border text-muted">
-                  База dnd.su • {officialCombined.length + homebrewCombined.length} заклинаний
-                </span>
-              </h1>
-              <p className="text-xs text-muted mt-0.5">
-                Полный каталог официальных заклинаний и Homebrew с dnd.su с оригинальной разметкой и фильтрами
-              </p>
-            </div>
+      {/* Quiet Page Header */}
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <div className="flex items-baseline gap-3 flex-wrap">
+            <h1 className="font-medium text-2xl text-text">Заклинания</h1>
+            <span className="font-mono text-xs text-muted tabular-nums">
+              {officialCombined.length + homebrewCombined.length} в базе dnd.su
+            </span>
           </div>
-
-          <div className="flex items-center gap-2.5 flex-wrap">
-            {isPlayer && playerProfile?.characterName ? (
-              <div className="px-3.5 py-2 rounded-2xl bg-bg/75 border border-primary/40 text-xs flex items-center gap-2.5 flex-wrap">
-                <span className="inline-flex items-center gap-1.5">
-                  <span>Класс:</span>
-                  <strong className="text-accent">
-                    {formatCharacterClassesRu(playerProfile.charClass) || playerProfile.charClass}
-                  </strong>
-                  {extractPlayerCanonicalClasses(playerProfile.charClass).map((c) => {
-                    const hb = DND_HOMEBREW_CLASS_BY_KEY[c];
-                    if (!hb) return null;
-                    return (
-                      <a
-                        key={hb.key}
-                        href={hb.url}
-                        target="_blank"
-                        rel="noreferrer"
-                        title={`Открыть Homebrew-класс «${hb.labelRu}» на dnd.su`}
-                        className="px-1.5 py-0.2 bg-purple-500/25 border border-purple-400/40 text-purple-200 text-[10px] font-mono font-bold hover:bg-purple-500/35"
-                      >
-                        HB
-                      </a>
-                    );
-                  })}
-                </span>
-                <span className="text-border">•</span>
-                <span>
-                  Изучено:{' '}
-                  <strong className="text-primary">
-                    {learnedRecords.length} / {playerProfile.maxSpells}
-                  </strong>
-                </span>
-              </div>
-            ) : (
-              user?.role === 'dm' && (
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('dm')}
-                  className="anime-btn-primary px-3.5 py-2 text-xs inline-flex items-center gap-1.5"
-                >
-                  <Crown className="w-3.5 h-3.5" />
-                  Добавить заклинание (DM)
-                </button>
-              )
-            )}
-          </div>
+          <p className="text-sm text-secondary mt-1">
+            Официальные заклинания D&amp;D 5e и авторский каталог Homebrew
+          </p>
         </div>
 
-        {/* dnd.su Section Switcher Pills */}
-        <div className="flex flex-wrap items-center justify-between gap-3 pt-1 border-t border-border/60">
-          <div className="flex items-center gap-1.5 flex-wrap">
+        <div className="flex items-center gap-3 flex-wrap">
+          {isPlayer && playerProfile?.characterName ? (
+            <div className="h-10 px-3.5 bg-surface border border-border text-xs flex items-center gap-2.5 flex-wrap">
+              <span className="inline-flex items-center gap-1.5 text-secondary">
+                <span>Класс:</span>
+                <strong className="font-medium text-text">
+                  {formatCharacterClassesRu(playerProfile.charClass) || playerProfile.charClass}
+                </strong>
+                {extractPlayerCanonicalClasses(playerProfile.charClass).map((c) => {
+                  const hb = DND_HOMEBREW_CLASS_BY_KEY[c];
+                  if (!hb) return null;
+                  return (
+                    <a
+                      key={hb.key}
+                      href={hb.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      title={`Открыть класс «${hb.labelRu}» на dnd.su`}
+                      className="hud-keycap"
+                    >
+                      HB
+                    </a>
+                  );
+                })}
+              </span>
+              <span className="text-muted">·</span>
+              <span className="text-secondary">
+                Изучено:{' '}
+                <strong className="font-mono font-medium text-text tabular-nums">
+                  {learnedRecords.length} из {playerProfile.maxSpells}
+                </strong>
+              </span>
+            </div>
+          ) : (
+            user?.role === 'dm' && (
+              <button
+                type="button"
+                onClick={() => setActiveTab('dm')}
+                className="hud-btn-secondary h-10 px-4 text-xs inline-flex items-center gap-2"
+              >
+                <Crown className="w-4 h-4 text-muted" strokeWidth={1.5} />
+                <span>Добавить заклинание</span>
+              </button>
+            )
+          )}
+        </div>
+      </div>
+
+      {/* Filter Panel */}
+      <div className="relative z-30 glass-panel hud-cut p-4 space-y-4">
+        {/* Category Switcher + View Mode */}
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-1 flex-wrap bg-bg border border-border p-1">
             <button
               type="button"
               onClick={() => setCategory('official')}
-              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all inline-flex items-center gap-2 ${
+              className={`h-8 px-3 text-xs transition-colors inline-flex items-center gap-2 ${
                 category === 'official'
-                  ? 'anime-btn-primary'
-                  : 'bg-bg/70 border border-border text-muted hover:text-text hover:border-primary/40'
+                  ? 'bg-raised text-text font-medium shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]'
+                  : 'text-secondary hover:text-text'
               }`}
             >
               <span>Официальные</span>
-              <span className="px-1.5 py-0.5 rounded-md bg-black/25 text-[11px] font-mono">
+              <span className="font-mono text-xs text-muted tabular-nums">
                 {loadingOfficial ? '…' : officialCombined.length}
               </span>
             </button>
@@ -395,14 +383,14 @@ export const SpellsPage: React.FC = () => {
             <button
               type="button"
               onClick={() => setCategory('homebrew')}
-              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all inline-flex items-center gap-2 ${
+              className={`h-8 px-3 text-xs transition-colors inline-flex items-center gap-2 ${
                 category === 'homebrew'
-                  ? 'anime-btn-primary'
-                  : 'bg-bg/70 border border-border text-muted hover:text-text hover:border-primary/40'
+                  ? 'bg-raised text-text font-medium shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]'
+                  : 'text-secondary hover:text-text'
               }`}
             >
               <span>Homebrew</span>
-              <span className="px-1.5 py-0.5 rounded-md bg-black/25 text-[11px] font-mono">
+              <span className="font-mono text-xs text-muted tabular-nums">
                 {loadingHomebrew ? '…' : homebrewCombined.length}
               </span>
             </button>
@@ -410,14 +398,14 @@ export const SpellsPage: React.FC = () => {
             <button
               type="button"
               onClick={() => setCategory('all')}
-              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all inline-flex items-center gap-2 ${
+              className={`h-8 px-3 text-xs transition-colors inline-flex items-center gap-2 ${
                 category === 'all'
-                  ? 'anime-btn-primary'
-                  : 'bg-bg/70 border border-border text-muted hover:text-text hover:border-primary/40'
+                  ? 'bg-raised text-text font-medium shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]'
+                  : 'text-secondary hover:text-text'
               }`}
             >
               <span>Все</span>
-              <span className="px-1.5 py-0.5 rounded-md bg-black/25 text-[11px] font-mono">
+              <span className="font-mono text-xs text-muted tabular-nums">
                 {loadingOfficial || loadingHomebrew
                   ? '…'
                   : officialCombined.length + homebrewCombined.length}
@@ -428,15 +416,15 @@ export const SpellsPage: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setCategory('learned')}
-                className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all inline-flex items-center gap-2 ${
+                className={`h-8 px-3 text-xs transition-colors inline-flex items-center gap-2 ${
                   category === 'learned'
-                    ? 'anime-btn-primary'
-                    : 'bg-bg/70 border border-border text-muted hover:text-text hover:border-accent/50'
+                    ? 'bg-raised text-text font-medium shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]'
+                    : 'text-secondary hover:text-text'
                 }`}
               >
-                <BookMarked className="w-3.5 h-3.5" />
-                <span>{user?.role === 'dm' ? `Изученные (Игрок #${dmSelectedPlayerId})` : 'Изученные'}</span>
-                <span className="px-1.5 py-0.5 rounded-md bg-black/25 text-[11px] font-mono">
+                <BookMarked className="w-3.5 h-3.5 text-muted" strokeWidth={1.5} />
+                <span>{user?.role === 'dm' ? `Изученные (игрок ${dmSelectedPlayerId})` : 'Изученные'}</span>
+                <span className="font-mono text-xs text-muted tabular-nums">
                   {learnedRecords.length}
                 </span>
               </button>
@@ -448,96 +436,90 @@ export const SpellsPage: React.FC = () => {
               <button
                 type="button"
                 onClick={toggleMyClassFilter}
-                className={`px-3 py-1.5 rounded-xl border text-xs font-semibold inline-flex items-center gap-1.5 transition-all ${
+                className={`h-8 px-3 border text-xs inline-flex items-center gap-1.5 transition-colors ${
                   isMyClassActive
-                    ? 'bg-accent/20 border-accent text-accent'
-                    : 'bg-bg/70 border-border text-muted hover:text-text hover:border-accent/40'
+                    ? 'bg-raised border-primary/50 text-text font-medium'
+                    : 'bg-bg border-border text-secondary hover:text-text'
                 }`}
               >
-                <Sparkles className="w-3.5 h-3.5" />
-                Только мой класс
+                <Sparkles className="w-3.5 h-3.5 text-muted" strokeWidth={1.5} />
+                <span>Только мой класс</span>
               </button>
             )}
 
             <button
               type="button"
               onClick={() => setLegendOpen((v) => !v)}
-              className={`px-3 py-1.5 rounded-xl border text-xs inline-flex items-center gap-1.5 transition-colors ${
+              className={`h-8 px-3 border text-xs inline-flex items-center gap-1.5 transition-colors ${
                 legendOpen
-                  ? 'bg-primary/20 border-primary/50 text-text'
-                  : 'bg-bg/70 border-border text-muted hover:text-text'
+                  ? 'bg-raised border-primary/50 text-text font-medium'
+                  : 'bg-bg border-border text-secondary hover:text-text'
               }`}
             >
-              <HelpCircle className="w-3.5 h-3.5 text-primary" />
-              Обозначения
+              <HelpCircle className="w-3.5 h-3.5 text-muted" strokeWidth={1.5} />
+              <span>Обозначения</span>
             </button>
 
-            <div className="inline-flex rounded-xl border border-border bg-bg/70 p-0.5">
+            <div className="inline-flex border border-border bg-bg p-0.5">
               <button
                 type="button"
                 onClick={() => setViewMode('split')}
-                className={`px-2.5 py-1 rounded-lg text-xs inline-flex items-center gap-1 transition-colors ${
-                  viewMode === 'split' ? 'bg-primary/25 text-text font-semibold' : 'text-muted hover:text-text'
+                className={`h-7 px-2.5 text-xs inline-flex items-center gap-1.5 transition-colors ${
+                  viewMode === 'split' ? 'bg-raised text-text font-medium' : 'text-muted hover:text-text'
                 }`}
-                title="Режим справочника dnd.su (список + карточка)"
+                title="Список + карточка"
               >
-                <List className="w-3.5 h-3.5" />
+                <List className="w-3.5 h-3.5" strokeWidth={1.5} />
                 <span className="hidden sm:inline">Справочник</span>
               </button>
               <button
                 type="button"
                 onClick={() => setViewMode('grid')}
-                className={`px-2.5 py-1 rounded-lg text-xs inline-flex items-center gap-1 transition-colors ${
-                  viewMode === 'grid' ? 'bg-primary/25 text-text font-semibold' : 'text-muted hover:text-text'
+                className={`h-7 px-2.5 text-xs inline-flex items-center gap-1.5 transition-colors ${
+                  viewMode === 'grid' ? 'bg-raised text-text font-medium' : 'text-muted hover:text-text'
                 }`}
-                title="Сетка полных карточек"
+                title="Сетка карточек"
               >
-                <LayoutGrid className="w-3.5 h-3.5" />
+                <LayoutGrid className="w-3.5 h-3.5" strokeWidth={1.5} />
                 <span className="hidden sm:inline">Карточки</span>
               </button>
             </div>
           </div>
         </div>
 
-        {/* Collapsible dnd.su Legend */}
+        {/* Collapsible Legend */}
         {legendOpen && (
-          <div className="p-3.5 rounded-2xl bg-bg/70 border border-border space-y-2.5 text-xs">
-            <div className="font-bold text-text/90">Условные обозначения (как на dnd.su):</div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 text-muted">
+          <div className="p-4 bg-bg border border-border space-y-3 text-xs">
+            <div className="font-medium text-text">Условные обозначения:</div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 text-secondary">
               <div className="flex items-center gap-2">
-                <span className="font-mono font-bold text-primary px-1.5 py-0.5 rounded bg-primary/15">
-                  [2]
-                </span>
-                <span>— уровень заклинания ([0] — заговор)</span>
+                <span className="hud-keycap">[2]</span>
+                <span>круг заклинания ([0] — заговор)</span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="font-mono font-bold text-text px-1.5 py-0.5 rounded bg-surface border border-border">
-                  ВСМ
-                </span>
-                <span>— Вербальный, Соматический, Материальный («.» — не нужен)</span>
+                <span className="hud-keycap">ВСМ</span>
+                <span>Вербальный, Соматический, Материальный</span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="font-bold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300">
-                  К
-                </span>
-                <span>— требуется Концентрация</span>
+                <span className="hud-keycap">К</span>
+                <span>требуется Концентрация</span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="font-bold px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300">
-                  Р
-                </span>
-                <span>— можно сотворить как Ритуал</span>
+                <span className="hud-keycap">Р</span>
+                <span>можно накладывать как Ритуал</span>
               </div>
             </div>
-            <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-border/60">
+            <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-border">
               <span className="text-muted">Школы магии:</span>
               {SCHOOL_META_LIST.map((s) => (
                 <span
                   key={s.id}
-                  className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-medium border border-primary/20"
-                  style={{ backgroundColor: s.bg, color: s.color }}
+                  className="inline-flex items-center gap-1.5 px-2 py-0.5 text-xs text-secondary bg-surface border border-border"
                 >
-                  <HudIcon glyph={s.glyph} size="xs" />
+                  <span
+                    className="w-2 h-2 rounded-full shrink-0"
+                    style={{ backgroundColor: s.color }}
+                  />
                   <span>{s.ru}</span>
                 </span>
               ))}
@@ -545,28 +527,29 @@ export const SpellsPage: React.FC = () => {
           </div>
         )}
 
-        {/* dnd.su Filter Controls */}
-        <div className="space-y-2.5 pt-1 border-t border-border/60">
-          {/* Primary Filter Row */}
+        {/* Filter Controls */}
+        <div className="space-y-3 pt-3 border-t border-border">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-2.5">
             <div className="lg:col-span-4 relative flex items-center">
-              <Search className="w-4 h-4 text-muted absolute left-3 pointer-events-none" />
+              <Search
+                className="w-4 h-4 text-muted absolute left-3 pointer-events-none"
+                strokeWidth={1.5}
+              />
               <input
                 type="text"
                 value={filters.search}
                 onChange={(e) => setFilters((f) => ({ ...f, search: e.target.value }))}
-                placeholder="Поиск по разделу (рус. / англ. название)..."
-                className="w-full bg-bg/75 border border-border focus:border-primary rounded-xl pl-9 pr-24 py-2 text-xs text-text focus:outline-none"
+                placeholder="Поиск по названию"
+                className="w-full h-9 bg-bg border border-border focus:border-primary/60 pl-9 pr-24 text-xs text-text focus:outline-none"
               />
               <label
-                className="absolute right-2.5 inline-flex items-center gap-1 text-[10px] text-muted hover:text-text cursor-pointer select-none"
-                title="Искать также внутри текста описания заклинаний"
+                className="absolute right-2.5 inline-flex items-center gap-1.5 text-xs text-muted hover:text-text cursor-pointer select-none"
+                title="Искать также внутри текста описания"
               >
                 <input
                   type="checkbox"
                   checked={filters.searchInText}
                   onChange={(e) => setFilters((f) => ({ ...f, searchInText: e.target.checked }))}
-                  className="accent-purple-500 rounded"
                 />
                 <span>в тексте</span>
               </label>
@@ -606,22 +589,23 @@ export const SpellsPage: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setMoreFiltersOpen((v) => !v)}
-                className={`flex-1 px-2.5 py-2 rounded-xl border text-xs font-medium inline-flex items-center justify-center gap-1.5 transition-colors ${
+                className={`flex-1 h-9 px-2.5 border text-xs inline-flex items-center justify-center gap-1.5 transition-colors ${
                   moreFiltersOpen || activeFilterCount > 0
-                    ? 'bg-primary/15 border-primary/50 text-text'
-                    : 'bg-bg/75 border-border text-muted hover:text-text'
+                    ? 'bg-raised border-primary/50 text-text font-medium'
+                    : 'bg-bg border-border text-secondary hover:text-text'
                 }`}
-                title="Больше фильтров (Подкласс, Источник, Компоненты, Время, Урон, TCE)"
+                title="Больше фильтров"
               >
-                <SlidersHorizontal className="w-3.5 h-3.5 text-primary" />
+                <SlidersHorizontal className="w-3.5 h-3.5 text-muted" strokeWidth={1.5} />
                 <span>Фильтры</span>
                 {activeFilterCount > 0 && (
-                  <span className="px-1.5 py-0.2 rounded-full bg-primary text-white text-[10px] font-bold">
+                  <span className="hud-keycap">
                     {activeFilterCount}
                   </span>
                 )}
                 <ChevronDown
-                  className={`w-3.5 h-3.5 transition-transform ${moreFiltersOpen ? 'rotate-180' : ''}`}
+                  className={`w-3.5 h-3.5 text-muted transition-transform ${moreFiltersOpen ? 'rotate-180' : ''}`}
+                  strokeWidth={1.5}
                 />
               </button>
 
@@ -630,17 +614,17 @@ export const SpellsPage: React.FC = () => {
                   type="button"
                   onClick={resetFilters}
                   title="Сбросить все фильтры"
-                  className="p-2 rounded-xl border border-rose-500/40 bg-rose-500/15 text-rose-200 hover:bg-rose-500/25 transition-colors shrink-0"
+                  className="w-9 h-9 border border-border bg-bg text-muted hover:text-negative flex items-center justify-center transition-colors shrink-0"
                 >
-                  <RotateCcw className="w-3.5 h-3.5" />
+                  <RotateCcw className="w-3.5 h-3.5" strokeWidth={1.5} />
                 </button>
               )}
             </div>
           </div>
 
-          {/* Collapsible Advanced dnd.su Filter Row */}
+          {/* Collapsible Advanced Filter Row */}
           {moreFiltersOpen && activeCategoryFilters && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 pt-2 border-t border-border/50">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 pt-3 border-t border-border">
               <DndsuMultiSelect<number>
                 placeholder="Подкласс"
                 groups={activeCategoryFilters.archetype || []}
@@ -699,7 +683,7 @@ export const SpellsPage: React.FC = () => {
               />
 
               <label
-                className="flex items-center gap-2 px-3 py-2 rounded-xl bg-bg/75 border border-border hover:border-primary/40 text-xs cursor-pointer select-none"
+                className="h-9 flex items-center gap-2 px-3 bg-bg border border-border hover:border-text/20 text-xs cursor-pointer select-none"
                 title="Исключить из выборки заклинания, добавленные классам в Tasha's Cauldron of Everything"
               >
                 <input
@@ -708,28 +692,25 @@ export const SpellsPage: React.FC = () => {
                   onChange={(e) =>
                     setFilters((f) => ({ ...f, disableTasha: e.target.checked }))
                   }
-                  className="accent-purple-500 rounded"
                 />
-                <span className="text-muted hover:text-text">Исключить TCE</span>
+                <span className="text-secondary hover:text-text">Исключить TCE</span>
               </label>
             </div>
           )}
 
-          {/* Quick Level Filter Chips (Active state in Accent) */}
+          {/* Quick Level Filter Chips */}
           <div className="flex items-center gap-1.5 flex-wrap pt-1">
-            <span className="font-mono text-[10px] uppercase tracking-widest text-muted mr-1">
-              КРУГ //
-            </span>
+            <span className="text-xs text-muted mr-1">Круг:</span>
             <button
               type="button"
               onClick={() => setFilters((f) => ({ ...f, levels: [] }))}
-              className={`px-2.5 py-1 font-mono text-[11px] font-bold uppercase border transition-all duration-200 ${
+              className={`h-8 px-2.5 font-mono text-xs border transition-colors ${
                 filters.levels.length === 0
-                  ? 'bg-primary text-[#040810] border-primary shadow-rim'
-                  : 'bg-[#070B14]/80 border-primary/25 text-muted hover:text-text hover:border-primary/60'
+                  ? 'bg-raised border-primary/60 text-text font-medium'
+                  : 'bg-bg border-border text-secondary hover:text-text'
               }`}
             >
-              ВСЕ
+              Все
             </button>
             {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((lvl) => {
               const active = filters.levels.includes(lvl);
@@ -745,34 +726,34 @@ export const SpellsPage: React.FC = () => {
                         : [...f.levels, lvl],
                     }))
                   }
-                  className={`px-2.5 py-1 font-mono text-[11px] font-bold tabular-nums border transition-all duration-200 ${
+                  className={`w-8 h-8 font-mono text-xs tabular-nums border transition-colors ${
                     active
-                      ? 'bg-primary text-[#040810] border-primary shadow-rim'
-                      : 'bg-[#070B14]/80 border-primary/25 text-muted hover:text-text hover:border-primary/60'
+                      ? 'bg-raised border-primary/60 text-text font-medium'
+                      : 'bg-bg border-border text-secondary hover:text-text'
                   }`}
                 >
-                  {lvl === 0 ? '0' : `${lvl}`}
+                  {lvl}
                 </button>
               );
             })}
           </div>
 
           {/* Status & Sort Bar */}
-          <div className="flex flex-wrap items-center justify-between gap-2 pt-1 text-xs text-muted">
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-border text-xs text-muted">
             <div className="flex items-center gap-2 flex-wrap">
               <span>
-                Найдено: <strong className="text-text">{filteredSpells.length}</strong>
+                Найдено: <strong className="font-mono font-medium text-text tabular-nums">{filteredSpells.length}</strong>
                 {filteredSpells.length !== baseSpells.length && ` из ${baseSpells.length}`}
               </span>
               {loadingHomebrew && (category === 'homebrew' || category === 'all') && (
-                <span className="inline-flex items-center gap-1 text-accent">
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  Загрузка Homebrew...
+                <span className="inline-flex items-center gap-1.5 text-secondary">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" strokeWidth={1.5} />
+                  <span>Загрузка Homebrew…</span>
                 </span>
               )}
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5">
               <span>Сортировка:</span>
               {(
                 [
@@ -785,10 +766,10 @@ export const SpellsPage: React.FC = () => {
                   key={opt.id}
                   type="button"
                   onClick={() => setFilters((f) => ({ ...f, sortBy: opt.id }))}
-                  className={`px-2.5 py-1 rounded-lg text-xs transition-colors ${
+                  className={`h-7 px-2.5 text-xs border transition-colors ${
                     filters.sortBy === opt.id
-                      ? 'bg-primary/20 text-primary font-bold border border-primary/40'
-                      : 'hover:text-text'
+                      ? 'bg-raised text-text font-medium border-primary/50'
+                      : 'border-transparent text-secondary hover:text-text'
                   }`}
                 >
                   {opt.label}
@@ -801,30 +782,29 @@ export const SpellsPage: React.FC = () => {
 
       {/* Main Content Area */}
       {loadError ? (
-        <div className="glass-panel rounded-3xl p-8 text-center text-sm text-rose-300">
+        <div className="glass-panel hud-cut p-8 text-center text-sm text-negative">
           {loadError}
         </div>
       ) : isCurrentCategoryLoading ? (
-        <div className="glass-panel rounded-3xl p-12 flex flex-col items-center justify-center gap-3 text-sm text-muted">
-          <Loader2 className="w-7 h-7 animate-spin text-primary" />
-          <span>Загрузка справочника заклинаний dnd.su...</span>
+        <div className="glass-panel hud-cut p-12 flex flex-col items-center justify-center gap-3 text-sm text-muted">
+          <Loader2 className="w-6 h-6 animate-spin text-primary" strokeWidth={1.5} />
+          <span>Загрузка справочника заклинаний…</span>
         </div>
       ) : filteredSpells.length === 0 ? (
-        <div className="glass-panel rounded-3xl p-8 text-center space-y-3">
-          <div className="text-sm text-muted">Нет совпадений по выбранным фильтрам.</div>
+        <div className="glass-panel hud-cut p-8 text-center space-y-3">
+          <div className="text-sm text-secondary">По выбранным фильтрам заклинаний не найдено</div>
           {activeFilterCount > 0 && (
             <button
               type="button"
               onClick={resetFilters}
-              className="anime-btn-primary px-4 py-2 text-xs inline-flex items-center gap-1.5"
+              className="hud-btn-secondary h-9 px-4 text-xs inline-flex items-center gap-1.5"
             >
-              <RotateCcw className="w-3.5 h-3.5" />
-              Сбросить фильтры
+              <RotateCcw className="w-3.5 h-3.5" strokeWidth={1.5} />
+              <span>Сбросить фильтры</span>
             </button>
           )}
         </div>
       ) : viewMode === 'grid' ? (
-        /* Full Cards Grid Mode */
         <div className="space-y-4">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
             {displayedSpells.map((sp) => (
@@ -845,7 +825,7 @@ export const SpellsPage: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setVisibleLimit((v) => v + 60)}
-                className="anime-btn-primary px-5 py-2.5 text-xs"
+                className="anime-btn-primary h-10 px-5 text-xs"
               >
                 Загрузить ещё (показано {displayedSpells.length} из {filteredSpells.length})
               </button>
@@ -853,13 +833,11 @@ export const SpellsPage: React.FC = () => {
           )}
         </div>
       ) : (
-        /* Authentic dnd.su Reference Split View: Alphabetical Index List + Sticky Spell Card */
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           {/* Left: Alphabetical / Level / School Grouped Index List */}
-          <div className="lg:col-span-5 xl:col-span-5 glass-panel rounded-3xl overflow-hidden flex flex-col">
-            {/* Quick Group Jump Strip (А Б В Г...) */}
+          <div className="lg:col-span-5 xl:col-span-5 glass-panel hud-cut overflow-hidden flex flex-col">
             {groupedSpells.length > 1 && (
-              <div className="px-3 py-2 bg-bg/65 border-b border-border flex items-center gap-1 overflow-x-auto">
+              <div className="px-3 py-2 bg-deep border-b border-border flex items-center gap-1 overflow-x-auto">
                 {groupedSpells.map((g) => (
                   <button
                     key={g.key}
@@ -868,7 +846,7 @@ export const SpellsPage: React.FC = () => {
                       const el = document.getElementById(`spell-group-${g.key}`);
                       el?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
                     }}
-                    className="px-2 py-0.5 rounded-md text-[11px] font-bold text-muted hover:text-primary hover:bg-primary/15 shrink-0 transition-colors"
+                    className="h-7 px-2 text-xs font-mono text-secondary hover:text-text hover:bg-raised shrink-0 transition-colors"
                   >
                     {filters.sortBy === 'level' ? g.key.replace('lvl-', '') : g.title}
                   </button>
@@ -876,15 +854,15 @@ export const SpellsPage: React.FC = () => {
               </div>
             )}
 
-            <div className="max-h-[75vh] overflow-y-auto p-3 space-y-4">
+            <div className="max-h-[75vh] overflow-y-auto divide-y divide-border">
               {groupedSpells.map((group) => (
-                <div key={group.key} id={`spell-group-${group.key}`} className="space-y-1">
-                  <div className="sticky top-0 z-10 px-2.5 py-1 rounded-lg bg-bg/90 backdrop-blur border-l-2 border-primary font-anime font-extrabold text-xs text-primary flex items-center justify-between">
+                <div key={group.key} id={`spell-group-${group.key}`}>
+                  <div className="sticky top-0 z-10 px-4 py-2 bg-deep border-b border-border text-xs font-medium text-secondary flex items-center justify-between">
                     <span>{group.title}</span>
-                    <span className="text-[10px] font-mono text-muted">{group.items.length}</span>
+                    <span className="font-mono text-xs text-muted tabular-nums">{group.items.length}</span>
                   </div>
 
-                  <div className="divide-y divide-border/40">
+                  <div className="divide-y divide-border">
                     {group.items.map((sp) => {
                       const school = getSchoolMeta(sp.school);
                       const compBadge = getSpellDisplayBadge(sp);
@@ -902,59 +880,45 @@ export const SpellsPage: React.FC = () => {
                               setMobileDrawerOpen(true);
                             }
                           }}
-                          className={`w-full px-2.5 py-1.5 text-left flex items-center justify-between gap-2 rounded-lg transition-colors ${
+                          className={`w-full px-4 py-2 text-left flex items-center justify-between gap-2 transition-colors border-l-2 ${
                             isSelected
-                              ? 'bg-primary/20 text-text font-semibold ring-1 ring-primary/50'
-                              : 'hover:bg-bg/65 text-text/90'
+                              ? 'bg-raised text-text font-medium border-l-primary'
+                              : 'hover:bg-raised/60 text-text border-l-transparent'
                           }`}
                         >
-                          <div className="min-w-0 flex items-center gap-1.5">
+                          <div className="min-w-0 flex items-center gap-2">
                             <span
-                              className="font-mono text-[11px] font-bold text-primary w-6 shrink-0"
-                              title={sp.level === 0 ? 'Заговор' : `${sp.level} уровень`}
+                              className="font-mono text-xs text-muted w-6 shrink-0 tabular-nums"
+                              title={sp.level === 0 ? 'Заговор' : `${sp.level} круг`}
                             >
                               [{sp.level}]
                             </span>
                             <span
-                              className="w-4 h-4 flex items-center justify-center text-[10px] shrink-0"
-                              style={{ backgroundColor: school.bg }}
+                              className="w-2 h-2 rounded-full shrink-0"
+                              style={{ backgroundColor: school.color }}
                               title={school.ru}
-                            >
-                              <HudIcon glyph={school.glyph} size="xs" />
-                            </span>
-                            <span className="text-xs sm:text-[13px] truncate">{sp.name}</span>
+                            />
+                            <span className="text-sm truncate">{sp.name}</span>
                             {isLearned && (
                               <span
-                                className="w-2 h-2 rounded-full bg-emerald-400 shrink-0"
-                                title="Изучено персонажем"
+                                className="w-1.5 h-1.5 rounded-full bg-positive shrink-0"
+                                title="Изучено героем"
                               />
                             )}
                           </div>
 
-                          <div className="flex items-center gap-1 shrink-0">
+                          <div className="flex items-center gap-2 shrink-0 font-mono text-xs text-muted">
                             {sp.isHomebrew && category === 'all' && (
-                              <span className="px-1 py-0.2 rounded bg-purple-500/20 text-purple-300 text-[9px] font-bold">
-                                HB
-                              </span>
+                              <span className="text-secondary">HB</span>
                             )}
                             {sp.concentration && (
-                              <span
-                                className="px-1 py-0.2 rounded bg-amber-500/20 text-amber-300 text-[10px] font-bold"
-                                title="Требуется концентрация"
-                              >
-                                К
-                              </span>
+                              <span title="Концентрация">К</span>
                             )}
                             {sp.ritual && (
-                              <span
-                                className="px-1 py-0.2 rounded bg-cyan-500/20 text-cyan-300 text-[10px] font-bold"
-                                title="Ритуал"
-                              >
-                                Р
-                              </span>
+                              <span title="Ритуал">Р</span>
                             )}
                             <span
-                              className="font-mono text-[11px] text-muted w-7 text-right tracking-tight"
+                              className="w-8 text-right"
                               title={`Компоненты: ${sp.components || 'нет'}`}
                             >
                               {compBadge}
@@ -968,18 +932,18 @@ export const SpellsPage: React.FC = () => {
               ))}
 
               {displayedSpells.length < filteredSpells.length && (
-                <div className="pt-2 pb-1 flex flex-wrap items-center justify-center gap-2">
+                <div className="p-3 flex flex-wrap items-center justify-center gap-2">
                   <button
                     type="button"
                     onClick={() => setVisibleLimit((v) => v + 500)}
-                    className="anime-btn-primary px-4 py-2 text-xs"
+                    className="anime-btn-primary h-9 px-4 text-xs"
                   >
-                    Загрузить больше (+500)
+                    Загрузить ещё (+500)
                   </button>
                   <button
                     type="button"
                     onClick={() => setVisibleLimit(filteredSpells.length)}
-                    className="px-3.5 py-2 rounded-xl border border-border bg-bg/70 text-xs text-muted hover:text-text"
+                    className="hud-btn-secondary h-9 px-4 text-xs"
                   >
                     Полный список ({filteredSpells.length})
                   </button>
@@ -988,8 +952,8 @@ export const SpellsPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Right: Sticky dnd.su Spell Card Reader (Desktop) */}
-          <div className="hidden lg:block lg:col-span-7 xl:col-span-7 lg:sticky lg:top-20 max-h-[82vh] overflow-y-auto pr-1">
+          {/* Right: Sticky Spell Card Reader (Desktop) */}
+          <div className="hidden lg:block lg:col-span-7 xl:col-span-7 lg:sticky lg:top-6 max-h-[84vh] overflow-y-auto pr-1">
             {selectedSpell ? (
               <SpellCard
                 spell={selectedSpell}
@@ -1000,19 +964,19 @@ export const SpellsPage: React.FC = () => {
                 onSelectSpellId={selectAndRevealSpell}
               />
             ) : (
-              <div className="glass-panel rounded-3xl p-8 text-center text-sm text-muted">
-                Выберите заклинание из списка слева, чтобы открыть его карточку.
+              <div className="glass-panel hud-cut p-8 text-center text-sm text-muted">
+                Выберите заклинание из списка слева
               </div>
             )}
           </div>
         </div>
       )}
 
-      {/* Mobile Slide-Up Spell Card Modal (< lg) */}
+      {/* Mobile Spell Card Modal (< lg) */}
       {mobileDrawerOpen && selectedSpell && viewMode === 'split' && (
         <div
           onClick={() => setMobileDrawerOpen(false)}
-          className="lg:hidden fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-end sm:items-center justify-center p-2 sm:p-4"
+          className="lg:hidden fixed inset-0 z-50 bg-black/75 flex items-end sm:items-center justify-center p-2 sm:p-4"
         >
           <div
             onClick={(e) => e.stopPropagation()}

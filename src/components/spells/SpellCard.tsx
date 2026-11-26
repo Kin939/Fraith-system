@@ -14,7 +14,6 @@ import {
 } from 'lucide-react';
 import { apiFetch } from '../../lib/api';
 import { getSchoolMeta } from '../../lib/dndsuSpells';
-import { HudIcon } from '../common/HudIcon';
 import {
   DND_CLASS_LABELS_RU,
   DND_HOMEBREW_CLASS_BY_KEY,
@@ -144,7 +143,7 @@ export const SpellCard: React.FC<SpellCardProps> = React.memo(({
       updateLearnedSpellsInStore(user.playerId, res.learnedSpells);
       pushToast({
         title: 'Заклинание изучено',
-        message: `«${spell.name}» добавлено в ваш лист персонажа.`,
+        message: `«${spell.name}» добавлено в ваш лист персонажа`,
         variant: 'success',
       });
     } catch (err) {
@@ -176,7 +175,7 @@ export const SpellCard: React.FC<SpellCardProps> = React.memo(({
       updateLearnedSpellsInStore(targetPid, res.learnedSpells);
       pushToast({
         title: 'Способ применения обновлён',
-        message: `Настройки «${spell.name}» сохранены.`,
+        message: `Настройки «${spell.name}» сохранены`,
         variant: 'success',
       });
       setCastOptsOpen(false);
@@ -208,10 +207,10 @@ export const SpellCard: React.FC<SpellCardProps> = React.memo(({
         }
       );
       updateLearnedSpellsInStore(dmSelectedPlayerId, res.learnedSpells);
-      const targetChar = charactersById[dmSelectedPlayerId]?.characterName || `Игрок #${dmSelectedPlayerId}`;
+      const targetChar = charactersById[dmSelectedPlayerId]?.characterName || `Игрок ${dmSelectedPlayerId}`;
       pushToast({
         title: existingRecord ? 'Опции заклинания обновлены' : 'Заклинание выдано Мастером',
-        message: `«${spell.name}» доступно персонажу ${targetChar}.`,
+        message: `«${spell.name}» доступно персонажу ${targetChar}`,
         variant: 'success',
       });
     } catch (err) {
@@ -235,7 +234,7 @@ export const SpellCard: React.FC<SpellCardProps> = React.memo(({
       updateLearnedSpellsInStore(dmSelectedPlayerId, res.learnedSpells);
       pushToast({
         title: 'Заклинание убрано Мастером',
-        message: `«${spell.name}» удалено у Игрока #${dmSelectedPlayerId}.`,
+        message: `«${spell.name}» удалено у игрока ${dmSelectedPlayerId}`,
         variant: 'info',
       });
     } catch (err) {
@@ -260,7 +259,7 @@ export const SpellCard: React.FC<SpellCardProps> = React.memo(({
       updateLearnedSpellsInStore(user.playerId, res.learnedSpells);
       pushToast({
         title: 'Заклинание удалено из изученных',
-        message: `Слот памяти освобождён (${res.learnedSpells.length}/${playerProfile?.maxSpells ?? 0}).`,
+        message: `Слот освобождён (${res.learnedSpells.length} из ${playerProfile?.maxSpells ?? 0})`,
         variant: 'info',
       });
     } catch (err) {
@@ -277,29 +276,25 @@ export const SpellCard: React.FC<SpellCardProps> = React.memo(({
   return (
     <article
       id={`spell-card-${spell.id}`}
-      className={`dndsu-card transition-all ${highlighted ? 'dndsu-card--highlighted' : ''}`}
+      className={`dndsu-card transition-colors ${highlighted ? 'dndsu-card--highlighted' : ''}`}
     >
-      {/* Sci-Fi Spell Cartridge Header Bar with Level & School Badges */}
+      {/* Clean Header Bar with Keycap Level & School Status Dot */}
       <div className="dndsu-card__header flex items-start justify-between gap-3">
-        <div className="min-w-0 flex-1 space-y-1.5">
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="font-mono text-[11px] font-extrabold px-2 py-0.5 bg-primary text-[#040810] uppercase tracking-wider tabular-nums">
-              {spell.level === 0 ? 'LVL 0 // ЗАГОВОР' : `LVL ${spell.level}`}
+        <div className="min-w-0 flex-1 space-y-2">
+          <div className="flex items-center gap-2 flex-wrap text-xs text-secondary">
+            <span className="hud-keycap">
+              {spell.level === 0 ? 'Заговор' : `${spell.level} круг`}
             </span>
-            <span
-              className="inline-flex items-center gap-1.5 px-2 py-0.5 border font-mono text-[11px] font-bold uppercase tracking-wider"
-              style={{
-                backgroundColor: schoolMeta.bg,
-                borderColor: schoolMeta.color,
-                color: schoolMeta.color,
-              }}
-            >
-              <HudIcon glyph={schoolMeta.glyph} size="xs" />
+            <span className="inline-flex items-center gap-1.5">
+              <span
+                className="w-2 h-2 rounded-full shrink-0"
+                style={{ backgroundColor: schoolMeta.color }}
+              />
               <span>{schoolMeta.ru}</span>
             </span>
           </div>
 
-          <h2 className="font-anime font-extrabold text-base sm:text-lg leading-snug flex flex-wrap items-baseline gap-x-2 gap-y-1">
+          <h2 className="font-medium text-lg sm:text-xl leading-snug flex flex-wrap items-baseline gap-x-2 gap-y-1">
             <span className="text-text">{spell.name}</span>
             {spell.nameEn && (
               <span className="text-xs sm:text-sm font-normal text-muted">[{spell.nameEn}]</span>
@@ -332,9 +327,13 @@ export const SpellCard: React.FC<SpellCardProps> = React.memo(({
             type="button"
             onClick={handleCopyTitle}
             title="Скопировать название"
-            className="p-1.5 rounded-lg bg-bg/50 border border-border/80 text-muted hover:text-text hover:border-primary/50 transition-colors"
+            className="w-8 h-8 bg-bg border border-border text-muted hover:text-text flex items-center justify-center transition-colors"
           >
-            {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+            {copied ? (
+              <Check className="w-3.5 h-3.5 text-positive" strokeWidth={1.5} />
+            ) : (
+              <Copy className="w-3.5 h-3.5" strokeWidth={1.5} />
+            )}
           </button>
 
           {spell.url && (
@@ -343,9 +342,9 @@ export const SpellCard: React.FC<SpellCardProps> = React.memo(({
               target="_blank"
               rel="noreferrer"
               title="Открыть оригинал на dnd.su"
-              className="p-1.5 rounded-lg bg-bg/50 border border-border/80 text-muted hover:text-accent hover:border-accent/50 transition-colors"
+              className="w-8 h-8 bg-bg border border-border text-muted hover:text-text flex items-center justify-center transition-colors"
             >
-              <ExternalLink className="w-3.5 h-3.5" />
+              <ExternalLink className="w-3.5 h-3.5" strokeWidth={1.5} />
             </a>
           )}
 
@@ -354,50 +353,48 @@ export const SpellCard: React.FC<SpellCardProps> = React.memo(({
               type="button"
               onClick={onClose}
               title="Закрыть карточку"
-              className="p-1.5 rounded-lg bg-bg/50 border border-border/80 text-muted hover:text-text"
+              className="w-8 h-8 bg-bg border border-border text-muted hover:text-text flex items-center justify-center transition-colors"
             >
-              <X className="w-4 h-4" />
+              <X className="w-4 h-4" strokeWidth={1.5} />
             </button>
           )}
         </div>
       </div>
 
       {/* dnd.su Params & Article Body */}
-      <div className="p-4 sm:p-5 space-y-3.5">
+      <div className="p-5 space-y-4">
         <ul className="dndsu-params">
           <li className="dndsu-type-line flex items-center gap-2 flex-wrap">
             <span
-              className="inline-flex items-center justify-center w-5 h-5 border border-primary/30 text-xs font-bold not-italic shrink-0"
-              style={{ backgroundColor: schoolMeta.bg }}
+              className="w-2 h-2 rounded-full shrink-0"
+              style={{ backgroundColor: schoolMeta.color }}
               title={schoolMeta.ru}
-            >
-              <HudIcon glyph={schoolMeta.glyph} size="xs" />
-            </span>
+            />
             <span>{typeLine}</span>
           </li>
 
           <li>
             <strong>Время накладывания:</strong>{' '}
-            <span className="text-text/95">{spell.castingTime}</span>
+            <span className="text-text">{spell.castingTime}</span>
           </li>
 
           <li>
-            <strong>Дистанция:</strong> <span className="text-text/95">{spell.spellRange}</span>
+            <strong>Дистанция:</strong> <span className="text-text">{spell.spellRange}</span>
           </li>
 
           <li>
             <strong>Компоненты:</strong>{' '}
-            <span className="text-text/95">{spell.components || 'Нет'}</span>
+            <span className="text-text">{spell.components || 'Нет'}</span>
           </li>
 
           <li>
-            <strong>Длительность:</strong> <span className="text-text/95">{spell.duration}</span>
+            <strong>Длительность:</strong> <span className="text-text">{spell.duration}</span>
           </li>
 
           {spell.classes && spell.classes.length > 0 && (
             <li>
               <strong>Классы:</strong>{' '}
-              <span className="text-text/95">
+              <span className="text-text">
                 {spell.classes.map((cl, idx) => {
                   const norm = normalizeDndClass(cl);
                   const hbMeta = norm ? DND_HOMEBREW_CLASS_BY_KEY[norm] : undefined;
@@ -413,8 +410,8 @@ export const SpellCard: React.FC<SpellCardProps> = React.memo(({
                           href={hbMeta.url}
                           target="_blank"
                           rel="noreferrer"
-                          title={`Homebrew класс dnd.su (${hbMeta.source})`}
-                          className="hover:text-accent underline decoration-dotted underline-offset-2"
+                          title={`Авторский класс dnd.su (${hbMeta.source})`}
+                          className="hover:text-primary underline decoration-dotted underline-offset-2"
                         >
                           {displayCl}
                         </a>
@@ -423,8 +420,8 @@ export const SpellCard: React.FC<SpellCardProps> = React.memo(({
                       )}
                       {hbMeta && (
                         <sup
-                          title={`Homebrew класс dnd.su • ${hbMeta.source}`}
-                          className="ml-0.5 text-[10px] font-bold text-purple-300"
+                          title={`Homebrew класс dnd.su · ${hbMeta.source}`}
+                          className="ml-0.5 text-[11px] font-mono text-muted"
                         >
                           HB
                         </sup>
@@ -432,7 +429,7 @@ export const SpellCard: React.FC<SpellCardProps> = React.memo(({
                       {isTce && (
                         <sup
                           title="Опциональный список заклинаний Tasha's Cauldron of Everything"
-                          className="ml-0.5 text-[10px] font-bold text-accent"
+                          className="ml-0.5 text-[11px] font-mono text-muted"
                         >
                           TCE
                         </sup>
@@ -447,7 +444,7 @@ export const SpellCard: React.FC<SpellCardProps> = React.memo(({
           {spell.subclasses && (
             <li>
               <strong>Подклассы:</strong>{' '}
-              <span className="text-text/90">
+              <span className="text-secondary">
                 {spell.subclasses
                   .split(',')
                   .map((s) => s.trim())
@@ -464,8 +461,8 @@ export const SpellCard: React.FC<SpellCardProps> = React.memo(({
                             href={hbMeta.url}
                             target="_blank"
                             rel="noreferrer"
-                            title={`Подкласс Homebrew-класса «${hbMeta.labelRu}» (${hbMeta.source})`}
-                            className="hover:text-accent underline decoration-dotted underline-offset-2"
+                            title={`Подкласс класса «${hbMeta.labelRu}» (${hbMeta.source})`}
+                            className="hover:text-primary underline decoration-dotted underline-offset-2"
                           >
                             {subEntry}
                           </a>
@@ -474,8 +471,8 @@ export const SpellCard: React.FC<SpellCardProps> = React.memo(({
                         )}
                         {hbMeta && (
                           <sup
-                            title={`Homebrew dnd.su • ${hbMeta.source}`}
-                            className="ml-0.5 text-[10px] font-bold text-purple-300"
+                            title={`Homebrew dnd.su · ${hbMeta.source}`}
+                            className="ml-0.5 text-[11px] font-mono text-muted"
                           >
                             HB
                           </sup>
@@ -488,7 +485,7 @@ export const SpellCard: React.FC<SpellCardProps> = React.memo(({
           )}
         </ul>
 
-        <div className="border-t border-border/75 pt-3.5">
+        <div className="border-t border-border pt-4">
           {spell.descriptionHtml ? (
             <div
               onClick={handleDescClick}
@@ -502,23 +499,23 @@ export const SpellCard: React.FC<SpellCardProps> = React.memo(({
 
         {/* Player Learn / Unlearn + Casting Mode Controls */}
         {isPlayer && (
-          <div className="pt-3 border-t border-border/75 space-y-2.5">
+          <div className="pt-4 border-t border-border space-y-3">
             {!hasUploadedCharacter ? (
               <button
                 type="button"
                 onClick={() => setActiveTab('character')}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-accent/15 border border-accent/40 text-accent text-xs font-semibold hover:bg-accent/25 transition-colors"
+                className="hud-btn-secondary h-9 px-3.5 text-xs inline-flex items-center gap-2"
               >
-                <Upload className="w-3.5 h-3.5" />
-                Загрузите чарник во вкладке «Персонаж», чтобы изучать заклинания
+                <Upload className="w-3.5 h-3.5 text-muted" strokeWidth={1.5} />
+                <span>Загрузите чарник во вкладке «Персонаж», чтобы изучать заклинания</span>
               </button>
             ) : isLearned ? (
-              <div className="space-y-2">
+              <div className="space-y-2.5">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-300">
-                      <BookMarked className="w-4 h-4" />
-                      Изучено вашим персонажем
+                    <span className="inline-flex items-center gap-1.5 text-xs font-medium text-positive">
+                      <BookMarked className="w-4 h-4" strokeWidth={1.5} />
+                      <span>Изучено героем</span>
                     </span>
                     {existingRecord && (() => {
                       const b = formatSpellCastBadge(
@@ -528,23 +525,23 @@ export const SpellCard: React.FC<SpellCardProps> = React.memo(({
                         existingRecord.castNote
                       );
                       return (
-                        <span className={`px-2 py-0.5 rounded-lg border text-[11px] font-semibold ${b.className}`}>
+                        <span className={`px-2 py-0.5 border text-xs font-mono ${b.className}`}>
                           {b.text}
                         </span>
                       );
                     })()}
                     {existingRecord?.grantedByDm && (
-                      <span className="px-2 py-0.5 rounded-lg bg-amber-500/20 border border-amber-400/40 text-amber-200 text-[10px] font-bold">
-                        Дар Мастера
+                      <span className="hud-keycap">
+                        От Мастера
                       </span>
                     )}
                   </div>
 
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-2">
                     <button
                       type="button"
                       onClick={() => setCastOptsOpen((v) => !v)}
-                      className="px-2.5 py-1.5 rounded-xl border border-primary/40 bg-primary/15 text-primary hover:bg-primary/25 text-xs font-semibold transition-colors"
+                      className="h-8 px-3 border border-border bg-bg text-secondary hover:text-text text-xs transition-colors"
                     >
                       Способ применения
                     </button>
@@ -552,21 +549,21 @@ export const SpellCard: React.FC<SpellCardProps> = React.memo(({
                       type="button"
                       disabled={busy}
                       onClick={handleUnlearn}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-rose-500/40 bg-rose-500/15 text-rose-200 hover:bg-rose-500/25 text-xs font-semibold transition-colors"
+                      className="inline-flex items-center gap-1.5 h-8 px-3 border border-border text-muted hover:text-negative hover:border-negative/30 text-xs transition-colors"
                     >
-                      <Trash2 className="w-3.5 h-3.5" />
-                      Забыть
+                      <Trash2 className="w-3.5 h-3.5" strokeWidth={1.5} />
+                      <span>Забыть</span>
                     </button>
                   </div>
                 </div>
 
                 {castOptsOpen && user?.playerId && (
-                  <div className="p-3 rounded-2xl bg-bg/80 border border-primary/40 space-y-2 text-xs">
+                  <div className="p-3 bg-bg border border-border space-y-2 text-xs">
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                       <select
                         value={castMode}
                         onChange={(e) => setCastMode(e.target.value as SpellCastMode)}
-                        className="anime-input sm:col-span-2 py-1.5 px-2.5 text-xs"
+                        className="anime-input sm:col-span-2 h-9 py-1 px-2.5 text-xs"
                       >
                         {SPELL_CAST_MODE_OPTIONS.map((opt) => (
                           <option key={opt.value} value={opt.value}>
@@ -582,7 +579,7 @@ export const SpellCard: React.FC<SpellCardProps> = React.memo(({
                           value={castMaxUses}
                           onChange={(e) => setCastMaxUses(Math.max(1, Number(e.target.value) || 1))}
                           placeholder="Кол-во"
-                          className="anime-input py-1.5 px-2.5 text-xs"
+                          className="anime-input h-9 py-1 px-2.5 text-xs font-mono"
                         />
                       )}
                     </div>
@@ -590,14 +587,14 @@ export const SpellCard: React.FC<SpellCardProps> = React.memo(({
                       <input
                         value={castNote}
                         onChange={(e) => setCastNote(e.target.value)}
-                        placeholder="Уточнение (напр.: Черта Поцелованный феей / Пси-очки / Посох)..."
-                        className="anime-input flex-1 py-1.5 px-2.5 text-xs"
+                        placeholder="Уточнение (черта, предмет, ресурс)"
+                        className="anime-input flex-1 h-9 py-1 px-2.5 text-xs"
                       />
                       <button
                         type="button"
                         disabled={busy}
                         onClick={() => void handleSaveLearnMeta(user.playerId!)}
-                        className="anime-btn-primary px-3 py-1.5 text-xs"
+                        className="anime-btn-primary h-9 px-3.5 text-xs"
                       >
                         Сохранить
                       </button>
@@ -610,13 +607,13 @@ export const SpellCard: React.FC<SpellCardProps> = React.memo(({
                 <button
                   type="button"
                   disabled
-                  className="anime-btn-primary px-4 py-2 text-xs inline-flex items-center gap-1.5"
+                  className="anime-btn-primary h-9 px-4 text-xs inline-flex items-center gap-1.5"
                 >
-                  <Lock className="w-3.5 h-3.5" />
+                  <Lock className="w-3.5 h-3.5" strokeWidth={1.5} />
                   <span>Изучить</span>
                 </button>
-                <span className="inline-flex items-center gap-1.5 text-xs text-muted">
-                  Недоступно классу «{formatCharacterClassesRu(playerProfile!.charClass) || playerProfile!.charClass}» (Мастер может выдать вручную)
+                <span className="text-xs text-muted">
+                  Недоступно классу «{formatCharacterClassesRu(playerProfile!.charClass) || playerProfile!.charClass}»
                 </span>
               </div>
             ) : slotsFull ? (
@@ -624,51 +621,49 @@ export const SpellCard: React.FC<SpellCardProps> = React.memo(({
                 <button
                   type="button"
                   disabled
-                  className="anime-btn-primary px-4 py-2 text-xs inline-flex items-center gap-1.5"
+                  className="anime-btn-primary h-9 px-4 text-xs inline-flex items-center gap-1.5"
                 >
-                  <Lock className="w-3.5 h-3.5" />
+                  <Lock className="w-3.5 h-3.5" strokeWidth={1.5} />
                   <span>Изучить</span>
                 </button>
-                <span className="inline-flex items-center gap-1.5 text-xs text-amber-300 font-mono">
-                  Лимит заполнен ({learnedCount}/{playerProfile!.maxSpells})
+                <span className="text-xs text-warning font-mono tabular-nums">
+                  Лимит заполнен ({learnedCount} из {playerProfile!.maxSpells})
                 </span>
               </div>
             ) : (
-              <div className="space-y-2">
+              <div className="space-y-2.5">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center gap-2 flex-wrap">
                     <button
                       type="button"
                       disabled={busy}
                       onClick={handleLearn}
-                      className="anime-btn-primary px-4 py-2 text-xs inline-flex items-center gap-1.5"
+                      className="anime-btn-primary h-9 px-4 text-xs inline-flex items-center gap-1.5"
                     >
-                      <Plus className="w-4 h-4" />
-                      {busy ? 'Изучение...' : 'Изучить'}
+                      <Plus className="w-4 h-4" strokeWidth={1.5} />
+                      <span>{busy ? 'Изучение…' : 'Изучить'}</span>
                     </button>
                     {!nativeClassMatch && playerProfile?.allowOffClassSpells && (
-                      <span className="px-2 py-0.5 bg-purple-500/20 border border-purple-400/40 text-purple-200 text-[11px] inline-flex items-center gap-1">
-                        <HudIcon asset="spark" size="xs" />
-                        <span>Изучение вне класса разрешено Мастером</span>
+                      <span className="text-xs text-secondary">
+                        Вне класса (разрешено Мастером)
                       </span>
                     )}
                   </div>
                   <button
                     type="button"
                     onClick={() => setCastOptsOpen((v) => !v)}
-                    className="text-xs text-primary hover:underline inline-flex items-center gap-1 font-mono"
+                    className="text-xs text-secondary hover:text-text underline transition-colors"
                   >
-                    <HudIcon asset="bolt" size="xs" />
-                    <span>{castOptsOpen ? 'Скрыть опции применения' : 'Не по ячейке? (1/дл. отдых, ∞)'}</span>
+                    {castOptsOpen ? 'Скрыть опции применения' : 'Особый способ применения'}
                   </button>
                 </div>
 
                 {castOptsOpen && (
-                  <div className="p-3 rounded-2xl bg-bg/80 border border-border grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+                  <div className="p-3 bg-bg border border-border grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
                     <select
                       value={castMode}
                       onChange={(e) => setCastMode(e.target.value as SpellCastMode)}
-                      className="anime-input sm:col-span-2 py-1.5 px-2.5 text-xs"
+                      className="anime-input sm:col-span-2 h-9 py-1 px-2.5 text-xs"
                     >
                       {SPELL_CAST_MODE_OPTIONS.map((opt) => (
                         <option key={opt.value} value={opt.value}>
@@ -683,15 +678,15 @@ export const SpellCard: React.FC<SpellCardProps> = React.memo(({
                         max={99}
                         value={castMaxUses}
                         onChange={(e) => setCastMaxUses(Math.max(1, Number(e.target.value) || 1))}
-                        placeholder="Раз / зарядов"
-                        className="anime-input py-1.5 px-2.5 text-xs"
+                        placeholder="Зарядов"
+                        className="anime-input h-9 py-1 px-2.5 text-xs font-mono"
                       />
                     )}
                     <input
                       value={castNote}
                       onChange={(e) => setCastNote(e.target.value)}
-                      placeholder="Источник / ресурс (напр.: Пси-очки, Расовое, Свиток)..."
-                      className="anime-input sm:col-span-3 py-1.5 px-2.5 text-xs"
+                      placeholder="Источник (раса, черта, предмет)"
+                      className="anime-input sm:col-span-3 h-9 py-1 px-2.5 text-xs"
                     />
                   </div>
                 )}
@@ -700,17 +695,17 @@ export const SpellCard: React.FC<SpellCardProps> = React.memo(({
           </div>
         )}
 
-        {/* DM Spell Granting Controls (Any Class, Any Cast Mode!) */}
+        {/* DM Spell Granting Controls */}
         {isDm && (
-          <div className="pt-3.5 border-t border-border/75 space-y-2.5">
-            <div className="p-3 rounded-2xl bg-bg/75 border border-primary/40 space-y-2.5 text-xs">
+          <div className="pt-4 border-t border-border">
+            <div className="p-3.5 bg-bg border border-border space-y-3 text-xs">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="inline-flex items-center gap-1.5 font-anime font-bold text-primary">
-                  <Crown className="w-3.5 h-3.5 text-amber-400" />
-                  Выдать заклинание игроку (в т.ч. не своего класса)
+                <span className="inline-flex items-center gap-1.5 font-medium text-text">
+                  <Crown className="w-3.5 h-3.5 text-muted" strokeWidth={1.5} />
+                  <span>Выдать заклинание игроку</span>
                 </span>
                 {!nativeClassMatch && playerProfile?.charClass && (
-                  <span className="px-2 py-0.5 rounded-lg bg-purple-500/20 border border-purple-400/40 text-purple-200 text-[10px] font-semibold">
+                  <span className="text-xs text-muted">
                     Вне класса «{formatCharacterClassesRu(playerProfile.charClass) || playerProfile.charClass}»
                   </span>
                 )}
@@ -720,14 +715,14 @@ export const SpellCard: React.FC<SpellCardProps> = React.memo(({
                 <select
                   value={dmSelectedPlayerId}
                   onChange={(e) => setDmSelectedPlayerId(Number(e.target.value) as PlayerId)}
-                  className="anime-input py-1.5 px-2.5 text-xs"
+                  className="anime-input h-9 py-1 px-2.5 text-xs"
                 >
                   {([1, 2, 3] as PlayerId[]).map((pid) => {
                     const ch = charactersById[pid];
                     const clsRu = ch?.charClass ? formatCharacterClassesRu(ch.charClass) : '';
                     return (
                       <option key={pid} value={pid}>
-                        Игрок #{pid}: {ch?.characterName || 'Без имени'}
+                        Игрок {pid}: {ch?.characterName || 'Без имени'}
                         {clsRu ? ` (${clsRu})` : ''}
                       </option>
                     );
@@ -737,7 +732,7 @@ export const SpellCard: React.FC<SpellCardProps> = React.memo(({
                 <select
                   value={castMode}
                   onChange={(e) => setCastMode(e.target.value as SpellCastMode)}
-                  className="anime-input sm:col-span-2 py-1.5 px-2.5 text-xs"
+                  className="anime-input sm:col-span-2 h-9 py-1 px-2.5 text-xs"
                 >
                   {SPELL_CAST_MODE_OPTIONS.map((opt) => (
                     <option key={opt.value} value={opt.value}>
@@ -750,14 +745,14 @@ export const SpellCard: React.FC<SpellCardProps> = React.memo(({
               <div className="flex flex-wrap items-center gap-2">
                 {SPELL_CAST_MODE_OPTIONS.find((o) => o.value === castMode)?.usesCounter && (
                   <div className="flex items-center gap-1.5">
-                    <span className="text-muted text-[11px]">Зарядов / цена:</span>
+                    <span className="text-secondary text-xs">Зарядов:</span>
                     <input
                       type="number"
                       min={1}
                       max={99}
                       value={castMaxUses}
                       onChange={(e) => setCastMaxUses(Math.max(1, Number(e.target.value) || 1))}
-                      className="anime-input w-16 py-1 px-2 text-xs text-center"
+                      className="anime-input w-16 h-9 py-1 px-2 text-xs text-center font-mono"
                     />
                   </div>
                 )}
@@ -765,18 +760,18 @@ export const SpellCard: React.FC<SpellCardProps> = React.memo(({
                 <input
                   value={castNote}
                   onChange={(e) => setCastNote(e.target.value)}
-                  placeholder="Пометка (напр.: Пси-заряды, 1/дл. отдых от черты, Артефакт)..."
-                  className="anime-input flex-1 min-w-[160px] py-1.5 px-2.5 text-xs"
+                  placeholder="Пометка (пси-заряды, черта, артефакт)"
+                  className="anime-input flex-1 min-w-[160px] h-9 py-1 px-2.5 text-xs"
                 />
 
                 <button
                   type="button"
                   disabled={busy}
                   onClick={() => void handleDmGrant()}
-                  className="anime-btn-primary px-3.5 py-1.5 text-xs inline-flex items-center gap-1.5"
+                  className="anime-btn-primary h-9 px-3.5 text-xs inline-flex items-center gap-1.5"
                 >
-                  <Sparkles className="w-3.5 h-3.5" />
-                  <span>{existingRecord ? 'Обновить у игрока' : 'Выдать игроку'}</span>
+                  <Sparkles className="w-3.5 h-3.5" strokeWidth={1.5} />
+                  <span>{existingRecord ? 'Обновить' : 'Выдать'}</span>
                 </button>
 
                 {existingRecord && (
@@ -784,9 +779,9 @@ export const SpellCard: React.FC<SpellCardProps> = React.memo(({
                     type="button"
                     disabled={busy}
                     onClick={() => void handleDmRevoke()}
-                    className="px-2.5 py-1.5 rounded-xl border border-rose-500/40 bg-rose-500/15 text-rose-200 hover:bg-rose-500/25 text-xs font-semibold inline-flex items-center gap-1"
+                    className="h-9 px-3 border border-border text-muted hover:text-negative hover:border-negative/30 text-xs inline-flex items-center gap-1.5 transition-colors"
                   >
-                    <Trash2 className="w-3.5 h-3.5" />
+                    <Trash2 className="w-3.5 h-3.5" strokeWidth={1.5} />
                     <span>Забрать</span>
                   </button>
                 )}
