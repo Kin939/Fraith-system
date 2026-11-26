@@ -239,8 +239,8 @@ export const SpellEditor: React.FC = () => {
           onSubmit={handleSubmit}
           className="xl:col-span-7 glass-panel rounded-3xl p-5 space-y-4"
         >
-          <h4 className="font-anime font-bold text-base">
-            {editingId ? `Редактирование заклинания #${editingId}` : 'Добавить SRD / Homebrew заклинание'}
+          <h4 className="font-anime font-bold text-base uppercase">
+            // {editingId ? `Редактирование заклинания #${editingId}` : 'Добавить SRD / Homebrew заклинание'}
           </h4>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -421,8 +421,8 @@ export const SpellEditor: React.FC = () => {
       <div className="glass-panel rounded-3xl p-5 space-y-3">
         <div className="flex items-center gap-2">
           <FileUp className="w-4 h-4 text-accent" />
-          <h4 className="font-anime font-bold text-sm">
-            Массовый импорт SRD-заклинаний (Open5e API / JSON)
+          <h4 className="font-anime font-bold text-sm uppercase">
+            // Массовый импорт SRD-заклинаний (Open5e API / JSON)
           </h4>
         </div>
         <p className="text-xs text-muted">

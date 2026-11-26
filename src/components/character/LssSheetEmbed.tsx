@@ -3,6 +3,7 @@ import {
   Download,
   FileJson,
   Lock,
+  Monitor,
   RefreshCw,
   RotateCcw,
   ScrollText,
@@ -10,7 +11,7 @@ import {
   Upload,
   X,
 } from 'lucide-react';
-import { LSS_SCHEMA_V1_URL } from '../../lib/lss';
+import { LSS_ALLOWED_ORIGINS, LSS_CHARACTER_LIST_EMBED_URL, LSS_SCHEMA_V1_URL } from '../../lib/lss';
 import { packLssStructures, unwrapLssJsonMutable } from '../../lib/lssSheetParser';
 import { useCampaignStore } from '../../lib/store';
 import type {
@@ -51,6 +52,7 @@ export const LssSheetEmbed: React.FC<LssSheetEmbedProps> = ({
   );
 
   const [dmAllowEdit, setDmAllowEdit] = useState(false);
+  const [viewMode, setViewMode] = useState<'native' | 'iframe'>('native');
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [jsonText, setJsonText] = useState('');
   const [importing, setImporting] = useState(false);
@@ -65,6 +67,22 @@ export const LssSheetEmbed: React.FC<LssSheetEmbedProps> = ({
     }
   }, [externalOpenImport]);
 
+  // Preserve postMessage sync listener when embedded LSS iframe mode is open
+  useEffect(() => {
+    if (viewMode !== 'iframe') return;
+    const onMessage = (ev: MessageEvent) => {
+      if (!LSS_ALLOWED_ORIGINS.includes(ev.origin)) return;
+      if (ev.data && typeof ev.data === 'object') {
+        const payload = ev.data as Record<string, unknown>;
+        if (payload.jsonType === 'character' || payload.data) {
+          void onSyncJson(payload);
+        }
+      }
+    };
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
+  }, [viewMode, onSyncJson]);
+
   const canEdit = !isDm || dmAllowEdit;
 
   const handleQuickUploadFile = async (file: File) => {
@@ -74,7 +92,7 @@ export const LssSheetEmbed: React.FC<LssSheetEmbedProps> = ({
       await onSyncJson(parsed);
       pushToast({
         title: 'Чарник импортирован',
-        message: `Файл «${file.name}» успешно загружен в классический лист.`,
+        message: `Файл «${file.name}» успешно загружен в тактический лист.`,
         variant: 'success',
       });
     } catch (err) {
@@ -101,7 +119,7 @@ export const LssSheetEmbed: React.FC<LssSheetEmbedProps> = ({
       await onSyncJson(parsed);
       pushToast({
         title: 'Чарник персонажа загружен',
-        message: 'Данные персонажа сохранены.',
+        message: 'Данные персонажа синхронизированы.',
         variant: 'success',
       });
       setImportModalOpen(false);
@@ -138,19 +156,45 @@ export const LssSheetEmbed: React.FC<LssSheetEmbedProps> = ({
   };
 
   const hasCharacter = Boolean(profile.characterName.trim() || profile.rawLssJson);
+  const iframeSrc = profile.lssEmbedUrl?.trim() || LSS_CHARACTER_LIST_EMBED_URL;
 
   return (
-    <div className="glass-panel rounded-3xl overflow-hidden flex flex-col">
-      {/* Top Sheet Utility Bar */}
-      <div className="px-4 py-2.5 border-b border-border bg-bg/60 flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <span className="text-[11px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-lg bg-primary/20 text-primary border border-primary/40">
-            Игрок #{profile.playerId}
+    <div className="glass-panel hud-corners hud-cut overflow-hidden flex flex-col">
+      {/* HUD Frame Header: CHARACTER SHEET // SYNC */}
+      <div className="px-4 py-2.5 border-b border-primary/35 bg-[#070B14]/85 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-3 flex-wrap">
+          <span className="font-mono text-[11px] font-bold uppercase tracking-[0.18em] px-2.5 py-1 bg-primary/15 text-primary border border-primary/50">
+            CHARACTER SHEET // SYNC
           </span>
-          <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-muted">
-            <ScrollText className="w-3.5 h-3.5 text-accent" />
-            <span>Классический лист D&amp;D 5e</span>
+          <span className="font-mono text-[11px] text-muted uppercase">
+            SLOT P0{profile.playerId}
           </span>
+          <div className="inline-flex items-center border border-primary/30 bg-[#070B14]">
+            <button
+              type="button"
+              onClick={() => setViewMode('native')}
+              className={`px-2.5 py-1 text-[10px] font-mono uppercase tracking-wider inline-flex items-center gap-1 transition-colors ${
+                viewMode === 'native'
+                  ? 'bg-primary text-[#040810] font-bold'
+                  : 'text-muted hover:text-text'
+              }`}
+            >
+              <ScrollText className="w-3 h-3" />
+              <span>HUD SHEET</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('iframe')}
+              className={`px-2.5 py-1 text-[10px] font-mono uppercase tracking-wider inline-flex items-center gap-1 transition-colors ${
+                viewMode === 'iframe'
+                  ? 'bg-primary text-[#040810] font-bold'
+                  : 'text-muted hover:text-text'
+              }`}
+            >
+              <Monitor className="w-3 h-3" />
+              <span>LSS IFRAME</span>
+            </button>
+          </div>
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
@@ -158,22 +202,22 @@ export const LssSheetEmbed: React.FC<LssSheetEmbedProps> = ({
             <button
               type="button"
               onClick={() => setDmAllowEdit((v) => !v)}
-              className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs border transition-colors ${
+              className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-mono uppercase tracking-wide border transition-colors ${
                 dmAllowEdit
-                  ? 'border-amber-400/50 bg-amber-500/15 text-amber-200 font-semibold'
-                  : 'border-border bg-surface text-muted hover:text-text'
+                  ? 'border-amber-400/60 bg-amber-500/15 text-amber-200 font-bold'
+                  : 'border-primary/30 bg-[#070B14] text-muted hover:text-text'
               }`}
-              title="Разрешить Мастеру редактировать поля чарника этого игрока (опыт доступен Мастеру всегда)"
+              title="Разрешить Мастеру редактировать поля чарника этого игрока"
             >
               {dmAllowEdit ? (
                 <>
                   <Unlock className="w-3.5 h-3.5" />
-                  <span>Правка Мастером: ВКЛ</span>
+                  <span>DM EDIT: ON</span>
                 </>
               ) : (
                 <>
                   <Lock className="w-3.5 h-3.5" />
-                  <span>Правка Мастером</span>
+                  <span>DM EDIT</span>
                 </>
               )}
             </button>
@@ -183,11 +227,11 @@ export const LssSheetEmbed: React.FC<LssSheetEmbedProps> = ({
             <button
               type="button"
               onClick={handleExportJson}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs border border-border bg-surface text-muted hover:text-text transition-colors"
+              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs border border-primary/30 bg-[#070B14] text-muted hover:text-primary hover:border-primary transition-colors"
               title="Скачать чарник в формате .json (совместим с Long Story Short)"
             >
               <Download className="w-3.5 h-3.5 text-primary" />
-              <span>Скачать .json</span>
+              <span>Экспорт .json</span>
             </button>
           )}
 
@@ -195,9 +239,9 @@ export const LssSheetEmbed: React.FC<LssSheetEmbedProps> = ({
             <button
               type="button"
               onClick={() => setImportModalOpen(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-accent/15 text-accent border border-accent/40 hover:bg-accent/25 transition-colors"
+              className="hud-btn-secondary inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold"
             >
-              <FileJson className="w-3.5 h-3.5" />
+              <FileJson className="w-3.5 h-3.5 text-primary" />
               <span>Импорт .json</span>
             </button>
           )}
@@ -206,7 +250,7 @@ export const LssSheetEmbed: React.FC<LssSheetEmbedProps> = ({
             type="button"
             onClick={() => void onRefreshCache()}
             disabled={syncing}
-            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs border border-border bg-surface text-muted hover:text-text transition-colors"
+            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs border border-primary/30 bg-[#070B14] text-muted hover:text-primary hover:border-primary transition-colors"
             title="Синхронизировать с сервером"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${syncing ? 'animate-spin text-primary' : ''}`} />
@@ -216,7 +260,7 @@ export const LssSheetEmbed: React.FC<LssSheetEmbedProps> = ({
             <button
               type="button"
               onClick={() => void onResetSlot()}
-              className="p-1.5 rounded-xl border border-border text-muted hover:text-rose-300 hover:border-rose-500/40 transition-colors"
+              className="p-1.5 border border-primary/30 bg-[#070B14] text-muted hover:text-rose-300 hover:border-rose-500/50 transition-colors"
               title="Очистить слот персонажа"
             >
               <RotateCcw className="w-3.5 h-3.5" />
@@ -225,32 +269,42 @@ export const LssSheetEmbed: React.FC<LssSheetEmbedProps> = ({
         </div>
       </div>
 
-      {/* Full-Width Classic 3-Page Sheet */}
-      <LssNativeSheet
-        profile={profile}
-        journal={journal}
-        learnedSpells={learnedSpells}
-        canEdit={canEdit}
-        isDm={isDm}
-        onQuickUploadFile={handleQuickUploadFile}
-        onOpenImportModal={() => setImportModalOpen(true)}
-        onSyncJson={onSyncJson}
-        onProfileUpdated={(nextProfile) =>
-          updateCharacterProfileInStore(profile.playerId, nextProfile)
-        }
-      />
+      {/* Main Sheet Body: Native 3-Page Sheet or Embedded Long Story Short Iframe */}
+      {viewMode === 'iframe' ? (
+        <div className="w-full bg-[#070B14] relative">
+          <iframe
+            src={iframeSrc}
+            title={`Long Story Short — Player ${profile.playerId}`}
+            className="w-full h-[780px] border-0 bg-[#070B14]"
+            allow="clipboard-read; clipboard-write"
+          />
+        </div>
+      ) : (
+        <LssNativeSheet
+          profile={profile}
+          journal={journal}
+          learnedSpells={learnedSpells}
+          canEdit={canEdit}
+          isDm={isDm}
+          onQuickUploadFile={handleQuickUploadFile}
+          onOpenImportModal={() => setImportModalOpen(true)}
+          onSyncJson={onSyncJson}
+          onProfileUpdated={(nextProfile) =>
+            updateCharacterProfileInStore(profile.playerId, nextProfile)
+          }
+        />
+      )}
 
-      {/* Footer Sync Info */}
-      <div className="px-4 py-2 bg-bg/60 border-t border-border text-[11px] text-muted flex flex-wrap items-center justify-between gap-2">
+      {/* Telemetry Footer */}
+      <div className="px-4 py-2 bg-[#070B14]/85 border-t border-primary/25 font-mono text-[10px] uppercase tracking-wider text-muted flex flex-wrap items-center justify-between gap-2">
         <span>
-          Полная совместимость с форматом <strong className="text-primary">LSS .json</strong> •
-          автосохранение всех изменений листа
+          PROTOCOL: <strong className="text-primary">LSS .JSON + POSTMESSAGE</strong> // AUTO-SAVE ACTIVE
         </span>
-        <span>
-          Синхронизация:{' '}
+        <span className="tabular-nums">
+          LAST SYNC:{' '}
           {profile.lastSyncedAt
             ? new Date(profile.lastSyncedAt).toLocaleString('ru-RU')
-            : 'не выполнялась'}
+            : 'PENDING'}
         </span>
       </div>
 
@@ -258,16 +312,19 @@ export const LssSheetEmbed: React.FC<LssSheetEmbedProps> = ({
       {importModalOpen && (
         <div
           onClick={() => setImportModalOpen(false)}
-          className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4"
+          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="glass-panel neon-border rounded-3xl max-w-xl w-full p-6 space-y-4"
+            className="glass-panel neon-border hud-corners hud-cut max-w-xl w-full p-6 space-y-4"
           >
-            <div className="flex items-start justify-between gap-3">
+            <div className="flex items-start justify-between gap-3 border-b border-primary/25 pb-3">
               <div>
-                <h3 className="font-anime font-bold text-lg">
-                  Импорт чарника из Long Story Short (.json)
+                <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-primary">
+                  // IMPORT LSS PAYLOAD
+                </div>
+                <h3 className="font-anime font-bold text-lg uppercase">
+                  Импорт чарника Long Story Short (.json)
                 </h3>
                 <p className="text-xs text-muted mt-1">
                   Экспортируйте своего персонажа в файл <code>.json</code> в Long Story Short (схема{' '}
@@ -275,18 +332,18 @@ export const LssSheetEmbed: React.FC<LssSheetEmbedProps> = ({
                     href={LSS_SCHEMA_V1_URL}
                     target="_blank"
                     rel="noreferrer"
-                    className="text-accent underline"
+                    className="text-primary underline"
                   >
                     character.json
                   </a>
-                  ) и выберите его ниже. Все 3 страницы листа заполнятся автоматически.
+                  ) и загрузите ниже.
                 </p>
               </div>
 
               <button
                 type="button"
                 onClick={() => setImportModalOpen(false)}
-                className="p-1.5 rounded-xl border border-border text-muted hover:text-text"
+                className="p-1.5 border border-primary/30 text-muted hover:text-text"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -318,7 +375,7 @@ export const LssSheetEmbed: React.FC<LssSheetEmbedProps> = ({
               <button
                 type="button"
                 onClick={() => setImportModalOpen(false)}
-                className="px-4 py-2 rounded-xl border border-border text-xs text-muted hover:text-text"
+                className="px-4 py-2 border border-primary/30 text-xs font-mono uppercase text-muted hover:text-text"
               >
                 Отмена
               </button>

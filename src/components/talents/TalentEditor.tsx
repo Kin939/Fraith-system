@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Plus, Save, Sparkles, Trash2, Upload, X } from 'lucide-react';
+import { Plus, Save, Trash2, Upload, X } from 'lucide-react';
+import { HudIcon } from '../common/HudIcon';
 import { apiFetch, uploadImageAsset } from '../../lib/api';
 import { resolveImageUrl } from '../../lib/artwork';
 import { useCampaignStore } from '../../lib/store';
@@ -156,8 +157,8 @@ export const TalentNodeModal: React.FC<TalentNodeModalProps> = ({
         className="glass-panel neon-border rounded-3xl max-w-lg w-full p-6 space-y-4"
       >
         <div className="flex items-center justify-between gap-3">
-          <h3 className="font-anime font-bold text-lg">
-            {editingNode ? 'Редактирование таланта' : 'Новый узел дерева талантов'}
+          <h3 className="font-anime font-bold text-lg uppercase">
+            // {editingNode ? 'Редактирование таланта' : 'Новый узел дерева талантов'}
           </h3>
           <button
             type="button"
@@ -181,7 +182,7 @@ export const TalentNodeModal: React.FC<TalentNodeModalProps> = ({
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
-            <label className="block text-xs text-muted mb-1">Стоимость (общие ✦)</label>
+            <label className="block text-xs text-muted mb-1">Стоимость (общие очки Вдохновения)</label>
             <input
               type="number"
               min={0}
@@ -224,9 +225,9 @@ export const TalentNodeModal: React.FC<TalentNodeModalProps> = ({
 
         <div className="flex items-center gap-3">
           <img
-            src={resolveImageUrl(imageKey, '✦')}
+            src={resolveImageUrl(imageKey, 'spark')}
             alt="icon"
-            className="w-12 h-12 rounded-2xl object-cover border border-border"
+            className="w-12 h-12 object-cover border border-border"
           />
           <label className="px-3.5 py-2 rounded-xl bg-bg/70 border border-border hover:border-primary text-xs cursor-pointer inline-flex items-center gap-2">
             <Upload className="w-3.5 h-3.5 text-accent" />
@@ -300,7 +301,7 @@ export const TalentEditor: React.FC = () => {
     setCustomInspirationSet('');
     pushToast({
       title: 'Счётчик вдохновений обновлён',
-      message: `Установлено значение: ${res.inspirationPoints} ✦`,
+      message: `Установлено значение: ${res.inspirationPoints} очк.`,
       variant: 'info',
     });
   };
@@ -308,13 +309,13 @@ export const TalentEditor: React.FC = () => {
   return (
     <div className="space-y-5">
       {/* Inspiration Dispenser */}
-      <div className="glass-panel rounded-3xl p-5 flex flex-wrap items-center justify-between gap-4">
+      <div className="glass-panel hud-corners hud-cut p-5 flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <Sparkles className="w-6 h-6 text-accent" />
+          <HudIcon asset="spark" size="lg" />
           <div>
-            <div className="font-anime font-bold text-base">
-              Управление общим пулом Вдохновений:{' '}
-              <span className="text-accent">{inspirationPoints} ✦</span>
+            <div className="font-anime font-bold text-base uppercase flex items-center gap-2">
+              <span>// Управление общим пулом Вдохновений:</span>
+              <span className="font-mono text-primary tabular-nums">{inspirationPoints}</span>
             </div>
             <div className="text-xs text-muted">
               Очки общие для всей группы — любой открытый талант действует сразу на весь отряд.
@@ -338,13 +339,14 @@ export const TalentEditor: React.FC = () => {
                 });
                 setTalentsBundle(res);
               }}
-              className={`px-3 py-1.5 rounded-xl border text-xs font-bold transition-colors ${
+              className={`px-3 py-1.5 border font-mono text-xs font-bold tabular-nums inline-flex items-center gap-1 transition-colors ${
                 delta < 0
                   ? 'bg-rose-500/15 text-rose-300 border-rose-500/35 hover:bg-rose-500/25'
                   : 'bg-primary/20 text-primary border-primary/40 hover:bg-primary/30'
               }`}
             >
-              {delta > 0 ? `+${delta} ✦` : `${delta} ✦`}
+              <span>{delta > 0 ? `+${delta}` : `${delta}`}</span>
+              <HudIcon asset="spark" size="xs" />
             </button>
           ))}
 

@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { Crown, Skull } from 'lucide-react';
+import { Crown } from 'lucide-react';
 import { BestiaryDetail } from '../components/bestiary/BestiaryDetail';
 import { BestiaryTile } from '../components/bestiary/BestiaryTile';
+import { HudFrame } from '../components/common/HudFrame';
 import { apiFetch } from '../lib/api';
 import { useCampaignStore } from '../lib/store';
 import type { BestiaryCreature } from '../lib/types';
@@ -42,31 +43,25 @@ export const BestiaryPage: React.FC = () => {
 
   return (
     <div className="space-y-5">
-      <div className="glass-panel rounded-3xl p-5 flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="w-11 h-11 rounded-2xl bg-primary/20 border border-primary/40 flex items-center justify-center text-primary">
-            <Skull className="w-5 h-5" />
-          </div>
-          <div>
-            <h1 className="font-anime font-extrabold text-xl">Бестиарий</h1>
-            <p className="text-xs text-muted">
-              Отсортировано по уровню опасности (CR) • Открыто существ: {revealedCount} из{' '}
-              {creatures.length}
-            </p>
-          </div>
-        </div>
-
-        {isDm && (
-          <button
-            type="button"
-            onClick={() => setActiveTab('dm')}
-            className="anime-btn-primary px-3.5 py-2 text-xs inline-flex items-center gap-1.5"
-          >
-            <Crown className="w-3.5 h-3.5" />
-            Редактор бестиария (DM)
-          </button>
-        )}
-      </div>
+      <HudFrame
+        code={`THREAT ARCHIVE // IDENTIFIED ${revealedCount}/${creatures.length}`}
+        title="Бестиарий"
+        subtitle="Классификация угроз по уровню опасности (CR) с динамической неоновой индикацией"
+        rightSlot={
+          isDm ? (
+            <button
+              type="button"
+              onClick={() => setActiveTab('dm')}
+              className="anime-btn-primary px-3.5 py-2 text-xs inline-flex items-center gap-1.5"
+            >
+              <Crown className="w-3.5 h-3.5" />
+              <span>Редактор бестиария (DM)</span>
+            </button>
+          ) : undefined
+        }
+      >
+        <div className="hidden" aria-hidden="true" />
+      </HudFrame>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
         {creatures.map((creature) => (

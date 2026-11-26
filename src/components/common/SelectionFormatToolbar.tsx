@@ -127,7 +127,7 @@ function toggleLinePrefix(ta: HTMLTextAreaElement, linePrefix: string): void {
 function stripFormatting(raw: string): string {
   return raw
     .replace(/\{(?:violet|cyan|gold|crimson):([\s\S]*?)\}/g, '$1')
-    .replace(/\[🎲\s*([^\]]+)\]/g, '$1')
+    .replace(/\[(?:roll:|\u{1F3B2})\s*([^\]]+)\]/gu, '$1')
     .replace(/\*\*([\s\S]*?)\*\*/g, '$1')
     .replace(/__([\s\S]*?)__/g, '$1')
     .replace(/~~([\s\S]*?)~~/g, '$1')
@@ -441,9 +441,9 @@ export const SelectionFormatToolbar: React.FC = () => {
 
       <button
         type="button"
-        onClick={() => runWrap('[🎲 ', ']')}
+        onClick={() => runWrap('[roll: ', ']')}
         title="Сделать кликабельной формулой броска кубиков (напр. 2к6+3)"
-        className="p-1.5 rounded-lg hover:bg-accent/20 text-accent transition-colors"
+        className="p-1.5 hover:bg-primary/20 text-primary transition-colors"
       >
         <Dices className="w-3.5 h-3.5" />
       </button>

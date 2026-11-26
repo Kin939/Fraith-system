@@ -10,49 +10,89 @@ interface BestiaryTileProps {
   onToggleReveal?: (creature: BestiaryCreature) => void;
 }
 
+/**
+ * Maps Challenge Rating (CR) along the Sci-Fi theme spectrum:
+ * Low CR (<= 2) -> Cyan/Teal (`var(--primary)` / #00E5FF)
+ * Mid CR (3 - 8) -> Electric Violet (#7C4DFF)
+ * High CR (>= 9) -> Apex Crimson-Magenta (#FF2E63)
+ */
+export function getCrRimColor(crNumeric: number): string {
+  if (crNumeric >= 9) return '#FF2E63';
+  if (crNumeric >= 3) return '#7C4DFF';
+  return 'var(--primary)';
+}
+
 export const BestiaryTile: React.FC<BestiaryTileProps> = ({
   creature,
   isDm,
   onSelect,
   onToggleReveal,
 }) => {
-  // Player view of an unrevealed creature: faceless circular portrait with ?, large ???, exact required caption
+  // Unrevealed creature for players: dark HUD tile, faceless circular portrait, large ???, light hover border, zero data leak
   if (!creature.isRevealed && !isDm) {
     return (
-      <div className="glass-panel rounded-3xl p-6 flex flex-col items-center text-center justify-between gap-4 border border-border/80 opacity-85 select-none">
-        <div className="w-24 h-24 rounded-full bg-bg/90 border-2 border-dashed border-border flex items-center justify-center relative shadow-inner">
-          <div className="w-16 h-16 rounded-full bg-surface/90 flex items-center justify-center text-muted">
-            <span className="font-anime font-extrabold text-3xl text-muted/80">?</span>
-          </div>
+      <div className="glass-panel hud-cut hud-corners p-6 flex flex-col items-center text-center justify-between gap-4 bg-[#070B14]/90 border border-primary/15 hover:border-primary/45 transition-all duration-200 select-none">
+        {/* Faceless Circular Portrait */}
+        <div className="w-24 h-24 rounded-full bg-[#070B14] border border-primary/30 flex items-center justify-center relative overflow-hidden">
+          <svg
+            viewBox="0 0 96 96"
+            className="w-20 h-20 opacity-65"
+            aria-hidden="true"
+          >
+            <circle cx="48" cy="34" r="16" fill="#0F172A" stroke="#8FA3BF" strokeOpacity="0.45" strokeWidth="1.5" />
+            <path
+              d="M20 88 C22 64 34 56 48 56 C62 56 74 64 76 88 Z"
+              fill="#0F172A"
+              stroke="#8FA3BF"
+              strokeOpacity="0.45"
+              strokeWidth="1.5"
+            />
+          </svg>
         </div>
 
         <div className="space-y-1.5">
-          <div className="font-anime font-extrabold text-2xl tracking-widest text-muted">???</div>
+          <div className="font-mono font-extrabold text-2xl tracking-[0.28em] text-muted tabular-nums">
+            ???
+          </div>
           <p className="text-xs text-muted leading-relaxed">
             Сразись с этим существом чтобы открыть его в бестиарии
           </p>
         </div>
 
-        <span className="text-[10px] uppercase tracking-widest px-2.5 py-1 rounded-full bg-bg/70 border border-border text-muted inline-flex items-center gap-1">
+        <span className="font-mono text-[10px] uppercase tracking-widest px-2.5 py-1 bg-[#070B14] border border-primary/20 text-muted inline-flex items-center gap-1">
           <HelpCircle className="w-3 h-3" />
-          ПО: ???
+          CR // ???
         </span>
       </div>
     );
   }
 
-  const portraitUrl = resolveImageUrl(creature.imageKey, '🐉');
+  const portraitUrl = resolveImageUrl(creature.imageKey, 'dragon');
+  const crColor = getCrRimColor(creature.crNumeric);
 
   return (
     <div
       onClick={() => onSelect(creature)}
-      className={`glass-panel rounded-3xl p-5 flex flex-col items-center text-center justify-between gap-4 cursor-pointer transition-all hover:-translate-y-1 hover:border-primary/60 relative ${
-        !creature.isRevealed && isDm ? 'border-dashed border-amber-500/50' : ''
+      style={
+        {
+          borderColor: `color-mix(in srgb, ${crColor} 58%, transparent)`,
+          boxShadow: `0 0 0 1px color-mix(in srgb, ${crColor} 45%, transparent), 0 0 22px -7px ${crColor}`,
+        } as React.CSSProperties
+      }
+      className={`glass-panel hud-cut hud-corners p-5 flex flex-col items-center text-center justify-between gap-4 cursor-pointer transition-all duration-200 hover:-translate-y-0.5 relative ${
+        !creature.isRevealed && isDm ? 'opacity-80' : ''
       }`}
     >
       {/* Top CR + DM Reveal Control */}
       <div className="w-full flex items-center justify-between gap-2">
-        <span className="text-[11px] font-anime font-extrabold px-2.5 py-0.5 rounded-full bg-primary/20 border border-primary/40 text-primary">
+        <span
+          style={{
+            borderColor: crColor,
+            color: crColor,
+            backgroundColor: `color-mix(in srgb, ${crColor} 14%, #070B14)`,
+          }}
+          className="font-mono text-[11px] font-extrabold px-2.5 py-0.5 border tabular-nums"
+        >
           CR {creature.cr}
         </span>
 
@@ -64,47 +104,55 @@ export const BestiaryTile: React.FC<BestiaryTileProps> = ({
               onToggleReveal(creature);
             }}
             title={creature.isRevealed ? 'Скрыть обратно в ???' : 'Открыть существо игрокам'}
-            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border transition-colors ${
+            className={`inline-flex items-center gap-1 px-2 py-0.5 font-mono text-[10px] uppercase font-bold border transition-colors ${
               creature.isRevealed
-                ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
-                : 'bg-amber-500/15 border-amber-500/40 text-amber-200'
+                ? 'bg-emerald-500/15 border-emerald-500/50 text-emerald-300'
+                : 'bg-amber-500/15 border-amber-500/50 text-amber-200'
             }`}
           >
             {creature.isRevealed ? (
               <>
                 <Eye className="w-3 h-3" />
-                Открыто
+                OPEN
               </>
             ) : (
               <>
                 <EyeOff className="w-3 h-3" />
-                Скрыто (DM)
+                HIDDEN
               </>
             )}
           </button>
         )}
       </div>
 
-      {/* Circular Revealed Portrait */}
-      <div className="w-24 h-24 rounded-full p-1 bg-gradient-to-tr from-primary to-accent shadow-neon">
+      {/* Circular Revealed Portrait with CR Rim Light */}
+      <div
+        style={{
+          borderColor: crColor,
+          boxShadow: `0 0 20px -4px ${crColor}`,
+        }}
+        className="w-24 h-24 rounded-full p-1 bg-[#070B14] border-2"
+      >
         <img
           src={portraitUrl}
           alt={creature.name}
-          className="w-full h-full rounded-full object-cover bg-bg"
+          className="w-full h-full rounded-full object-cover bg-[#070B14]"
         />
       </div>
 
       <div className="space-y-1">
-        <h3 className="font-anime font-bold text-base leading-snug">{creature.name}</h3>
+        <h3 className="font-anime font-bold text-base uppercase tracking-wide leading-snug">
+          {creature.name}
+        </h3>
         <div className="text-xs text-muted">{creature.creatureType}</div>
       </div>
 
-      <div className="w-full pt-2 border-t border-border/60 flex items-center justify-center gap-4 text-xs text-muted">
+      <div className="w-full pt-2 border-t border-primary/20 flex items-center justify-center gap-4 font-mono text-xs text-muted tabular-nums">
         <span className="inline-flex items-center gap-1">
-          <Shield className="w-3.5 h-3.5 text-accent" />
-          КД {creature.ac}
+          <Shield className="w-3.5 h-3.5 text-primary" />
+          AC {creature.ac}
         </span>
-        <span>ХП {creature.hp}</span>
+        <span>HP {creature.hp}</span>
       </div>
     </div>
   );

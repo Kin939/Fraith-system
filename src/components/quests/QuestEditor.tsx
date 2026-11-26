@@ -202,8 +202,8 @@ export const QuestEditor: React.FC<QuestEditorProps> = ({ initialQuest, onDone }
         onSubmit={handleSubmit}
         className="xl:col-span-7 glass-panel rounded-3xl p-5 space-y-4"
       >
-        <h4 className="font-anime font-bold text-base">
-          {editingId ? `Редактирование квеста #${editingId}` : 'Создание нового квеста'}
+        <h4 className="font-anime font-bold text-base uppercase">
+          // {editingId ? `Редактирование квеста #${editingId}` : 'Создание нового квеста'}
         </h4>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -329,9 +329,9 @@ export const QuestEditor: React.FC<QuestEditorProps> = ({ initialQuest, onDone }
         {/* R2 Image Upload */}
         <div className="flex flex-wrap items-center gap-3 p-3 rounded-2xl bg-bg/60 border border-border">
           <img
-            src={resolveImageUrl(imageKey, '⚔')}
+            src={resolveImageUrl(imageKey, 'blades')}
             alt="Превью"
-            className="w-20 h-14 rounded-xl object-cover border border-border"
+            className="w-20 h-14 object-cover border border-border"
           />
           <div className="space-y-1">
             <label className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-surface border border-border hover:border-primary text-xs font-medium cursor-pointer">

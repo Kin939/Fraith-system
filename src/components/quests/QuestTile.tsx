@@ -13,51 +13,55 @@ const STATUS_META: Record<
   { label: string; badgeClass: string; icon: React.ReactNode }
 > = {
   active: {
-    label: 'Активен',
-    badgeClass: 'bg-primary/20 text-primary border-primary/40',
+    label: 'ACTIVE',
+    badgeClass: 'bg-primary/15 text-primary border-primary/50',
     icon: <Clock className="w-3 h-3" />,
   },
   available: {
-    label: 'Доступен',
-    badgeClass: 'bg-accent/20 text-accent border-accent/40',
+    label: 'AVAILABLE',
+    badgeClass: 'bg-accent/20 text-text border-accent/60',
     icon: <Compass className="w-3 h-3" />,
   },
   completed: {
-    label: 'Завершён',
-    badgeClass: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40',
+    label: 'COMPLETE',
+    badgeClass: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/50',
     icon: <CheckCircle2 className="w-3 h-3" />,
   },
   failed: {
-    label: 'Провален',
-    badgeClass: 'bg-rose-500/20 text-rose-300 border-rose-500/40',
+    label: 'FAILED',
+    badgeClass: 'bg-rose-500/15 text-rose-300 border-rose-500/50',
     icon: <XCircle className="w-3 h-3" />,
   },
 };
 
 export const QuestTile: React.FC<QuestTileProps> = ({ quest, selected, onSelect }) => {
-  const pct = Math.min(
-    100,
-    Math.round((quest.progressCurrent / Math.max(1, quest.progressTarget)) * 100)
-  );
+  const ratio = Math.min(1, Math.max(0, quest.progressCurrent / Math.max(1, quest.progressTarget)));
+  const pct = Math.round(ratio * 100);
+  const segmentCount = quest.progressTarget === 5 ? 5 : 10;
+  const filledSegments = Math.round(ratio * segmentCount);
   const statusInfo = STATUS_META[quest.status] ?? STATUS_META.active;
 
   return (
     <button
       type="button"
       onClick={onSelect}
-      className={`w-full text-left p-4 rounded-3xl transition-all flex flex-col justify-between gap-3 ${
-        selected
-          ? 'glass-panel neon-border scale-[1.01]'
-          : 'glass-panel hover:border-primary/50 opacity-90 hover:opacity-100'
+      className={`w-full text-left p-4 hud-cut hud-corners flex flex-col justify-between gap-3.5 rim-card ${
+        selected ? 'rim-card--active' : 'opacity-90 hover:opacity-100'
       }`}
     >
       <div className="space-y-2">
         <div className="flex items-start justify-between gap-2">
-          <h3 className="font-anime font-bold text-base leading-snug line-clamp-2">
-            {quest.title}
-          </h3>
+          <div className="min-w-0">
+            <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-primary/85">
+              Q-{String(quest.id).padStart(2, '0')} // DIRECTIVE
+            </div>
+            <h3 className="font-anime font-bold text-base uppercase tracking-wide leading-snug line-clamp-2 mt-0.5">
+              {quest.title}
+            </h3>
+          </div>
+
           <span
-            className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border shrink-0 ${statusInfo.badgeClass}`}
+            className={`inline-flex items-center gap-1 font-mono text-[10px] font-bold px-2 py-0.5 border shrink-0 ${statusInfo.badgeClass}`}
           >
             {statusInfo.icon}
             {statusInfo.label}
@@ -67,25 +71,36 @@ export const QuestTile: React.FC<QuestTileProps> = ({ quest, selected, onSelect 
         <p className="text-xs text-muted line-clamp-2 leading-relaxed">{quest.shortDesc}</p>
       </div>
 
-      {/* Progress Bar */}
+      {/* Segmented Tactical Progress Scale (1/10 or 1/5 segments) */}
       <div className="space-y-1.5 pt-1">
-        <div className="flex items-center justify-between text-[11px]">
-          <span className="text-muted">Прогресс выполнения</span>
-          <span className="font-anime font-bold text-text">
-            {quest.progressCurrent} / {quest.progressTarget} ({pct}%)
+        <div className="flex items-center justify-between font-mono text-[11px] tabular-nums">
+          <span className="text-muted uppercase tracking-wider">PROGRESS</span>
+          <span className="font-bold text-text">
+            {quest.progressCurrent}/{quest.progressTarget}{' '}
+            <span className="text-primary">[{pct}%]</span>
           </span>
         </div>
-        <div className="h-2 w-full rounded-full bg-bg/80 border border-border/80 overflow-hidden">
-          <div
-            className="h-full rounded-full transition-all duration-300"
-            style={{
-              width: `${pct}%`,
-              background:
-                quest.status === 'completed'
-                  ? 'linear-gradient(90deg, #10b981, #34d399)'
-                  : 'linear-gradient(90deg, var(--primary), var(--accent))',
-            }}
-          />
+
+        <div
+          className="grid gap-1"
+          style={{ gridTemplateColumns: `repeat(${segmentCount}, minmax(0, 1fr))` }}
+          aria-label={`Прогресс ${pct}%`}
+        >
+          {Array.from({ length: segmentCount }, (_, idx) => {
+            const lit = idx < filledSegments;
+            return (
+              <span
+                key={idx}
+                className={`h-2 border transition-all duration-200 ${
+                  lit
+                    ? quest.status === 'completed'
+                      ? 'bg-emerald-400 border-emerald-300 shadow-[0_0_8px_rgba(52,211,153,0.6)]'
+                      : 'bg-primary border-primary shadow-[0_0_8px_var(--glow)]'
+                    : 'bg-[#070B14]/90 border-primary/25'
+                }`}
+              />
+            );
+          })}
         </div>
       </div>
     </button>

@@ -140,7 +140,7 @@ export function useWebSocket() {
               store.prependRoll(roll);
               if (msg.senderId !== store.user?.id) {
                 store.pushToast({
-                  title: `🎲 ${roll.characterName}: ${roll.title}`,
+                  title: `[DICE] ${roll.characterName}: ${roll.title}`,
                   message: `${roll.breakdown || roll.formula} → Итог: ${roll.total}`,
                   variant: roll.isCrit
                     ? roll.critKind === 'failure'

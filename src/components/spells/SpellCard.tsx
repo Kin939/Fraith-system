@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { apiFetch } from '../../lib/api';
 import { getSchoolMeta } from '../../lib/dndsuSpells';
+import { HudIcon } from '../common/HudIcon';
 import {
   DND_CLASS_LABELS_RU,
   DND_HOMEBREW_CLASS_BY_KEY,
@@ -278,9 +279,26 @@ export const SpellCard: React.FC<SpellCardProps> = React.memo(({
       id={`spell-card-${spell.id}`}
       className={`dndsu-card transition-all ${highlighted ? 'dndsu-card--highlighted' : ''}`}
     >
-      {/* dnd.su Card Header Bar */}
+      {/* Sci-Fi Spell Cartridge Header Bar with Level & School Badges */}
       <div className="dndsu-card__header flex items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0 flex-1 space-y-1.5">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="font-mono text-[11px] font-extrabold px-2 py-0.5 bg-primary text-[#040810] uppercase tracking-wider tabular-nums">
+              {spell.level === 0 ? 'LVL 0 // ЗАГОВОР' : `LVL ${spell.level}`}
+            </span>
+            <span
+              className="inline-flex items-center gap-1.5 px-2 py-0.5 border font-mono text-[11px] font-bold uppercase tracking-wider"
+              style={{
+                backgroundColor: schoolMeta.bg,
+                borderColor: schoolMeta.color,
+                color: schoolMeta.color,
+              }}
+            >
+              <HudIcon glyph={schoolMeta.glyph} size="xs" />
+              <span>{schoolMeta.ru}</span>
+            </span>
+          </div>
+
           <h2 className="font-anime font-extrabold text-base sm:text-lg leading-snug flex flex-wrap items-baseline gap-x-2 gap-y-1">
             <span className="text-text">{spell.name}</span>
             {spell.nameEn && (
@@ -349,11 +367,11 @@ export const SpellCard: React.FC<SpellCardProps> = React.memo(({
         <ul className="dndsu-params">
           <li className="dndsu-type-line flex items-center gap-2 flex-wrap">
             <span
-              className="inline-flex items-center justify-center w-5 h-5 rounded-md text-xs font-bold not-italic shrink-0"
-              style={{ backgroundColor: schoolMeta.bg, color: schoolMeta.color }}
+              className="inline-flex items-center justify-center w-5 h-5 border border-primary/30 text-xs font-bold not-italic shrink-0"
+              style={{ backgroundColor: schoolMeta.bg }}
               title={schoolMeta.ru}
             >
-              {schoolMeta.glyph}
+              <HudIcon glyph={schoolMeta.glyph} size="xs" />
             </span>
             <span>{typeLine}</span>
           </li>
@@ -588,15 +606,33 @@ export const SpellCard: React.FC<SpellCardProps> = React.memo(({
                 )}
               </div>
             ) : !classAllowed ? (
-              <span className="inline-flex items-center gap-1.5 text-xs text-muted">
-                <Lock className="w-3.5 h-3.5 text-rose-400 shrink-0" />
-                Недоступно классу «{formatCharacterClassesRu(playerProfile!.charClass) || playerProfile!.charClass}» (Мастер может выдать вручную)
-              </span>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <button
+                  type="button"
+                  disabled
+                  className="anime-btn-primary px-4 py-2 text-xs inline-flex items-center gap-1.5"
+                >
+                  <Lock className="w-3.5 h-3.5" />
+                  <span>Изучить</span>
+                </button>
+                <span className="inline-flex items-center gap-1.5 text-xs text-muted">
+                  Недоступно классу «{formatCharacterClassesRu(playerProfile!.charClass) || playerProfile!.charClass}» (Мастер может выдать вручную)
+                </span>
+              </div>
             ) : slotsFull ? (
-              <span className="inline-flex items-center gap-1.5 text-xs text-amber-300">
-                <Lock className="w-3.5 h-3.5 shrink-0" />
-                Лимит заклинаний заполнен ({learnedCount}/{playerProfile!.maxSpells})
-              </span>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <button
+                  type="button"
+                  disabled
+                  className="anime-btn-primary px-4 py-2 text-xs inline-flex items-center gap-1.5"
+                >
+                  <Lock className="w-3.5 h-3.5" />
+                  <span>Изучить</span>
+                </button>
+                <span className="inline-flex items-center gap-1.5 text-xs text-amber-300 font-mono">
+                  Лимит заполнен ({learnedCount}/{playerProfile!.maxSpells})
+                </span>
+              </div>
             ) : (
               <div className="space-y-2">
                 <div className="flex flex-wrap items-center justify-between gap-2">
@@ -608,20 +644,22 @@ export const SpellCard: React.FC<SpellCardProps> = React.memo(({
                       className="anime-btn-primary px-4 py-2 text-xs inline-flex items-center gap-1.5"
                     >
                       <Plus className="w-4 h-4" />
-                      {busy ? 'Изучение...' : 'Изучить заклинание'}
+                      {busy ? 'Изучение...' : 'Изучить'}
                     </button>
                     {!nativeClassMatch && playerProfile?.allowOffClassSpells && (
-                      <span className="px-2 py-0.5 rounded-lg bg-purple-500/20 border border-purple-400/40 text-purple-200 text-[11px]">
-                        ✦ Изучение вне класса разрешено Мастером
+                      <span className="px-2 py-0.5 bg-purple-500/20 border border-purple-400/40 text-purple-200 text-[11px] inline-flex items-center gap-1">
+                        <HudIcon asset="spark" size="xs" />
+                        <span>Изучение вне класса разрешено Мастером</span>
                       </span>
                     )}
                   </div>
                   <button
                     type="button"
                     onClick={() => setCastOptsOpen((v) => !v)}
-                    className="text-xs text-accent hover:underline"
+                    className="text-xs text-primary hover:underline inline-flex items-center gap-1 font-mono"
                   >
-                    {castOptsOpen ? 'Скрыть опции применения' : '⚙ Не по ячейке? (1/дл. отдых, ∞ и т.д.)'}
+                    <HudIcon asset="bolt" size="xs" />
+                    <span>{castOptsOpen ? 'Скрыть опции применения' : 'Не по ячейке? (1/дл. отдых, ∞)'}</span>
                   </button>
                 </div>
 

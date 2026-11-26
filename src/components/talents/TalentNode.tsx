@@ -1,5 +1,6 @@
 import React from 'react';
-import { Check, GripHorizontal, Lock, Pencil, Sparkles } from 'lucide-react';
+import { Check, GripHorizontal, Lock, Pencil } from 'lucide-react';
+import { HudIcon } from '../common/HudIcon';
 import { resolveImageUrl } from '../../lib/artwork';
 import type { TalentNode as TalentNodeModel } from '../../lib/types';
 
@@ -26,7 +27,7 @@ export const TalentNode: React.FC<TalentNodeProps> = ({
   onSelect,
   onEditNode,
 }) => {
-  const iconUrl = resolveImageUrl(node.imageKey, '✦');
+  const iconUrl = resolveImageUrl(node.imageKey, 'spark');
   const isUnlocked = Boolean(node.isUnlocked);
 
   return (
@@ -35,33 +36,33 @@ export const TalentNode: React.FC<TalentNodeProps> = ({
       onClick={() => {
         if (!isDragging) onSelect(node);
       }}
-      className={`w-44 h-44 rounded-3xl p-3.5 flex flex-col items-center justify-between text-center select-none relative group transition-shadow ${
+      className={`w-44 h-44 p-3 flex flex-col items-center justify-between text-center select-none relative group hud-corners transition-all duration-200 ${
         isDm ? 'cursor-grab active:cursor-grabbing touch-none' : 'cursor-pointer'
       } ${
-        isDragging ? 'z-30 scale-105 shadow-neon ring-2 ring-accent' : ''
+        isDragging ? 'z-30 scale-105 rim-card--active' : ''
       } ${
-        isSelectedInEditor ? 'ring-2 ring-primary shadow-neon' : ''
+        isSelectedInEditor ? 'rim-card--active' : ''
       } ${
         isUnlocked
-          ? 'glass-panel neon-border ring-2 ring-emerald-400/75'
+          ? 'glass-panel rim-card--active'
           : unlockedPrerequisite
-            ? 'glass-panel hover:border-primary'
-            : 'glass-panel opacity-70 border-dashed hover:opacity-95'
+            ? 'rim-card'
+            : 'glass-panel opacity-50 border-primary/20 hover:opacity-75'
       }`}
     >
-      {/* Top Row: Cost & Shared Party Status */}
+      {/* Top Row: Corner Cost Badge & Status */}
       <div className="w-full flex items-center justify-between gap-1">
         <span
-          className={`inline-flex items-center gap-1 text-[11px] font-anime font-extrabold px-2 py-0.5 rounded-lg border ${
+          className={`inline-flex items-center gap-1 font-mono text-[11px] font-extrabold px-1.5 py-0.5 border tabular-nums ${
             isUnlocked
-              ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300'
+              ? 'bg-primary text-[#040810] border-primary'
               : canAfford && unlockedPrerequisite
-                ? 'bg-accent/20 border-accent/40 text-accent'
-                : 'bg-bg/70 border-border text-muted'
+                ? 'bg-primary/15 border-primary/60 text-primary'
+                : 'bg-[#070B14]/90 border-primary/25 text-muted'
           }`}
         >
-          <Sparkles className="w-3 h-3" />
-          {node.cost}
+          <HudIcon asset="spark" size="xs" />
+          <span>{node.cost}</span>
         </span>
 
         <div className="flex items-center gap-1">
@@ -73,7 +74,7 @@ export const TalentNode: React.FC<TalentNodeProps> = ({
                 e.stopPropagation();
                 onEditNode(node);
               }}
-              className="w-5 h-5 rounded-full bg-surface/90 border border-border hover:border-primary text-muted hover:text-primary flex items-center justify-center transition-colors"
+              className="w-5 h-5 bg-[#070B14] border border-primary/35 hover:border-primary text-muted hover:text-primary flex items-center justify-center transition-colors"
               title="Редактировать узел"
             >
               <Pencil className="w-2.5 h-2.5" />
@@ -82,8 +83,8 @@ export const TalentNode: React.FC<TalentNodeProps> = ({
 
           {isDm && (
             <span
-              className="text-muted/60 group-hover:text-accent transition-colors"
-              title="Перетащите плитку мышью в нужное место"
+              className="text-muted/60 group-hover:text-primary transition-colors"
+              title="Перетащите плитку мышью"
             >
               <GripHorizontal className="w-3.5 h-3.5" />
             </span>
@@ -91,14 +92,14 @@ export const TalentNode: React.FC<TalentNodeProps> = ({
 
           {isUnlocked ? (
             <span
-              className="w-5 h-5 rounded-full bg-emerald-500/25 text-emerald-300 flex items-center justify-center"
+              className="w-5 h-5 bg-primary/20 border border-primary text-primary flex items-center justify-center"
               title="Талант открыт для всей группы"
             >
               <Check className="w-3.5 h-3.5" />
             </span>
           ) : !unlockedPrerequisite ? (
             <span
-              className="w-5 h-5 rounded-full bg-bg/80 text-muted flex items-center justify-center"
+              className="w-5 h-5 bg-[#070B14] border border-primary/20 text-muted flex items-center justify-center"
               title="Требуется предыдущий талант"
             >
               <Lock className="w-3 h-3" />
@@ -107,26 +108,34 @@ export const TalentNode: React.FC<TalentNodeProps> = ({
         </div>
       </div>
 
-      {/* Square Icon */}
-      <div className="w-16 h-16 rounded-2xl overflow-hidden border border-border shadow-md pointer-events-none">
+      {/* Square R2 / HUD Artwork Tile */}
+      <div
+        className={`w-16 h-16 overflow-hidden border pointer-events-none bg-[#070B14] ${
+          isUnlocked ? 'border-primary shadow-rim' : 'border-primary/35'
+        }`}
+      >
         <img
           src={iconUrl}
           alt={node.title}
           draggable={false}
-          className="w-full h-full object-cover"
+          className={`w-full h-full object-cover ${
+            !isUnlocked && !unlockedPrerequisite ? 'grayscale' : ''
+          }`}
         />
       </div>
 
-      {/* Title & Shared Status Pill */}
-      <div className="w-full space-y-1 pointer-events-none">
-        <div className="font-anime font-bold text-xs leading-tight line-clamp-2">{node.title}</div>
-        <div className="text-[10px] font-semibold">
+      {/* Title & Status */}
+      <div className="w-full space-y-0.5 pointer-events-none">
+        <div className="font-anime font-bold text-xs uppercase tracking-wide leading-tight line-clamp-2">
+          {node.title}
+        </div>
+        <div className="font-mono text-[10px] uppercase tracking-wider">
           {isUnlocked ? (
-            <span className="text-emerald-300">✦ Открыт для группы</span>
+            <span className="text-primary font-bold">ACTIVE // UNLOCKED</span>
           ) : unlockedPrerequisite ? (
-            <span className="text-muted">Доступен к открытию</span>
+            <span className="text-muted">AVAILABLE</span>
           ) : (
-            <span className="text-muted/70">Закрыт</span>
+            <span className="text-muted/70">LOCKED</span>
           )}
         </div>
       </div>

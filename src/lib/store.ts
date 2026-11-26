@@ -1,6 +1,11 @@
 import { create } from 'zustand';
 import { apiFetch } from './api';
-import { applyThemeToDocument, DEFAULT_ANIME_THEME } from './theme';
+import {
+  applyThemeToDocument,
+  DEFAULT_ANIME_THEME,
+  getUserThemeSlot,
+  syncAllAccountThemes,
+} from './theme';
 import type {
   AuthUser,
   BestiaryCreature,
@@ -124,7 +129,7 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
   toasts: [],
 
   setUser: (user) => {
-    applyThemeToDocument(user?.theme ?? DEFAULT_ANIME_THEME);
+    applyThemeToDocument(user?.theme ?? DEFAULT_ANIME_THEME, getUserThemeSlot(user));
     if (!user) {
       set({
         user: null,
@@ -213,7 +218,8 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
   setRolls: (rolls) => set({ rolls }),
 
   applyLiveTheme: (theme) => {
-    applyThemeToDocument(theme);
+    const current = get().user;
+    applyThemeToDocument(theme, getUserThemeSlot(current));
     set((s) => ({
       user: s.user ? { ...s.user, theme } : null,
     }));
@@ -236,6 +242,14 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
 
     const playerIdsToLoad: PlayerId[] =
       user.role === 'dm' ? [1, 2, 3] : [user.playerId ?? 1];
+
+    if (user.role === 'dm') {
+      void apiFetch<{ users: AuthUser[] }>('/api/dm/users')
+        .then((r) => syncAllAccountThemes(r.users))
+        .catch(() => {
+          // Non-blocking fallback to default slot themes
+        });
+    }
 
     const [questsRes, bestiaryRes, spellsRes, talentsRes, rollsRes, allCharsRes, ...playerBundles] =
       await Promise.all([

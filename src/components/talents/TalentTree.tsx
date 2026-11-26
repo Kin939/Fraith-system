@@ -175,9 +175,9 @@ export const TalentTree: React.FC<TalentTreeProps> = ({
   };
 
   return (
-    <div className="glass-panel rounded-3xl overflow-hidden">
+    <div className="glass-panel hud-corners hud-cut overflow-hidden">
       {/* Top Hint / DM Action Strip */}
-      <div className="px-5 py-3 border-b border-border bg-bg/50 flex flex-wrap items-center justify-between gap-3">
+      <div className="px-5 py-3 border-b border-primary/30 bg-[#070B14]/80 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2 text-xs text-muted">
           {isDm ? (
             <>
@@ -218,12 +218,12 @@ export const TalentTree: React.FC<TalentTreeProps> = ({
           onPointerMove={handlePointerMoveCanvas}
           onPointerUp={() => void handlePointerUpCanvas()}
           onDoubleClick={handleCanvasDoubleClick}
-          className="relative rounded-2xl border border-border/60 mx-auto"
+          className="relative border border-primary/25 bg-[#070B14]/85 mx-auto"
           style={{
             width: `${canvasWidth}px`,
             height: `${canvasHeight}px`,
             backgroundImage:
-              'radial-gradient(rgba(168, 85, 247, 0.16) 1.25px, transparent 1.25px)',
+              'radial-gradient(color-mix(in srgb, var(--primary) 26%, transparent) 1.25px, transparent 1.25px)',
             backgroundSize: '24px 24px',
           }}
         >
@@ -277,10 +277,10 @@ export const TalentTree: React.FC<TalentTreeProps> = ({
                   fill="none"
                   stroke={
                     bothUnlocked
-                      ? '#34d399'
+                      ? 'var(--primary)'
                       : parentUnlocked
                         ? 'var(--accent)'
-                        : 'var(--primary)'
+                        : 'rgba(143, 163, 191, 0.35)'
                   }
                   strokeOpacity={bothUnlocked ? 0.92 : parentUnlocked ? 0.65 : 0.4}
                   strokeWidth={bothUnlocked ? 3.5 : 2.5}

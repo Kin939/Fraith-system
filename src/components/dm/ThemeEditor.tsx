@@ -1,14 +1,19 @@
 import React, { useEffect, useState } from 'react';
-import { Check, Palette, RotateCcw, Sparkles } from 'lucide-react';
+import { Check, Palette, RotateCcw } from 'lucide-react';
+import { HudIcon } from '../common/HudIcon';
 import { apiFetch } from '../../lib/api';
 import {
   ANIME_THEME_PRESETS,
   DEFAULT_ANIME_THEME,
   hexToGlow,
-  themeToScopedStyle,
+  parseThemeJson,
+  syncAllAccountThemes,
 } from '../../lib/theme';
 import { useCampaignStore } from '../../lib/store';
 import type { AuthUser, CharacterProfile, ThemeVariables } from '../../lib/types';
+import { ThemePreview } from './ThemePreview';
+
+export { ThemePreview } from './ThemePreview';
 
 export const ThemeEditor: React.FC = () => {
   const currentUser = useCampaignStore((s) => s.user);
@@ -27,10 +32,11 @@ export const ThemeEditor: React.FC = () => {
           '/api/dm/users'
         );
         setAccounts(res.users);
+        syncAllAccountThemes(res.users);
         if (res.users.length > 0) {
           const first = res.users[0];
           setSelectedUserId(first.id);
-          setDraftTheme({ ...first.theme });
+          setDraftTheme(parseThemeJson(JSON.stringify(first.theme)));
         }
       } catch (err) {
         pushToast({
@@ -44,14 +50,15 @@ export const ThemeEditor: React.FC = () => {
 
   const handleSelectAccount = (u: AuthUser) => {
     setSelectedUserId(u.id);
-    setDraftTheme({ ...u.theme });
+    setDraftTheme(parseThemeJson(JSON.stringify(u.theme)));
   };
 
   const updateField = (key: keyof ThemeVariables, value: string) => {
     setDraftTheme((prev) => {
       const next = { ...prev, [key]: value };
       if (key === 'primary') {
-        next.glow = hexToGlow(value, 0.42);
+        next.border = hexToGlow(value, 0.4);
+        next.glow = hexToGlow(value, 0.45);
       }
       return next;
     });
@@ -68,12 +75,13 @@ export const ThemeEditor: React.FC = () => {
         }
       );
       setAccounts(res.users);
+      syncAllAccountThemes(res.users);
       if (currentUser?.id === selectedUserId) {
         applyLiveTheme(res.theme);
       }
       pushToast({
         title: 'Тема применена и сохранена в D1',
-        message: 'Аккаунт получил обновлённые CSS-переменные в реальном времени.',
+        message: 'CSS-переменные аккаунта обновлены в реальном времени.',
         variant: 'success',
       });
     } catch (err) {
@@ -90,28 +98,28 @@ export const ThemeEditor: React.FC = () => {
   const selectedAccount = accounts.find((a) => a.id === selectedUserId) ?? null;
 
   const colorFields: Array<{ key: keyof ThemeVariables; label: string; cssVar: string }> = [
+    { key: 'primary', label: 'Основной акцент (Rim-неон)', cssVar: '--primary' },
+    { key: 'accent', label: 'Вторичный акцент (Hover)', cssVar: '--accent' },
     { key: 'bg', label: 'Глубокий фон', cssVar: '--bg' },
-    { key: 'surface', label: 'Стеклянная панель', cssVar: '--surface' },
-    { key: 'primary', label: 'Основной неон', cssVar: '--primary' },
-    { key: 'accent', label: 'Вторичный акцент', cssVar: '--accent' },
+    { key: 'surface', label: 'Поверхность панели', cssVar: '--surface' },
     { key: 'text', label: 'Основной текст', cssVar: '--text' },
     { key: 'textMuted', label: 'Приглушённый текст', cssVar: '--text-muted' },
-    { key: 'border', label: 'Граница панелей', cssVar: '--border' },
+    { key: 'border', label: 'Граница (40% акцента)', cssVar: '--border' },
   ];
 
   return (
-    <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
+    <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
       {/* Left Column: Account Picker + Color Pickers + Presets */}
-      <div className="xl:col-span-7 glass-panel rounded-3xl p-6 space-y-5">
-        <div className="flex items-center justify-between gap-2 flex-wrap">
+      <div className="xl:col-span-7 glass-panel hud-corners hud-cut p-6 space-y-5">
+        <div className="flex items-center justify-between gap-2 flex-wrap border-b border-primary/25 pb-3">
           <div className="flex items-center gap-2.5">
             <Palette className="w-5 h-5 text-primary" />
             <div>
-              <h3 className="font-anime font-bold text-lg">
-                Кастомизация аниме-темы для каждого аккаунта
+              <h3 className="font-anime font-bold text-lg uppercase">
+                // КАСТОМИЗАЦИЯ ТЕМЫ АККАУНТА
               </h3>
-              <p className="text-xs text-muted">
-                Таблица D1: <code>user_themes (user_id, theme_json)</code>
+              <p className="font-mono text-[11px] text-muted">
+                D1 TABLE: <code>user_themes (user_id, theme_json)</code> • FALLBACK #00E5FF
               </p>
             </div>
           </div>
@@ -119,16 +127,18 @@ export const ThemeEditor: React.FC = () => {
           <button
             type="button"
             onClick={() => setDraftTheme({ ...DEFAULT_ANIME_THEME })}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-border text-xs text-muted hover:text-text"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-primary/30 bg-[#070B14] font-mono text-xs uppercase text-muted hover:text-primary hover:border-primary transition-colors"
           >
             <RotateCcw className="w-3.5 h-3.5" />
-            Базовая тёмная
+            <span>Сброс #00E5FF</span>
           </button>
         </div>
 
         {/* Account Selector (DM, Player 1, Player 2, Player 3) */}
         <div className="space-y-1.5">
-          <div className="text-xs text-muted font-medium">Выберите аккаунт:</div>
+          <div className="font-mono text-[10px] uppercase tracking-widest text-muted">
+            // ВЫБЕРИТЕ ЦЕЛЕВОЙ АККАУНТ:
+          </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             {accounts.map((acc) => {
               const active = acc.id === selectedUserId;
@@ -137,36 +147,41 @@ export const ThemeEditor: React.FC = () => {
                   key={acc.id}
                   type="button"
                   onClick={() => handleSelectAccount(acc)}
-                  className={`p-3 rounded-2xl border text-left transition-all ${
+                  className={`p-3 border text-left transition-all hud-cut-sm ${
                     active
-                      ? 'bg-primary/20 border-primary shadow-neon'
-                      : 'bg-bg/60 border-border hover:border-primary/40'
+                      ? 'bg-primary/15 border-primary shadow-rim'
+                      : 'bg-[#070B14]/80 border-primary/25 hover:border-primary/60'
                   }`}
                 >
-                  <div className="text-xs font-anime font-bold truncate">
-                    {acc.role === 'dm' ? '👑 Мастер (dm)' : `⚔ Игрок ${acc.playerId}`}
+                  <div className="text-xs font-anime font-bold uppercase truncate flex items-center gap-1.5">
+                    <HudIcon asset={acc.role === 'dm' ? 'crown' : 'blades'} size="xs" />
+                    <span>{acc.role === 'dm' ? 'Мастер (dm)' : `Игрок ${acc.playerId}`}</span>
                   </div>
-                  <div className="text-[11px] text-muted truncate mt-0.5">{acc.displayName}</div>
+                  <div className="font-mono text-[10px] text-muted truncate mt-1">
+                    {acc.displayName}
+                  </div>
                 </button>
               );
             })}
           </div>
         </div>
 
-        {/* Curated Anime Presets */}
+        {/* Curated Sci-Fi Rim Presets */}
         <div className="space-y-1.5">
-          <div className="text-xs text-muted font-medium">Готовые неоновые пресеты:</div>
+          <div className="font-mono text-[10px] uppercase tracking-widest text-muted">
+            // ТАКТИЧЕСКИЕ ПРЕСЕТЫ RIM-ПОДСВЕТКИ:
+          </div>
           <div className="flex flex-wrap gap-2">
             {ANIME_THEME_PRESETS.map((preset) => (
               <button
                 key={preset.id}
                 type="button"
                 onClick={() => setDraftTheme({ ...preset.theme })}
-                className="px-3 py-1.5 rounded-xl border border-border bg-bg/60 hover:border-primary text-xs flex items-center gap-2 transition-colors"
+                className="px-3 py-1.5 border border-primary/30 bg-[#070B14]/85 hover:border-primary font-mono text-xs flex items-center gap-2 transition-colors"
                 title={preset.subtitle}
               >
                 <span
-                  className="w-3 h-3 rounded-full"
+                  className="w-2.5 h-2.5 border border-white/30"
                   style={{ backgroundColor: preset.theme.primary }}
                 />
                 <span>{preset.name}</span>
@@ -180,34 +195,34 @@ export const ThemeEditor: React.FC = () => {
           {colorFields.map(({ key, label, cssVar }) => (
             <div
               key={key}
-              className="p-3 rounded-2xl bg-bg/60 border border-border flex items-center justify-between gap-3"
+              className="p-3 bg-[#070B14]/80 border border-primary/25 flex items-center justify-between gap-3"
             >
-              <div>
-                <div className="text-xs font-semibold">{label}</div>
-                <code className="text-[11px] text-muted">{cssVar}</code>
+              <div className="min-w-0">
+                <div className="text-xs font-semibold truncate">{label}</div>
+                <code className="text-[10px] text-muted">{cssVar}</code>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 shrink-0">
                 <input
                   type="color"
-                  value={draftTheme[key].startsWith('#') ? draftTheme[key] : '#a855f7'}
+                  value={draftTheme[key].startsWith('#') ? draftTheme[key] : '#00E5FF'}
                   onChange={(e) => updateField(key, e.target.value)}
-                  className="w-9 h-9 rounded-lg bg-transparent cursor-pointer border-0"
+                  className="w-8 h-8 bg-transparent cursor-pointer border border-primary/30 p-0"
                 />
                 <input
                   type="text"
                   value={draftTheme[key]}
                   onChange={(e) => updateField(key, e.target.value)}
-                  className="anime-input w-24 text-xs font-mono py-1.5 px-2"
+                  className="anime-input w-28 text-xs font-mono py-1.5 px-2"
                 />
               </div>
             </div>
           ))}
 
-          <div className="p-3 rounded-2xl bg-bg/60 border border-border flex flex-col justify-center gap-1">
+          <div className="p-3 bg-[#070B14]/80 border border-primary/25 flex flex-col justify-center gap-1">
             <div className="flex items-center justify-between">
               <span className="text-xs font-semibold">Свечение неона</span>
-              <code className="text-[11px] text-muted">--glow</code>
+              <code className="text-[10px] text-muted">--glow</code>
             </div>
             <input
               type="text"
@@ -222,133 +237,22 @@ export const ThemeEditor: React.FC = () => {
           <button
             type="button"
             disabled={saving}
-            onClick={handleApplyTheme}
-            className="anime-btn-primary px-6 py-2.5 text-sm inline-flex items-center gap-2"
+            onClick={() => void handleApplyTheme()}
+            className="anime-btn-primary px-6 py-2.5 text-xs inline-flex items-center gap-2"
           >
             <Check className="w-4 h-4" />
             <span>
               {saving
                 ? 'Применение...'
-                : `Применить для ${selectedAccount?.username || 'аккаунта'}`}
+                : `Применить (${selectedAccount?.username || 'аккаунт'})`}
             </span>
           </button>
         </div>
       </div>
 
-      {/* Right Column: Live Isolated Real-Time Mini-Preview (without saving!) */}
-      <div className="xl:col-span-5 space-y-3">
-        <div className="text-xs uppercase tracking-wider text-muted font-semibold px-1">
-          Живой предпросмотр (в реальном времени, до сохранения)
-        </div>
-
-        <div
-          style={themeToScopedStyle(draftTheme)}
-          className="rounded-3xl p-5 space-y-4 border transition-colors"
-        >
-          <div
-            style={{
-              backgroundColor: 'var(--bg)',
-              color: 'var(--text)',
-              borderColor: 'var(--border)',
-            }}
-            className="rounded-3xl p-5 border space-y-4 shadow-glass"
-          >
-            {/* Preview 1: Mini Character Card */}
-            <div
-              style={{
-                backgroundColor: 'var(--surface)',
-                borderColor: 'var(--primary)',
-                boxShadow: '0 0 22px var(--glow)',
-              }}
-              className="rounded-2xl p-4 border space-y-3"
-            >
-              <div className="flex items-center justify-between gap-2">
-                <div>
-                  <div
-                    style={{ color: 'var(--accent)' }}
-                    className="text-[10px] font-bold uppercase tracking-widest"
-                  >
-                    Превью карточки персонажа
-                  </div>
-                  <div className="font-anime font-extrabold text-base mt-0.5">
-                    {selectedAccount?.displayName || 'Игрок'}
-                  </div>
-                </div>
-                <span
-                  style={{
-                    backgroundColor: 'color-mix(in srgb, var(--primary) 22%, transparent)',
-                    color: 'var(--primary)',
-                    borderColor: 'var(--primary)',
-                  }}
-                  className="text-xs font-anime font-bold px-2.5 py-1 rounded-xl border"
-                >
-                  Превью темы
-                </span>
-              </div>
-
-              <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--text-muted)' }}>
-                <Sparkles className="w-3.5 h-3.5" style={{ color: 'var(--accent)' }} />
-                <span>Элементы интерфейса перекрашиваются в реальном времени</span>
-              </div>
-            </div>
-
-            {/* Preview 2: Mini Quest Tile */}
-            <div
-              style={{
-                backgroundColor: 'var(--surface)',
-                borderColor: 'var(--border)',
-              }}
-              className="rounded-2xl p-4 border space-y-3"
-            >
-              <div className="flex items-center justify-between gap-2">
-                <div className="font-anime font-bold text-sm">Пример карточки задания</div>
-                <span
-                  style={{
-                    backgroundColor: 'color-mix(in srgb, var(--accent) 20%, transparent)',
-                    color: 'var(--accent)',
-                  }}
-                  className="text-[10px] font-bold px-2 py-0.5 rounded-full"
-                >
-                  Активен
-                </span>
-              </div>
-
-              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                Предпросмотр цветов поверхности, границ, текста и шкалы прогресса.
-              </p>
-
-              <div className="space-y-1">
-                <div className="flex justify-between text-[11px]">
-                  <span style={{ color: 'var(--text-muted)' }}>Прогресс</span>
-                  <span className="font-anime font-bold">4 / 10</span>
-                </div>
-                <div
-                  style={{ backgroundColor: 'var(--bg)', borderColor: 'var(--border)' }}
-                  className="h-2 rounded-full border overflow-hidden"
-                >
-                  <div
-                    style={{
-                      width: '40%',
-                      background: 'linear-gradient(90deg, var(--primary), var(--accent))',
-                    }}
-                    className="h-full rounded-full"
-                  />
-                </div>
-              </div>
-
-              <button
-                type="button"
-                style={{
-                  background: 'linear-gradient(135deg, var(--primary), var(--accent))',
-                  boxShadow: '0 0 16px var(--glow)',
-                }}
-                className="w-full py-2 rounded-xl text-xs font-bold text-white"
-              >
-                Пример неоновой кнопки
-              </button>
-            </div>
-          </div>
-        </div>
+      {/* Right Column: Isolated Live Preview Component */}
+      <div className="xl:col-span-5 xl:sticky xl:top-5">
+        <ThemePreview draftTheme={draftTheme} selectedAccount={selectedAccount} />
       </div>
     </div>
   );

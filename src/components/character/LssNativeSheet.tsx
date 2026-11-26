@@ -25,6 +25,8 @@ import {
 } from 'lucide-react';
 import { apiFetch, uploadImageAsset } from '../../lib/api';
 import { resolveImageUrl } from '../../lib/artwork';
+import { glyphToHudAssetKey } from '../../lib/hudIcons';
+import { HudIcon } from '../common/HudIcon';
 import {
   DND_CLASS_LABELS_RU,
   DND_HOMEBREW_CLASS_BY_KEY,
@@ -371,7 +373,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
   const [rRest, setRRest] = useState<'none' | 'short' | 'long'>('short');
   const [rRecoverMode, setRRecoverMode] = useState<ResourceRecoverMode>('all');
   const [rColor, setRColor] = useState<ResourceColorKey>('amber');
-  const [rGlyph, setRGlyph] = useState('⚡');
+  const [rGlyph, setRGlyph] = useState('bolt');
   const [rNotes, setRNotes] = useState('');
 
   // Spell slots, manual spell row form & non-slot cast config modal
@@ -433,11 +435,11 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
   }) => {
     const heroName = sheet?.name || profile.characterName || `Игрок ${profile.playerId}`;
     pushToast({
-      title: `🎲 ${heroName}: ${params.title} — ${params.total}${
+      title: `[DICE] ${heroName}: ${params.title} — ${params.total}${
         params.critKind === 'success'
-          ? ' 💥 КРИТ!'
+          ? ' // КРИТ!'
           : params.critKind === 'failure'
-            ? ' 💀 ПРОВАЛ!'
+            ? ' // ПРОВАЛ!'
             : ''
       }`,
       message: `${params.formula} → ${params.breakdown}`,
@@ -620,7 +622,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
       onProfileUpdated?.(res.profile);
       if (payload.levelUp) {
         pushToast({
-          title: `★ Уровень повышен до ${res.profile.level}!`,
+          title: `[LEVEL UP] Уровень повышен до ${res.profile.level}!`,
           message: `Герой игрока #${profile.playerId} достиг ${res.profile.level} уровня.`,
           variant: 'success',
         });
@@ -929,7 +931,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
       setRRest(res.isShortRest ? 'short' : res.isLongRest ? 'long' : 'none');
       setRRecoverMode(res.recoverMode);
       setRColor(res.color);
-      setRGlyph(res.glyph || '⚡');
+      setRGlyph(glyphToHudAssetKey(res.glyph || 'bolt'));
       setRNotes(res.notes);
     } else {
       setEditingResId(null);
@@ -941,7 +943,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
       setRRest('long');
       setRRecoverMode('all');
       setRColor('amber');
-      setRGlyph('⚡');
+      setRGlyph('bolt');
       setRNotes('');
     }
     setResPresetsOpen(false);
@@ -975,7 +977,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
     }, true);
     setResPresetsOpen(false);
     pushToast({
-      title: `${preset.glyph} Добавлен ресурс: ${built.name}`,
+      title: `Добавлен ресурс: ${built.name}`,
       message: built.die
         ? `Пул: ${built.max}, кость: ${built.die}`
         : `Зарядов: ${built.max}${built.spendLimit > 0 ? ` (лимит за раз: ${built.spendLimit})` : ''}`,
@@ -1008,7 +1010,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
         spendLimit: Math.max(0, rSpendLimit),
         recoverMode: rRecoverMode,
         color: rColor,
-        glyph: rGlyph.trim() || '⚡',
+        glyph: glyphToHudAssetKey(rGlyph.trim() || 'bolt'),
         isShortRest: rRest === 'short',
         isLongRest: rRest === 'long',
         notes: rNotes.trim(),
@@ -1038,7 +1040,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
       }, true);
     }
     handleDamageRoll(
-      `${liveRes.glyph} ${liveRes.name}${spendCharge ? ' (-1 заряд)' : ''}`,
+      `${liveRes.name}${spendCharge ? ' (-1 заряд)' : ''}`,
       liveRes.dieResolved
     );
   };
@@ -1107,7 +1109,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
 
     if (params.mode === 'at_will' || params.spellLevel === 0) {
       pushToast({
-        title: `✦ ${heroName} творит «${params.spellName}»`,
+        title: `[CAST] ${heroName} творит «${params.spellName}»`,
         message: 'Неограниченное применение (ячейка не тратится).',
         variant: 'info',
       });
@@ -1116,7 +1118,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
 
     if (params.mode === 'ritual_only') {
       pushToast({
-        title: `🕯 ${heroName} проводит ритуал «${params.spellName}»`,
+        title: `[RITUAL] ${heroName} проводит ритуал «${params.spellName}»`,
         message: '+10 минут к сотворению, ячейка заклинаний не тратится.',
         variant: 'info',
       });
@@ -1158,7 +1160,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
         };
       }, true);
       pushToast({
-        title: `✦ ${heroName} применяет «${params.spellName}»`,
+        title: `[CAST] ${heroName} применяет «${params.spellName}»`,
         message: `Осталось применений: ${params.maxUses - nextUsed} / ${params.maxUses}${
           params.note ? ` (${params.note})` : ''
         }`,
@@ -1176,7 +1178,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
       if (!targetRes) {
         pushToast({
           title: 'Не выбран уникальный ресурс',
-          message: `Нажмите ⚙ у заклинания «${params.spellName}» и привяжите ресурс (напр. Пси-заряды).`,
+          message: `Откройте настройки заклинания «${params.spellName}» и привяжите ресурс (напр. Пси-заряды).`,
           variant: 'warning',
         });
         return;
@@ -1205,7 +1207,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
         t.current = nextCurrent;
       }, true);
       pushToast({
-        title: `✦ ${heroName} применяет «${params.spellName}»`,
+        title: `[CAST] ${heroName} применяет «${params.spellName}»`,
         message: `Потрачено ${cost} из «${targetRes.name}» (осталось ${nextCurrent}/${targetRes.max}).`,
         variant: 'success',
       });
@@ -1228,7 +1230,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
       pushToast({
         title: `Нет свободных ячеек ≥ ${params.spellLevel} круга`,
         message:
-          'Настройте максимум ячеек выше или переключите заклинание на «1/дл. отдых» / «Неограниченно» через ⚙.',
+          'Настройте максимум ячеек выше или переключите заклинание на «1/дл. отдых» / «Неограниченно» в настройках заклинания.',
         variant: 'warning',
       });
       return;
@@ -1245,7 +1247,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
         cur.filled = Math.min(pact.total, pact.expended + 1);
       }, true);
       pushToast({
-        title: `✦ ${heroName} сотворяет «${params.spellName}»`,
+        title: `[CAST] ${heroName} сотворяет «${params.spellName}»`,
         message: `Потрачена ячейка Магии Пакта (${pact.level}-й круг).`,
         variant: 'success',
       });
@@ -1258,7 +1260,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
         cur.filled = Math.min(slotInfo.total, slotInfo.expended + 1);
       }, true);
       pushToast({
-        title: `✦ ${heroName} сотворяет «${params.spellName}»`,
+        title: `[CAST] ${heroName} сотворяет «${params.spellName}»`,
         message: `Потрачена ячейка ${chosenSlotLevel}-го круга.`,
         variant: 'success',
       });
@@ -1410,7 +1412,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
     try {
       if (isDm) {
         const res = await uploadImageAsset(file, 'avatars');
-        const url = resolveImageUrl(res.key, '⚔');
+        const url = resolveImageUrl(res.key, 'blades');
         commitMutation((s) => {
           s.avatar = { webp: url, jpeg: url };
         }, true);
@@ -2173,10 +2175,10 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                     <button
                       type="button"
                       onClick={handleSpendHitDie}
-                      className="px-1.5 py-0.5 rounded-md bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-[10px] font-bold"
+                      className="px-1.5 py-0.5 bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-[10px] font-bold inline-flex items-center justify-center"
                       title="Потратить 1 кость хитов для броска исцеления"
                     >
-                      🎲
+                      <HudIcon asset="dice" size="xs" />
                     </button>
                   )}
                 </div>
@@ -2486,13 +2488,13 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                   </div>
                 </div>
                 <div
-                  className={`w-8 h-8 rounded-xl border-2 flex items-center justify-center transition-all ${
+                  className={`w-8 h-8 border-2 flex items-center justify-center transition-all ${
                     sheet.inspiration
-                      ? 'bg-accent/25 border-accent text-accent shadow-neon scale-105'
-                      : 'bg-surface border-border text-muted/40'
+                      ? 'bg-primary/25 border-primary text-primary shadow-rim scale-105'
+                      : 'bg-surface border-border opacity-40'
                   }`}
                 >
-                  ✦
+                  <HudIcon asset="spark" size="sm" />
                 </div>
               </button>
 
@@ -2991,11 +2993,9 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                           key={preset.key}
                           type="button"
                           onClick={() => handleApplyResourcePreset(preset)}
-                          className="p-2 rounded-xl bg-bg/80 hover:bg-primary/15 border border-border hover:border-primary/50 text-left flex items-start gap-2 transition-colors"
+                          className="p-2 bg-bg/80 hover:bg-primary/15 border border-border hover:border-primary/50 text-left flex items-start gap-2 transition-colors"
                         >
-                          <span className="text-base leading-none mt-0.5 shrink-0">
-                            {preset.glyph}
-                          </span>
+                          <HudIcon asset={preset.glyph} size="sm" className="mt-0.5 shrink-0" />
                           <div className="min-w-0">
                             <div className="font-bold text-xs text-text truncate">
                               {preset.title}
@@ -3035,13 +3035,22 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-12 gap-2">
-                      <input
-                        value={rGlyph}
+                      <select
+                        value={glyphToHudAssetKey(rGlyph)}
                         onChange={(e) => setRGlyph(e.target.value)}
-                        placeholder="⚡"
-                        title="Значок"
-                        className="anime-input sm:col-span-2 py-1.5 px-2 text-center text-xs"
-                      />
+                        title="Иконка ресурса"
+                        className="anime-input sm:col-span-2 py-1.5 px-2 text-xs"
+                      >
+                        <option value="bolt">Импульс</option>
+                        <option value="dice">Кубик d20</option>
+                        <option value="orb">Пси-сфера</option>
+                        <option value="blades">Клинки</option>
+                        <option value="spark">Искра</option>
+                        <option value="flame">Пламя</option>
+                        <option value="shield">Эгида</option>
+                        <option value="skull">Череп</option>
+                        <option value="dragon">Дракон</option>
+                      </select>
                       <input
                         required
                         value={rName}
@@ -3189,7 +3198,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                             <div className="flex items-start justify-between gap-2">
                               <div className="min-w-0">
                                 <div className="flex items-center gap-1.5 flex-wrap">
-                                  <span className="text-sm leading-none">{r.glyph}</span>
+                                  <HudIcon asset={r.glyph} size="xs" />
                                   <span className="text-xs font-extrabold text-text truncate">
                                     {r.name}
                                   </span>
@@ -3332,10 +3341,11 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                                         type="button"
                                         disabled={r.current <= 0}
                                         onClick={() => handleRollResourceDie(r, true)}
-                                        className="px-2 py-0.5 rounded-lg bg-primary/20 hover:bg-primary/30 disabled:opacity-35 border border-primary/45 text-[10px] font-bold text-primary"
+                                        className="px-2 py-0.5 bg-primary/20 hover:bg-primary/30 disabled:opacity-35 border border-primary/45 text-[10px] font-bold text-primary inline-flex items-center gap-1"
                                         title="Потратить 1 кость из пула и сразу бросить её в лог"
                                       >
-                                        -1 и 🎲
+                                        <span>-1</span>
+                                        <HudIcon asset="dice" size="xs" />
                                       </button>
                                     )}
                                   </div>
@@ -3973,7 +3983,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                           <option value="">Привязать ресурс...</option>
                           {sheet.resources.map((r) => (
                             <option key={r.id} value={r.id}>
-                              {r.glyph} {r.name} ({r.current}/{r.max})
+                              {r.name} ({r.current}/{r.max})
                             </option>
                           ))}
                         </select>
@@ -4226,10 +4236,11 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                                       ...eff,
                                     })
                                   }
-                                  className="px-2 py-0.5 rounded-md bg-primary/20 hover:bg-primary/30 border border-primary/40 text-[10px] font-bold text-primary mr-1"
+                                  className="px-2 py-0.5 bg-primary/20 hover:bg-primary/30 border border-primary/40 text-[10px] font-bold text-primary mr-1 inline-flex items-center gap-1"
                                   title="Применить заклинание (с учётом ячеек / зарядов отдыха / ресурса / ∞)"
                                 >
-                                  ✦ Каст
+                                  <HudIcon asset="spark" size="xs" />
+                                  <span>Каст</span>
                                 </button>
                                 {canEdit && (
                                   <>
@@ -4374,9 +4385,10 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                                     ...eff,
                                   })
                                 }
-                                className="px-2 py-0.5 rounded-md bg-primary/20 hover:bg-primary/30 border border-primary/40 text-[10px] font-bold text-primary mr-1"
+                                className="px-2 py-0.5 bg-primary/20 hover:bg-primary/30 border border-primary/40 text-[10px] font-bold text-primary mr-1 inline-flex items-center gap-1"
                               >
-                                ✦ Каст
+                                <HudIcon asset="spark" size="xs" />
+                                <span>Каст</span>
                               </button>
                               {canEdit && (
                                 <>
@@ -4867,7 +4879,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                 rows={11}
                 value={editingBlock.text}
                 onChange={(e) => setEditingBlock({ ...editingBlock, text: e.target.value })}
-                placeholder="Выделите текст для жирного **шрифта**, *курсива*, __подчёркивания__, заголовков ###, списков • или бросков [🎲 2к6+3]..."
+                placeholder="Выделите текст для жирного **шрифта**, *курсива*, __подчёркивания__, заголовков ###, списков • или бросков [roll: 2к6+3]..."
                 className="anime-input w-full text-xs leading-relaxed"
               />
             )}
@@ -4972,7 +4984,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                       <option value="">Выберите ресурс из листа...</option>
                       {sheet.resources.map((r) => (
                         <option key={r.id} value={r.id}>
-                          {r.glyph} {r.name} ({r.current}/{r.max})
+                          {r.name} ({r.current}/{r.max})
                         </option>
                       ))}
                     </select>
@@ -5321,9 +5333,10 @@ const HeroIdentityModal: React.FC<HeroIdentityModalProps> = ({ sheet, onClose, o
                       href={hbMeta.url}
                       target="_blank"
                       rel="noreferrer"
-                      className="inline-flex items-center gap-1 mt-1 text-[11px] text-purple-300 hover:text-accent underline decoration-dotted"
+                      className="inline-flex items-center gap-1 mt-1 text-[11px] text-purple-300 hover:text-primary underline decoration-dotted"
                     >
-                      Открыть описание класса «{hbMeta.labelRu}» на dnd.su ↗
+                      <span>Открыть описание класса «{hbMeta.labelRu}» на dnd.su</span>
+                      <ExternalLink className="w-3 h-3" />
                     </a>
                   )}
                   {matchedKey === 'custom' && (
