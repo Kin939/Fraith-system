@@ -74,10 +74,33 @@ jobs:
           git commit -m "chore(cdn): publish frontend assets for ${SHORT_SHA}"
           git tag -f "$TAG_NAME"
           git remote add origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
-          git push -f origin gh-pages
-          git push -f origin "$TAG_NAME"
+
+          # Пуш в gh-pages иногда падает на транзиентной сетевой ошибке —
+          # без тега cdn-<sha> RU-игроки остаются без пиннинга, поэтому ретраим.
+          push_retry() {
+            ref="$1"
+            attempt=1
+            while [ "$attempt" -le 4 ]; do
+              if git push -f origin "$ref"; then
+                return 0
+              fi
+              echo "::warning::git push ${ref} failed (attempt ${attempt}), retrying"
+              sleep $((attempt * 5))
+              attempt=$((attempt + 1))
+            done
+            echo "::error::git push ${ref} failed after retries"
+            return 1
+          }
+
+          push_retry "HEAD:refs/heads/gh-pages"
+          push_retry "refs/tags/${TAG_NAME}"
+
+          # Тег должен реально существовать на remote — иначе кэш jsDelivr
+          # никогда не закрепится на неизменяемой ревизии.
+          git ls-remote --tags origin "refs/tags/${TAG_NAME}" | grep -q "${TAG_NAME}"
 
           curl -fsS "https://purge.jsdelivr.net/gh/${GITHUB_REPOSITORY}@gh-pages/cdn-manifest.json" || true
+          curl -fsS "https://purge.jsdelivr.net/gh/${GITHUB_REPOSITORY}@${TAG_NAME}/cdn-manifest.json" || true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
