@@ -4,6 +4,7 @@ import { DEFAULT_ANIME_THEME, parseThemeJson } from './theme';
 import type {
   AuthUser,
   BestiaryCreature,
+  BestiaryCreatureDetail,
   CampaignNpc,
   CharacterProfile,
   ChatAttachment,
@@ -16,14 +17,15 @@ import type {
   ChatReplyPreview,
   CustomCampaignEmoji,
   DmManagedAccountInfo,
+  EntityNote,
   JournalEntry,
   LearnedSpellRecord,
   NextSessionBanner,
   NpcAttitude,
+  NoteEntityKind,
   PlayerId,
   PurchasedTalent,
   Quest,
-  QuestNote,
   QuestParameters,
   QuestStatus,
   RollLogEntry,
@@ -556,7 +558,7 @@ export async function listQuests(db: D1Database): Promise<Quest[]> {
   const { results } = await db
     .prepare(
       `SELECT q.*,
-              (SELECT COUNT(*) FROM quest_notes n WHERE n.quest_id = q.id) AS notes_count
+              (SELECT COUNT(*) FROM entity_notes n WHERE n.entity_type = 'quest' AND n.entity_id = q.id) AS notes_count
        FROM quests q
        ORDER BY q.is_important DESC,
        CASE q.status
@@ -571,12 +573,13 @@ export async function listQuests(db: D1Database): Promise<Quest[]> {
 }
 
 // ---------------------------------------------------------------------------
-// Quest notes — first-person party notes, visible to everyone at the table
+// Notes — first-person party notes for quests, NPCs and bestiary monsters
 // ---------------------------------------------------------------------------
 
-interface QuestNoteRow {
+interface EntityNoteRow {
   id: number;
-  quest_id: number;
+  entity_type: NoteEntityKind;
+  entity_id: number;
   author_user_id: number;
   body: string;
   created_at: string;
@@ -585,31 +588,37 @@ interface QuestNoteRow {
   role: UserRole;
   player_id: PlayerId | null;
   character_name: string | null;
+  avatar_key: string | null;
 }
 
 /** Hard cap so a single note can never bloat the campaign state */
-export const QUEST_NOTE_MAX_LENGTH = 2000;
+export const NOTE_MAX_LENGTH = 2000;
 
-export async function listQuestNotes(db: D1Database, questId: number): Promise<QuestNote[]> {
+export async function listEntityNotes(
+  db: D1Database,
+  kind: NoteEntityKind,
+  entityId: number
+): Promise<EntityNote[]> {
   const { results } = await db
     .prepare(
-      `SELECT n.id, n.quest_id, n.author_user_id, n.body, n.created_at, n.updated_at,
-              u.display_name, u.role, u.player_id,
+      `SELECT n.id, n.entity_type, n.entity_id, n.author_user_id, n.body, n.created_at, n.updated_at,
+              u.display_name, u.role, u.player_id, u.avatar_key,
               cp.character_name AS character_name
-       FROM quest_notes n
+       FROM entity_notes n
        JOIN users u ON u.id = n.author_user_id
        LEFT JOIN character_profiles cp ON cp.player_id = u.player_id
-       WHERE n.quest_id = ?
+       WHERE n.entity_type = ? AND n.entity_id = ?
        ORDER BY n.created_at ASC, n.id ASC`
     )
-    .bind(questId)
-    .all<QuestNoteRow>();
+    .bind(kind, entityId)
+    .all<EntityNoteRow>();
 
   const avatars = await loadAvatarIndex(db);
 
   return results.map((row) => ({
     id: row.id,
-    questId: row.quest_id,
+    kind: row.entity_type,
+    entityId: row.entity_id,
     authorId: row.author_user_id,
     authorName: row.display_name,
     authorRole: row.role,
@@ -625,49 +634,59 @@ export async function listQuestNotes(db: D1Database, questId: number): Promise<Q
   }));
 }
 
-export async function getQuestNoteAuthor(
+export async function getEntityNoteMeta(
   db: D1Database,
   noteId: number
-): Promise<{ id: number; questId: number; authorId: number } | null> {
+): Promise<{ id: number; kind: NoteEntityKind; entityId: number; authorId: number } | null> {
   const row = await db
-    .prepare(`SELECT id, quest_id, author_user_id FROM quest_notes WHERE id = ?`)
+    .prepare(
+      `SELECT id, entity_type, entity_id, author_user_id FROM entity_notes WHERE id = ?`
+    )
     .bind(noteId)
-    .first<{ id: number; quest_id: number; author_user_id: number }>();
+    .first<{
+      id: number;
+      entity_type: NoteEntityKind;
+      entity_id: number;
+      author_user_id: number;
+    }>();
   if (!row) return null;
-  return { id: row.id, questId: row.quest_id, authorId: row.author_user_id };
+  return {
+    id: row.id,
+    kind: row.entity_type,
+    entityId: row.entity_id,
+    authorId: row.author_user_id,
+  };
 }
 
-/** Quest ids are validated by the caller; the note body is trimmed & capped here. */
-export async function createQuestNote(
+export async function createEntityNote(
   db: D1Database,
-  questId: number,
+  kind: NoteEntityKind,
+  entityId: number,
   authorId: number,
   body: string
 ): Promise<void> {
   await db
     .prepare(
-      `INSERT INTO quest_notes (quest_id, author_user_id, body, created_at)
-       VALUES (?, ?, ?, datetime('now'))`
+      `INSERT INTO entity_notes (entity_type, entity_id, author_user_id, body, created_at)
+       VALUES (?, ?, ?, ?, datetime('now'))`
     )
-    .bind(questId, authorId, body.trim().slice(0, QUEST_NOTE_MAX_LENGTH))
+    .bind(kind, entityId, authorId, body.trim().slice(0, NOTE_MAX_LENGTH))
     .run();
 }
 
-export async function updateQuestNote(
+export async function updateEntityNote(
   db: D1Database,
   noteId: number,
   body: string
 ): Promise<void> {
   await db
-    .prepare(
-      `UPDATE quest_notes SET body = ?, updated_at = datetime('now') WHERE id = ?`
-    )
-    .bind(body.trim().slice(0, QUEST_NOTE_MAX_LENGTH), noteId)
+    .prepare(`UPDATE entity_notes SET body = ?, updated_at = datetime('now') WHERE id = ?`)
+    .bind(body.trim().slice(0, NOTE_MAX_LENGTH), noteId)
     .run();
 }
 
-export async function deleteQuestNote(db: D1Database, noteId: number): Promise<void> {
-  await db.prepare(`DELETE FROM quest_notes WHERE id = ?`).bind(noteId).run();
+export async function deleteEntityNote(db: D1Database, noteId: number): Promise<void> {
+  await db.prepare(`DELETE FROM entity_notes WHERE id = ?`).bind(noteId).run();
 }
 
 // ---------------------------------------------------------------------------
@@ -688,6 +707,7 @@ interface CampaignNpcRow {
   sort_order: number;
   created_at: string;
   updated_at: string | null;
+  notes_count?: number | null;
 }
 
 export const NPC_ATTITUDES: NpcAttitude[] = [
@@ -717,6 +737,7 @@ function mapNpcRow(row: CampaignNpcRow, isDm: boolean): CampaignNpc {
     imageKey: row.image_key,
     isRevealed: Boolean(row.is_revealed),
     sortOrder: row.sort_order,
+    notesCount: Number(row.notes_count ?? 0),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -731,8 +752,11 @@ export async function listNpcs(
 ): Promise<CampaignNpc[]> {
   const { results } = await db
     .prepare(
-      `SELECT * FROM campaign_npcs
-       ORDER BY is_revealed DESC, sort_order ASC, name ASC, id ASC`
+      `SELECT c.*,
+              (SELECT COUNT(*) FROM entity_notes n
+                WHERE n.entity_type = 'npc' AND n.entity_id = c.id) AS notes_count
+       FROM campaign_npcs c
+       ORDER BY c.is_revealed DESC, c.sort_order ASC, c.name ASC, c.id ASC`
     )
     .all<CampaignNpcRow>();
 
@@ -747,65 +771,230 @@ export async function getNpcById(
   npcId: number
 ): Promise<CampaignNpc | null> {
   const row = await db
-    .prepare(`SELECT * FROM campaign_npcs WHERE id = ?`)
+    .prepare(
+      `SELECT c.*,
+              (SELECT COUNT(*) FROM entity_notes n
+                WHERE n.entity_type = 'npc' AND n.entity_id = c.id) AS notes_count
+       FROM campaign_npcs c WHERE c.id = ?`
+    )
     .bind(npcId)
     .first<CampaignNpcRow>();
   return row ? mapNpcRow(row, true) : null;
 }
 
-interface BestiaryRow {
+interface BestiaryBaseRow {
   id: number;
   name: string;
+  name_en: string | null;
   cr: string;
   cr_numeric: number;
   creature_type: string;
+  size: string | null;
+  alignment: string | null;
   ac: number;
   hp: string;
-  description: string;
+  description: string | null;
   image_key: string | null;
   is_revealed: number;
   sort_order: number;
+  source_title: string | null;
+  source_url: string | null;
+  import_key: string | null;
+  is_compendium: number;
+  speed: string | null;
+  senses: string | null;
+  languages: string | null;
+  notes_count?: number | null;
 }
 
+function mapBestiarySummary(row: BestiaryBaseRow): BestiaryCreature {
+  return {
+    id: row.id,
+    name: row.name,
+    nameEn: row.name_en ?? '',
+    cr: row.cr,
+    crNumeric: row.cr_numeric,
+    creatureType: row.creature_type,
+    size: row.size ?? '',
+    alignment: row.alignment ?? '',
+    ac: row.ac,
+    hp: row.hp,
+    imageKey: row.image_key,
+    isRevealed: Boolean(row.is_revealed),
+    sortOrder: row.sort_order,
+    sourceTitle: row.source_title ?? '',
+    sourceUrl: row.source_url ?? '',
+    isCompendium: Boolean(row.is_compendium),
+    notesCount: Number(row.notes_count ?? 0),
+  };
+}
+
+/**
+ * Bestiary list for the grid. Story monsters and the dnd.su compendium share
+ * the same table; players only ever receive the ones the DM has revealed.
+ * Statblock text is intentionally excluded — it is loaded per creature.
+ */
 export async function listBestiary(
   db: D1Database,
   viewerRole: UserRole
 ): Promise<BestiaryCreature[]> {
+  const isDm = viewerRole === 'dm';
   const { results } = await db
-    .prepare(`SELECT * FROM bestiary ORDER BY cr_numeric ASC, sort_order ASC, id ASC`)
-    .all<BestiaryRow>();
+    .prepare(
+      `SELECT b.id, b.name, b.name_en, b.cr, b.cr_numeric, b.creature_type, b.size, b.alignment,
+              b.ac, b.hp, b.image_key, b.is_revealed, b.sort_order, b.source_title, b.source_url,
+              b.import_key, b.is_compendium, b.speed, b.senses, b.languages, b.description,
+              (SELECT COUNT(*) FROM entity_notes n
+                WHERE n.entity_type = 'creature' AND n.entity_id = b.id) AS notes_count
+       FROM bestiary b
+       ${isDm ? '' : 'WHERE b.is_revealed = 1'}
+       ORDER BY b.cr_numeric ASC, b.sort_order ASC, b.name ASC, b.id ASC`
+    )
+    .all<BestiaryBaseRow>();
 
-  return results.map((row) => {
-    const revealed = Boolean(row.is_revealed);
-    if (viewerRole !== 'dm' && !revealed) {
-      return {
-        id: row.id,
-        name: '???',
-        cr: '???',
-        crNumeric: row.cr_numeric,
-        creatureType: 'Неизвестная угроза',
-        ac: 0,
-        hp: '???',
-        description: 'Сразись с этим существом чтобы открыть его в бестиарии',
-        imageKey: null,
-        isRevealed: false,
-        sortOrder: row.sort_order,
-      };
-    }
-    return {
-      id: row.id,
-      name: row.name,
-      cr: row.cr,
-      crNumeric: row.cr_numeric,
-      creatureType: row.creature_type,
-      ac: row.ac,
-      hp: row.hp,
-      description: row.description,
-      imageKey: row.image_key,
-      isRevealed: revealed,
-      sortOrder: row.sort_order,
-    };
-  });
+  return results.map(mapBestiarySummary);
+}
+
+export async function getBestiaryCreature(
+  db: D1Database,
+  id: number,
+  viewerRole: UserRole
+): Promise<BestiaryCreatureDetail | null> {
+  const row = await db
+    .prepare(
+      `SELECT b.*,
+              (SELECT COUNT(*) FROM entity_notes n
+                WHERE n.entity_type = 'creature' AND n.entity_id = b.id) AS notes_count
+       FROM bestiary b WHERE b.id = ?`
+    )
+    .bind(id)
+    .first<BestiaryBaseRow>();
+
+  if (!row) return null;
+  if (viewerRole !== 'dm' && !row.is_revealed) return null;
+
+  return {
+    ...mapBestiarySummary(row),
+    description: row.description ?? '',
+    speed: row.speed ?? '',
+    senses: row.senses ?? '',
+    languages: row.languages ?? '',
+    importKey: row.import_key,
+  };
+}
+
+export async function getBestiaryImportStatus(
+  db: D1Database
+): Promise<{ total: number; compendium: number; revealed: number }> {
+  const row = await db
+    .prepare(
+      `SELECT COUNT(*) AS total,
+              SUM(CASE WHEN is_compendium = 1 THEN 1 ELSE 0 END) AS compendium,
+              SUM(CASE WHEN is_revealed = 1 THEN 1 ELSE 0 END) AS revealed
+       FROM bestiary`
+    )
+    .first<{ total: number; compendium: number | null; revealed: number | null }>();
+  return {
+    total: Number(row?.total ?? 0),
+    compendium: Number(row?.compendium ?? 0),
+    revealed: Number(row?.revealed ?? 0),
+  };
+}
+
+export interface CompendiumCreatureInput {
+  importKey: string;
+  name: string;
+  nameEn?: string;
+  cr?: string;
+  crNumeric?: number;
+  creatureType?: string;
+  size?: string;
+  alignment?: string;
+  ac?: number;
+  hp?: string;
+  speed?: string;
+  senses?: string;
+  languages?: string;
+  sourceTitle?: string;
+  sourceUrl?: string;
+  description?: string;
+  sortOrder?: number;
+}
+
+function clip(value: unknown, max: number): string {
+  return typeof value === 'string' ? value.trim().slice(0, max) : '';
+}
+
+function clampNumber(value: unknown, fallback: number, min: number, max: number): number {
+  const num = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(num)) return fallback;
+  return Math.min(max, Math.max(min, num));
+}
+
+/**
+ * Idempotent dnd.su compendium upsert. Matching on `import_key` means repeated
+ * imports never duplicate rows, and the DM's reveal flags and portraits survive
+ * re-imports (those columns are not touched by the update branch).
+ */
+export async function upsertCompendiumCreatures(
+  db: D1Database,
+  items: CompendiumCreatureInput[]
+): Promise<number> {
+  if (!items.length) return 0;
+
+  const statement = db.prepare(
+    `INSERT INTO bestiary
+       (name, name_en, cr, cr_numeric, creature_type, size, alignment, ac, hp, speed, senses,
+        languages, description, is_revealed, sort_order, source_title, source_url, import_key,
+        is_compendium)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, 1)
+     ON CONFLICT(import_key) DO UPDATE SET
+       name = excluded.name,
+       name_en = excluded.name_en,
+       cr = excluded.cr,
+       cr_numeric = excluded.cr_numeric,
+       creature_type = excluded.creature_type,
+       size = excluded.size,
+       alignment = excluded.alignment,
+       ac = excluded.ac,
+       hp = excluded.hp,
+       speed = excluded.speed,
+       senses = excluded.senses,
+       languages = excluded.languages,
+       description = excluded.description,
+       sort_order = excluded.sort_order,
+       source_title = excluded.source_title,
+       source_url = excluded.source_url,
+       is_compendium = 1`
+  );
+
+  const statements = items.map((item) =>
+    statement.bind(
+      clip(item.name, 160) || 'Безымянное существо',
+      clip(item.nameEn, 160),
+      clip(item.cr, 12) || '—',
+      clampNumber(item.crNumeric, 0, 0, 40),
+      clip(item.creatureType, 80) || 'Монстр',
+      clip(item.size, 40),
+      clip(item.alignment, 80),
+      Math.round(clampNumber(item.ac, 10, 0, 100)),
+      clip(item.hp, 80),
+      clip(item.speed, 200),
+      clip(item.senses, 300),
+      clip(item.languages, 300),
+      clip(item.description, 6000),
+      Math.round(clampNumber(item.sortOrder, 0, 0, 1_000_000)),
+      clip(item.sourceTitle, 160),
+      clip(item.sourceUrl, 500),
+      clip(item.importKey, 200)
+    )
+  );
+
+  // D1 batches cap out at 100 statements — stay well inside the limit
+  for (let i = 0; i < statements.length; i += 80) {
+    await db.batch(statements.slice(i, i + 80));
+  }
+  return statements.length;
 }
 
 export interface SpellRow {

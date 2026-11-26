@@ -159,6 +159,68 @@ async function ensureSpellsDndsuColumns(db: D1Database): Promise<void> {
   }
 }
 
+async function ensureBestiaryColumns(db: D1Database): Promise<void> {
+  const { results } = await db
+    .prepare(`PRAGMA table_info(bestiary)`)
+    .all<{ name: string }>();
+  const existingCols = new Set(results.map((r) => r.name));
+
+  const extraColumns: Array<[string, string]> = [
+    ['name_en', `TEXT NOT NULL DEFAULT ''`],
+    ['size', `TEXT NOT NULL DEFAULT ''`],
+    ['alignment', `TEXT NOT NULL DEFAULT ''`],
+    ['source_title', `TEXT NOT NULL DEFAULT ''`],
+    ['source_url', `TEXT NOT NULL DEFAULT ''`],
+    ['import_key', 'TEXT'],
+    ['is_compendium', `INTEGER NOT NULL DEFAULT 0`],
+    ['speed', `TEXT NOT NULL DEFAULT ''`],
+    ['senses', `TEXT NOT NULL DEFAULT ''`],
+    ['languages', `TEXT NOT NULL DEFAULT ''`],
+  ];
+
+  for (const [col, def] of extraColumns) {
+    if (!existingCols.has(col)) {
+      await db.prepare(`ALTER TABLE bestiary ADD COLUMN ${col} ${def}`).run();
+    }
+  }
+
+  await db
+    .prepare(
+      `CREATE UNIQUE INDEX IF NOT EXISTS idx_bestiary_import_key ON bestiary(import_key)`
+    )
+    .run();
+  await db
+    .prepare(`CREATE INDEX IF NOT EXISTS idx_bestiary_name ON bestiary(name ASC, name_en ASC)`)
+    .run();
+}
+
+/**
+ * One-time move of the old per-quest notes table into the generic entity_notes
+ * table so quest notes, NPC notes and bestiary notes share one store.
+ */
+async function migrateQuestNotesToEntityNotes(db: D1Database): Promise<void> {
+  const legacy = await db
+    .prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'quest_notes'`)
+    .first<{ name: string }>();
+  if (!legacy) return;
+
+  await db
+    .prepare(
+      `INSERT INTO entity_notes (entity_type, entity_id, author_user_id, body, created_at, updated_at)
+       SELECT 'quest', q.quest_id, q.author_user_id, q.body, q.created_at, q.updated_at
+       FROM quest_notes q
+       WHERE NOT EXISTS (
+         SELECT 1 FROM entity_notes e
+         WHERE e.entity_type = 'quest'
+           AND e.entity_id = q.quest_id
+           AND e.author_user_id = q.author_user_id
+           AND e.body = q.body
+           AND e.created_at = q.created_at
+       )`
+    )
+    .run();
+}
+
 async function runBootstrap(db: D1Database): Promise<void> {
   const schemaStatements = [
     `CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -236,15 +298,25 @@ async function runBootstrap(db: D1Database): Promise<void> {
     `CREATE TABLE IF NOT EXISTS bestiary (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
+      name_en TEXT NOT NULL DEFAULT '',
       cr TEXT NOT NULL DEFAULT '1',
       cr_numeric REAL NOT NULL DEFAULT 1.0,
       creature_type TEXT NOT NULL DEFAULT 'Чудовище',
+      size TEXT NOT NULL DEFAULT '',
+      alignment TEXT NOT NULL DEFAULT '',
       ac INTEGER NOT NULL DEFAULT 13,
       hp TEXT NOT NULL DEFAULT '22 (4d8 + 4)',
       description TEXT NOT NULL DEFAULT '',
       image_key TEXT,
       is_revealed INTEGER NOT NULL DEFAULT 0,
-      sort_order INTEGER NOT NULL DEFAULT 0
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      source_title TEXT NOT NULL DEFAULT '',
+      source_url TEXT NOT NULL DEFAULT '',
+      import_key TEXT,
+      is_compendium INTEGER NOT NULL DEFAULT 0,
+      speed TEXT NOT NULL DEFAULT '',
+      senses TEXT NOT NULL DEFAULT '',
+      languages TEXT NOT NULL DEFAULT ''
     )`,
     `CREATE INDEX IF NOT EXISTS idx_bestiary_cr ON bestiary(cr_numeric ASC, sort_order ASC, id ASC)`,
     `CREATE TABLE IF NOT EXISTS spells (
@@ -403,6 +475,16 @@ async function runBootstrap(db: D1Database): Promise<void> {
       updated_at TEXT
     )`,
     `CREATE INDEX IF NOT EXISTS idx_quest_notes_quest ON quest_notes(quest_id ASC, created_at ASC)`,
+    `CREATE TABLE IF NOT EXISTS entity_notes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      entity_type TEXT NOT NULL CHECK (entity_type IN ('quest', 'npc', 'creature')),
+      entity_id INTEGER NOT NULL,
+      author_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      body TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_entity_notes_entity ON entity_notes(entity_type ASC, entity_id ASC, created_at ASC)`,
     `CREATE TABLE IF NOT EXISTS campaign_npcs (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
@@ -428,6 +510,8 @@ async function runBootstrap(db: D1Database): Promise<void> {
   await ensureCharacterProfileColumns(db);
   await ensureSpellsDndsuColumns(db);
   await ensureLearnedSpellsColumns(db);
+  await ensureBestiaryColumns(db);
+  await migrateQuestNotesToEntityNotes(db);
 
   const existingUser = await db
     .prepare(`SELECT id FROM users LIMIT 1`)

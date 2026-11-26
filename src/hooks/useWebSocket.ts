@@ -10,10 +10,11 @@ import type {
   JournalEntry,
   LearnedSpellRecord,
   NextSessionBanner,
+  NoteEntityKind,
   PlayerId,
   PurchasedTalent,
+  EntityNote,
   Quest,
-  QuestNote,
   RollLogEntry,
   Spell,
   TalentNode,
@@ -77,10 +78,14 @@ export function useWebSocket() {
             }
             break;
           }
-          case 'quest_notes:updated': {
-            const p = msg.payload as { questId?: number; notes?: QuestNote[] };
-            if (typeof p?.questId === 'number' && Array.isArray(p.notes)) {
-              store.setQuestNotes(p.questId, p.notes);
+          case 'notes:updated': {
+            const p = msg.payload as {
+              kind?: NoteEntityKind;
+              entityId?: number;
+              notes?: EntityNote[];
+            };
+            if (p?.kind && typeof p.entityId === 'number' && Array.isArray(p.notes)) {
+              store.setEntityNotes(p.kind, p.entityId, p.notes);
             }
             break;
           }

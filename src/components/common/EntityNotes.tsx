@@ -2,14 +2,30 @@ import React, { useEffect, useState } from 'react';
 import { Check, Pencil, Send, Trash2, X } from 'lucide-react';
 import { apiFetch } from '../../lib/api';
 import { useCampaignStore } from '../../lib/store';
-import type { QuestNote } from '../../lib/types';
-import { PlayerAvatar } from '../common/PlayerAvatar';
+import type { EntityNote, NoteEntityKind } from '../../lib/types';
+import { PlayerAvatar } from './PlayerAvatar';
 
-interface QuestNotesProps {
-  questId: number;
+interface EntityNotesProps {
+  kind: NoteEntityKind;
+  entityId: number;
+  /** Hide the section header when the host card already renders one */
+  hideHeader?: boolean;
+  className?: string;
 }
 
 const NOTE_MAX_LENGTH = 2000;
+
+const COLLECTION: Record<NoteEntityKind, string> = {
+  quest: 'quests',
+  npc: 'npcs',
+  creature: 'bestiary',
+};
+
+const ENTITY_LABEL: Record<NoteEntityKind, string> = {
+  quest: 'квесту',
+  npc: 'этому НПС',
+  creature: 'этому существу',
+};
 
 function parseSqliteUtcDate(raw: string): Date {
   if (!raw) return new Date();
@@ -34,13 +50,22 @@ function formatNoteDate(raw: string): string {
 }
 
 /**
- * Party notes on a quest: every member of the table writes in their own name
- * and everyone sees the note. Real-time synced through the campaign socket.
+ * Party notes for quests, NPCs and bestiary monsters. Every note is written in
+ * first person by a member of the table, so each entry always shows *whose*
+ * face and name it was written from (player character or DM).
+ * Real-time synced through the campaign socket.
  */
-export const QuestNotes: React.FC<QuestNotesProps> = ({ questId }) => {
+export const EntityNotes: React.FC<EntityNotesProps> = ({
+  kind,
+  entityId,
+  hideHeader = false,
+  className = '',
+}) => {
   const user = useCampaignStore((s) => s.user);
-  const notes = useCampaignStore((s) => s.questNotes[questId]);
-  const setQuestNotes = useCampaignStore((s) => s.setQuestNotes);
+  const storeKey = `${kind}:${entityId}`;
+  const notes = useCampaignStore((s) => s.entityNotes[storeKey]);
+  const setEntityNotes = useCampaignStore((s) => s.setEntityNotes);
+  const charactersById = useCampaignStore((s) => s.charactersById);
   const pushToast = useCampaignStore((s) => s.pushToast);
 
   const [loading, setLoading] = useState(false);
@@ -50,15 +75,17 @@ export const QuestNotes: React.FC<QuestNotesProps> = ({ questId }) => {
   const [editDraft, setEditDraft] = useState('');
   const [busyId, setBusyId] = useState<number | null>(null);
 
+  const collection = COLLECTION[kind];
+
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    apiFetch<{ notes: QuestNote[] }>(`/api/quests/${questId}/notes`)
+    apiFetch<{ notes: EntityNote[] }>(`/api/${collection}/${entityId}/notes`)
       .then((res) => {
-        if (!cancelled) setQuestNotes(questId, res.notes);
+        if (!cancelled) setEntityNotes(kind, entityId, res.notes);
       })
       .catch(() => {
-        if (!cancelled) setQuestNotes(questId, []);
+        if (!cancelled) setEntityNotes(kind, entityId, []);
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -66,25 +93,31 @@ export const QuestNotes: React.FC<QuestNotesProps> = ({ questId }) => {
     return () => {
       cancelled = true;
     };
-  }, [questId, setQuestNotes]);
+  }, [collection, entityId, kind, setEntityNotes]);
 
   const isDm = user?.role === 'dm';
   const list = notes ?? [];
+
+  const ownCharacterName =
+    user?.role === 'player' && user.playerId ? charactersById[user.playerId]?.characterName : null;
+  const ownAvatarUrl = user?.avatarUrl ?? null;
+  const speakingAs =
+    user?.role === 'dm' ? 'Мастер' : ownCharacterName || user?.displayName || 'Персонаж';
 
   const handleSubmit = async () => {
     const text = draft.trim();
     if (!text || sending) return;
     setSending(true);
     try {
-      const res = await apiFetch<{ notes: QuestNote[] }>(`/api/quests/${questId}/notes`, {
-        method: 'POST',
-        body: JSON.stringify({ body: text }),
-      });
-      setQuestNotes(questId, res.notes);
+      const res = await apiFetch<{ notes: EntityNote[] }>(
+        `/api/${collection}/${entityId}/notes`,
+        { method: 'POST', body: JSON.stringify({ body: text }) }
+      );
+      setEntityNotes(kind, entityId, res.notes);
       setDraft('');
       pushToast({
         title: 'Заметка добавлена',
-        message: 'Её увидят все участники стола',
+        message: `От лица: ${speakingAs}. Её увидят все участники стола`,
         variant: 'success',
       });
     } catch (err) {
@@ -98,16 +131,16 @@ export const QuestNotes: React.FC<QuestNotesProps> = ({ questId }) => {
     }
   };
 
-  const handleSaveEdit = async (note: QuestNote) => {
+  const handleSaveEdit = async (note: EntityNote) => {
     const text = editDraft.trim();
     if (!text || busyId !== null) return;
     setBusyId(note.id);
     try {
-      const res = await apiFetch<{ notes: QuestNote[] }>(
-        `/api/quests/${questId}/notes/${note.id}`,
-        { method: 'PUT', body: JSON.stringify({ body: text }) }
-      );
-      setQuestNotes(questId, res.notes);
+      const res = await apiFetch<{ notes: EntityNote[] }>(`/api/notes/${note.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ body: text }),
+      });
+      setEntityNotes(kind, entityId, res.notes);
       setEditingId(null);
       setEditDraft('');
     } catch (err) {
@@ -121,16 +154,15 @@ export const QuestNotes: React.FC<QuestNotesProps> = ({ questId }) => {
     }
   };
 
-  const handleDelete = async (note: QuestNote) => {
+  const handleDelete = async (note: EntityNote) => {
     if (busyId !== null) return;
     if (!window.confirm('Удалить эту заметку? Её больше не увидят участники стола.')) return;
     setBusyId(note.id);
     try {
-      const res = await apiFetch<{ notes: QuestNote[] }>(
-        `/api/quests/${questId}/notes/${note.id}`,
-        { method: 'DELETE' }
-      );
-      setQuestNotes(questId, res.notes);
+      const res = await apiFetch<{ notes: EntityNote[] }>(`/api/notes/${note.id}`, {
+        method: 'DELETE',
+      });
+      setEntityNotes(kind, entityId, res.notes);
       if (editingId === note.id) setEditingId(null);
     } catch (err) {
       pushToast({
@@ -144,16 +176,18 @@ export const QuestNotes: React.FC<QuestNotesProps> = ({ questId }) => {
   };
 
   return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between gap-2">
-        <div className="text-xs text-muted">
-          Заметки отряда
-          {list.length > 0 && (
-            <span className="font-mono text-secondary tabular-nums ml-1.5">· {list.length}</span>
-          )}
+    <div className={`space-y-3 ${className}`}>
+      {!hideHeader && (
+        <div className="flex items-center justify-between gap-2">
+          <div className="text-xs text-muted">
+            Заметки отряда
+            {list.length > 0 && (
+              <span className="font-mono text-secondary tabular-nums ml-1.5">· {list.length}</span>
+            )}
+          </div>
+          <div className="text-[11px] text-muted">Видны всем за столом</div>
         </div>
-        <div className="text-[11px] text-muted">Видны всем за столом</div>
-      </div>
+      )}
 
       {loading && list.length === 0 ? (
         <div className="text-xs text-muted">Загрузка заметок…</div>
@@ -173,9 +207,9 @@ export const QuestNotes: React.FC<QuestNotesProps> = ({ questId }) => {
             const subLabel =
               note.authorRole === 'player'
                 ? note.authorCharacterName
-                  ? note.authorName
-                  : 'Игрок'
-                : 'Мастер кампании';
+                  ? `игрок ${note.authorName}`
+                  : 'игрок'
+                : 'мастер кампании';
 
             return (
               <div
@@ -198,7 +232,8 @@ export const QuestNotes: React.FC<QuestNotesProps> = ({ questId }) => {
                     <div className="min-w-0">
                       <div className="text-xs font-medium text-text truncate">{authorLabel}</div>
                       <div className="text-[11px] text-muted truncate">
-                        {subLabel} · {formatNoteDate(note.updatedAt || note.createdAt)}
+                        от лица {note.authorRole === 'player' ? 'персонажа' : 'мастера'} · {subLabel}{' '}
+                        · {formatNoteDate(note.updatedAt || note.createdAt)}
                         {note.updatedAt ? ' · изменено' : ''}
                       </div>
                     </div>
@@ -272,8 +307,25 @@ export const QuestNotes: React.FC<QuestNotesProps> = ({ questId }) => {
         </div>
       )}
 
-      {/* Composer */}
+      {/* Composer — always shows which face the note will be written from */}
       <div className="p-3 bg-bg border border-border space-y-2">
+        <div className="flex items-center gap-2 text-[11px] text-muted">
+          <PlayerAvatar
+            avatarUrl={ownAvatarUrl}
+            displayName={speakingAs}
+            role={user?.role ?? 'player'}
+            playerId={user?.playerId ?? null}
+            size="xs"
+            showRoleBadge={false}
+          />
+          <span className="min-w-0 truncate">
+            Заметка от лица:{' '}
+            <span className="text-text font-medium">{speakingAs}</span>
+            {user?.role === 'player' && (
+              <span className="text-muted"> · игрок {user.displayName}</span>
+            )}
+          </span>
+        </div>
         <textarea
           value={draft}
           onChange={(e) => setDraft(e.target.value.slice(0, NOTE_MAX_LENGTH))}
@@ -286,7 +338,7 @@ export const QuestNotes: React.FC<QuestNotesProps> = ({ questId }) => {
           rows={2}
           placeholder={
             isDm
-              ? 'Заметка мастера: уточнение, подсказка, деталь сцены…'
+              ? `Заметка мастера к ${ENTITY_LABEL[kind]}: уточнение, подсказка, деталь сцены…`
               : 'Заметка от лица персонажа: что он думает, заметил или обещал…'
           }
           className="w-full bg-surface border border-border p-2.5 text-xs text-text placeholder:text-muted resize-y outline-none focus:border-primary/60"
