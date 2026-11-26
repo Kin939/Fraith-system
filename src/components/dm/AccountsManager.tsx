@@ -178,8 +178,8 @@ export const AccountsManager: React.FC = () => {
               <KeyRound className="w-4 h-4" />
             </div>
             <div>
-              <h2 className="font-anime font-bold text-base">
-                Индивидуальные пароли игроков (хранятся только у Мастера)
+              <h2 className="font-anime font-bold text-base uppercase">
+                // Индивидуальные пароли игроков (хранятся только у Мастера)
               </h2>
               <p className="text-xs text-muted">
                 У каждого игрока свой отдельный логин и пароль. Отправьте каждому игроку его пару для входа.
@@ -354,8 +354,8 @@ export const AccountsManager: React.FC = () => {
             <Crown className="w-4 h-4" />
           </div>
           <div>
-            <h3 className="font-anime font-bold text-sm flex items-center gap-2">
-              <span>Защита аккаунта Мастера (`dm`)</span>
+            <h3 className="font-anime font-bold text-sm uppercase flex items-center gap-2 flex-wrap">
+              <span>// Защита аккаунта Мастера (`dm`)</span>
               <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/40 text-emerald-300">
                 <ShieldCheck className="w-3 h-3" />
                 Защищено bcrypt + версией сессии

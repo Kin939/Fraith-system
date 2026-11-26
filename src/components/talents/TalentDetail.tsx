@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { CheckCircle2, Lock, Pencil, Sparkles, Unlock, X } from 'lucide-react';
+import { Check, CheckCircle2, Lock, Pencil, Unlock, X } from 'lucide-react';
+import { HudIcon } from '../common/HudIcon';
 import { apiFetch } from '../../lib/api';
 import { resolveImageUrl } from '../../lib/artwork';
 import { useCampaignStore } from '../../lib/store';
@@ -47,7 +48,7 @@ export const TalentDetail: React.FC<TalentDetailProps> = ({
       setTalentsBundle(res);
       pushToast({
         title: `Талант «${node.title}» открыт для группы!`,
-        message: `Списано ${node.cost} ✦ из общего пула вдохновений.`,
+        message: `Списано ${node.cost} из общего пула вдохновений.`,
         variant: 'success',
       });
       onClose();
@@ -95,32 +96,32 @@ export const TalentDetail: React.FC<TalentDetailProps> = ({
   return (
     <div
       onClick={onClose}
-      className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4"
+      className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="glass-panel neon-border rounded-3xl max-w-md w-full p-6 space-y-5"
+        className="glass-panel neon-border hud-corners hud-cut max-w-md w-full p-6 space-y-5"
       >
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-3.5">
             <img
-              src={resolveImageUrl(node.imageKey, '✦')}
+              src={resolveImageUrl(node.imageKey, 'spark')}
               alt={node.title}
-              className="w-16 h-16 rounded-2xl object-cover border border-primary"
+              className="w-16 h-16 object-cover border border-primary bg-[#070B14]"
             />
             <div>
-              <div className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-0.5 rounded-lg bg-accent/20 text-accent border border-accent/40">
-                <Sparkles className="w-3.5 h-3.5" />
-                Стоимость: {node.cost} ✦
+              <div className="inline-flex items-center gap-1.5 font-mono text-xs font-bold px-2.5 py-0.5 bg-primary/15 text-primary border border-primary/50 tabular-nums">
+                <HudIcon asset="spark" size="xs" />
+                <span>COST // {node.cost}</span>
               </div>
-              <h3 className="font-anime font-extrabold text-xl mt-1">{node.title}</h3>
+              <h3 className="font-anime font-extrabold text-xl uppercase mt-1">{node.title}</h3>
             </div>
           </div>
 
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 rounded-xl border border-border text-muted hover:text-text"
+            className="p-1.5 border border-primary/30 text-muted hover:text-text"
           >
             <X className="w-4 h-4" />
           </button>
@@ -132,26 +133,27 @@ export const TalentDetail: React.FC<TalentDetailProps> = ({
         />
 
         {parentNode && (
-          <div className="p-3 rounded-2xl bg-bg/60 border border-border text-xs flex items-center justify-between">
-            <span className="text-muted">Требуемый предыдущий талант:</span>
+          <div className="p-3 bg-[#070B14]/80 border border-primary/25 text-xs flex items-center justify-between gap-2">
+            <span className="text-muted">Требуемый узел:</span>
             <span
-              className={`font-semibold ${
+              className={`font-semibold inline-flex items-center gap-1 ${
                 parentNode.isUnlocked ? 'text-emerald-300' : 'text-primary'
               }`}
             >
-              {parentNode.title} {parentNode.isUnlocked ? '✓' : ''}
+              <span>{parentNode.title}</span>
+              {parentNode.isUnlocked && <Check className="w-3.5 h-3.5" />}
             </span>
           </div>
         )}
 
         {/* Shared Party Action */}
         {isUnlocked ? (
-          <div className="w-full py-3 rounded-2xl bg-emerald-500/15 border border-emerald-500/40 text-emerald-300 text-xs font-bold flex items-center justify-center gap-2">
+          <div className="w-full py-3 bg-primary/15 border border-primary text-primary font-mono text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2">
             <CheckCircle2 className="w-4 h-4" />
             <span>Талант открыт для всей группы</span>
           </div>
         ) : !prerequisiteMet ? (
-          <div className="w-full py-3 rounded-2xl bg-amber-500/15 border border-amber-500/40 text-amber-200 text-xs font-semibold flex items-center justify-center gap-2">
+          <div className="w-full py-3 bg-amber-500/15 border border-amber-500/40 text-amber-200 text-xs font-semibold flex items-center justify-center gap-2">
             <Lock className="w-4 h-4" />
             <span>Сначала откройте «{parentNode?.title}»</span>
           </div>
@@ -160,22 +162,21 @@ export const TalentDetail: React.FC<TalentDetailProps> = ({
             type="button"
             disabled={buying || !enoughPoints}
             onClick={() => void handleUnlockForParty()}
-            className="anime-btn-primary w-full py-3 text-sm flex items-center justify-center gap-2"
+            className="anime-btn-primary w-full py-3 text-xs flex items-center justify-center gap-2"
           >
-            <Sparkles className="w-4 h-4" />
+            <HudIcon asset="spark" size="xs" />
             <span>
               {buying
-                ? 'Открытие...'
+                ? 'Активация...'
                 : enoughPoints
-                  ? `Открыть для всей группы за ${node.cost} ✦`
-                  : `Не хватает вдохновений (${inspirationPoints} / ${node.cost} ✦)`}
+                  ? `Открыть для всей группы (${node.cost})`
+                  : `Не хватает вдохновений (${inspirationPoints}/${node.cost})`}
             </span>
           </button>
         )}
 
-        {/* Optional DM Quick Controls */}
         {isDm && (
-          <div className="pt-3 border-t border-border flex items-center justify-between gap-2">
+          <div className="pt-3 border-t border-primary/25 flex items-center justify-between gap-2">
             {onEditNode && (
               <button
                 type="button"
@@ -184,7 +185,7 @@ export const TalentDetail: React.FC<TalentDetailProps> = ({
                   onClose();
                   onEditNode(target);
                 }}
-                className="flex-1 py-2 px-3 rounded-xl bg-surface border border-border hover:border-primary text-xs font-semibold text-muted hover:text-text inline-flex items-center justify-center gap-1.5 transition-colors"
+                className="flex-1 py-2 px-3 bg-[#070B14] border border-primary/30 hover:border-primary text-xs font-semibold text-muted hover:text-text inline-flex items-center justify-center gap-1.5 transition-colors"
               >
                 <Pencil className="w-3.5 h-3.5 text-primary" />
                 <span>Изменить</span>
@@ -195,8 +196,7 @@ export const TalentDetail: React.FC<TalentDetailProps> = ({
               type="button"
               disabled={togglingDm}
               onClick={() => void handleDmToggleUnlock()}
-              className="flex-1 py-2 px-3 rounded-xl bg-surface border border-border hover:border-accent text-xs font-semibold text-muted hover:text-accent inline-flex items-center justify-center gap-1.5 transition-colors"
-              title="Открыть или закрыть талант для группы без списания вдохновений"
+              className="flex-1 py-2 px-3 bg-[#070B14] border border-primary/30 hover:border-primary text-xs font-semibold text-muted hover:text-primary inline-flex items-center justify-center gap-1.5 transition-colors"
             >
               {isUnlocked ? <Lock className="w-3.5 h-3.5" /> : <Unlock className="w-3.5 h-3.5" />}
               <span>{isUnlocked ? 'Закрыть (DM)' : 'Открыть бесплатно'}</span>

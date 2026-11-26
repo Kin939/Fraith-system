@@ -92,7 +92,7 @@ export const SCHOOL_META_LIST: SchoolMeta[] = [
     short: 'Вопл',
     color: '#fb7185',
     bg: 'rgba(251, 113, 133, 0.16)',
-    glyph: '✦',
+    glyph: 'flame',
   },
   {
     id: 2,
@@ -100,7 +100,7 @@ export const SCHOOL_META_LIST: SchoolMeta[] = [
     short: 'Выз',
     color: '#fbbf24',
     bg: 'rgba(251, 191, 36, 0.16)',
-    glyph: '◈',
+    glyph: 'spark',
   },
   {
     id: 3,
@@ -108,7 +108,7 @@ export const SCHOOL_META_LIST: SchoolMeta[] = [
     short: 'Илл',
     color: '#c084fc',
     bg: 'rgba(192, 132, 252, 0.16)',
-    glyph: '◐',
+    glyph: 'orb',
   },
   {
     id: 4,
@@ -116,7 +116,7 @@ export const SCHOOL_META_LIST: SchoolMeta[] = [
     short: 'Некр',
     color: '#34d399',
     bg: 'rgba(52, 211, 153, 0.16)',
-    glyph: '☠',
+    glyph: 'skull',
   },
   {
     id: 5,
@@ -124,7 +124,7 @@ export const SCHOOL_META_LIST: SchoolMeta[] = [
     short: 'Огр',
     color: '#38bdf8',
     bg: 'rgba(56, 189, 248, 0.16)',
-    glyph: '⛨',
+    glyph: 'shield',
   },
   {
     id: 6,
@@ -132,7 +132,7 @@ export const SCHOOL_META_LIST: SchoolMeta[] = [
     short: 'Очар',
     color: '#f472b6',
     bg: 'rgba(244, 114, 182, 0.16)',
-    glyph: '❖',
+    glyph: 'crown',
   },
   {
     id: 7,
@@ -140,7 +140,7 @@ export const SCHOOL_META_LIST: SchoolMeta[] = [
     short: 'Преоб',
     color: '#2dd4bf',
     bg: 'rgba(45, 212, 191, 0.16)',
-    glyph: '❂',
+    glyph: 'bolt',
   },
   {
     id: 8,
@@ -148,7 +148,7 @@ export const SCHOOL_META_LIST: SchoolMeta[] = [
     short: 'Прор',
     color: '#818cf8',
     bg: 'rgba(129, 140, 248, 0.16)',
-    glyph: '◉',
+    glyph: 'orb',
   },
 ];
 
@@ -165,7 +165,7 @@ export function getSchoolMeta(schoolRaw: string): SchoolMeta {
       short: ru.slice(0, 4),
       color: 'var(--primary)',
       bg: 'color-mix(in srgb, var(--primary) 18%, transparent)',
-      glyph: '✦',
+      glyph: 'spark',
     }
   );
 }

@@ -204,8 +204,8 @@ export const BestiaryEditor: React.FC = () => {
         onSubmit={handleSubmit}
         className="xl:col-span-7 glass-panel rounded-3xl p-5 space-y-4"
       >
-        <h4 className="font-anime font-bold text-base">
-          {editingId ? `Редактирование существа #${editingId}` : 'Новое существо бестиария'}
+        <h4 className="font-anime font-bold text-base uppercase">
+          // {editingId ? `Редактирование существа #${editingId}` : 'Новое существо бестиария'}
         </h4>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -285,7 +285,7 @@ export const BestiaryEditor: React.FC = () => {
 
         <div className="flex flex-wrap items-center gap-3 p-3 rounded-2xl bg-bg/60 border border-border">
           <img
-            src={resolveImageUrl(imageKey, '🐉')}
+            src={resolveImageUrl(imageKey, 'dragon')}
             alt="Портрет"
             className="w-16 h-16 rounded-full object-cover border border-primary"
           />

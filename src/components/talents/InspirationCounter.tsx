@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
-import { Minus, Plus, Sparkles } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { Minus, Plus } from 'lucide-react';
+import { HudIcon } from '../common/HudIcon';
 import { apiFetch } from '../../lib/api';
 import { useCampaignStore } from '../../lib/store';
 import type { PurchasedTalent, TalentNode } from '../../lib/types';
@@ -13,6 +14,17 @@ export const InspirationCounter: React.FC<InspirationCounterProps> = ({ points, 
   const setTalentsBundle = useCampaignStore((s) => s.setTalentsBundle);
   const pushToast = useCampaignStore((s) => s.pushToast);
   const [busy, setBusy] = useState(false);
+  const [pulsing, setPulsing] = useState(false);
+  const prevPointsRef = useRef(points);
+
+  useEffect(() => {
+    if (prevPointsRef.current !== points) {
+      prevPointsRef.current = points;
+      setPulsing(true);
+      const timer = window.setTimeout(() => setPulsing(false), 420);
+      return () => window.clearTimeout(timer);
+    }
+  }, [points]);
 
   const adjustPoints = async (delta: number) => {
     setBusy(true);
@@ -27,8 +39,8 @@ export const InspirationCounter: React.FC<InspirationCounterProps> = ({ points, 
       });
       setTalentsBundle(res);
       pushToast({
-        title: delta > 0 ? `+${delta} Вдохновения группе!` : `${delta} Вдохновения`,
-        message: `Текущий общий пул вдохновений: ${res.inspirationPoints} ✦`,
+        title: delta > 0 ? `+${delta} Вдохновения группе` : `${delta} Вдохновения`,
+        message: `Общий пул вдохновений отряда: ${res.inspirationPoints}`,
         variant: 'info',
       });
     } finally {
@@ -37,19 +49,31 @@ export const InspirationCounter: React.FC<InspirationCounterProps> = ({ points, 
   };
 
   return (
-    <div className="glass-panel neon-border rounded-3xl p-5 flex flex-wrap items-center justify-between gap-4">
+    <div
+      className={`glass-panel neon-border hud-corners hud-cut p-5 flex flex-wrap items-center justify-between gap-4 ${
+        pulsing ? 'hud-pulse-once' : ''
+      }`}
+    >
       <div className="flex items-center gap-4">
-        <div className="w-14 h-14 rounded-2xl anime-btn-primary flex items-center justify-center shadow-neon">
-          <Sparkles className="w-7 h-7 text-white" />
+        <div className="w-16 h-16 bg-[#070B14] border border-primary/60 shadow-rim flex items-center justify-center shrink-0">
+          <HudIcon asset="spark" size="xl" />
         </div>
         <div>
-          <div className="text-xs uppercase tracking-widest text-accent font-bold">
-            Общие вдохновения
+          <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-primary font-bold">
+            PARTY RESONANCE // ОБЩИЕ ВДОХНОВЕНИЯ
           </div>
-          <div className="flex items-baseline gap-2 mt-0.5">
-            <span className="font-anime font-extrabold text-3xl text-text">{points}</span>
+          <div className="flex items-baseline gap-3 mt-1 flex-wrap">
+            <span
+              className={`font-mono font-extrabold text-4xl leading-none tabular-nums transition-all duration-200 ${
+                pulsing
+                  ? 'text-primary drop-shadow-[0_0_18px_var(--primary)] scale-105'
+                  : 'text-text drop-shadow-[0_0_10px_var(--glow)]'
+              }`}
+            >
+              {String(points).padStart(2, '0')}
+            </span>
             <span className="text-xs text-muted">
-              очков доступно без верхнего лимита • открывает общие таланты для всей группы
+              очков доступно отряду • открывает узлы дерева талантов для всей группы
             </span>
           </div>
         </div>
@@ -57,12 +81,14 @@ export const InspirationCounter: React.FC<InspirationCounterProps> = ({ points, 
 
       {isDm && (
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-xs text-muted mr-1">Выдать (DM):</span>
+          <span className="font-mono text-[10px] uppercase tracking-widest text-muted mr-1">
+            DM GRANT //
+          </span>
           <button
             type="button"
             disabled={busy || points === 0}
             onClick={() => adjustPoints(-1)}
-            className="px-3 py-2 rounded-xl border border-border bg-bg/70 hover:border-rose-400 text-xs font-bold inline-flex items-center gap-1"
+            className="px-3 py-2 border border-primary/30 bg-[#070B14] hover:border-rose-400 text-xs font-mono font-bold inline-flex items-center gap-1 tabular-nums"
           >
             <Minus className="w-3.5 h-3.5" />1
           </button>
@@ -70,25 +96,29 @@ export const InspirationCounter: React.FC<InspirationCounterProps> = ({ points, 
             type="button"
             disabled={busy}
             onClick={() => adjustPoints(1)}
-            className="anime-btn-primary px-3.5 py-2 text-xs inline-flex items-center gap-1"
+            className="anime-btn-primary px-3.5 py-2 text-xs font-mono inline-flex items-center gap-1.5 tabular-nums"
           >
-            <Plus className="w-3.5 h-3.5" />1 ✦
+            <Plus className="w-3.5 h-3.5" />
+            <span>1</span>
+            <HudIcon asset="spark" size="xs" />
           </button>
           <button
             type="button"
             disabled={busy}
             onClick={() => adjustPoints(3)}
-            className="px-3.5 py-2 rounded-xl bg-accent/20 text-accent border border-accent/40 hover:bg-accent/30 text-xs font-bold"
+            className="hud-btn-secondary px-3.5 py-2 text-xs font-mono font-bold inline-flex items-center gap-1 tabular-nums"
           >
-            +3 ✦
+            <span>+3</span>
+            <HudIcon asset="spark" size="xs" />
           </button>
           <button
             type="button"
             disabled={busy}
             onClick={() => adjustPoints(5)}
-            className="px-3.5 py-2 rounded-xl bg-primary/20 text-primary border border-primary/40 hover:bg-primary/30 text-xs font-bold"
+            className="px-3.5 py-2 bg-primary/15 text-primary border border-primary/50 hover:bg-primary/25 text-xs font-mono font-bold inline-flex items-center gap-1 tabular-nums"
           >
-            +5 ✦
+            <span>+5</span>
+            <HudIcon asset="spark" size="xs" />
           </button>
         </div>
       )}

@@ -44,7 +44,7 @@ export const TabBar: React.FC<TabBarProps> = ({ onLogout }) => {
   }
 
   return (
-    <header className="lg:hidden sticky top-0 z-30 glass-panel border-b border-border px-3 py-2.5 space-y-2">
+    <header className="lg:hidden sticky top-0 z-30 glass-panel hud-corners border-b border-primary/35 px-3 py-2.5 space-y-2">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <img
@@ -55,28 +55,31 @@ export const TabBar: React.FC<TabBarProps> = ({ onLogout }) => {
               }
             }}
             alt="FRAITH.SYS"
-            className="w-6 h-6 rounded-lg object-cover border border-primary/40"
+            className="w-6 h-6 object-cover border border-primary/50"
           />
-          <span className="font-anime font-extrabold text-base tracking-wide">
+          <span className="font-anime font-extrabold text-sm tracking-wider">
             FRAITH<span className="text-primary">.SYS</span>
           </span>
           <span
-            className={`inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border ${
+            className={`inline-flex items-center gap-1 font-mono text-[10px] px-1.5 py-0.5 border ${
               wsConnected
-                ? 'border-emerald-500/40 text-emerald-300 bg-emerald-500/10'
-                : 'border-amber-500/40 text-amber-300 bg-amber-500/10'
+                ? 'border-emerald-400/50 text-emerald-300 bg-emerald-500/10'
+                : 'border-amber-400/50 text-amber-300 bg-amber-500/10'
             }`}
           >
             {wsConnected ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}
-            WS
+            LIVE
           </span>
         </div>
 
         <div className="flex items-center gap-2">
-          <span className="text-xs text-muted truncate max-w-[140px]">{user.displayName}</span>
+          <span className="font-mono text-[11px] text-muted truncate max-w-[130px]">
+            {user.displayName}
+          </span>
           <button
+            type="button"
             onClick={onLogout}
-            className="p-1.5 rounded-lg border border-border text-muted hover:text-rose-300"
+            className="p-1.5 border border-primary/30 bg-[#070B14]/80 text-muted hover:text-rose-300"
             title="Выйти"
           >
             <LogOut className="w-4 h-4" />
@@ -90,14 +93,15 @@ export const TabBar: React.FC<TabBarProps> = ({ onLogout }) => {
           return (
             <button
               key={tab.id}
+              type="button"
               onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium whitespace-nowrap transition-all ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-anime uppercase tracking-wider whitespace-nowrap transition-all border ${
                 active
-                  ? 'bg-primary/25 text-text neon-border'
-                  : 'bg-bg/50 text-muted border border-border/60'
+                  ? 'bg-primary/15 text-text border-primary/60 border-b-2 border-b-primary shadow-[0_8px_18px_-8px_var(--primary)] font-bold'
+                  : 'bg-[#070B14]/65 text-muted border-primary/20'
               }`}
             >
-              {tab.icon}
+              <span className={active ? 'text-primary' : 'text-muted'}>{tab.icon}</span>
               <span>{tab.label}</span>
             </button>
           );

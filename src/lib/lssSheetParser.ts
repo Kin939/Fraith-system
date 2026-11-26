@@ -556,7 +556,7 @@ function extractInlineText(
       unknown
     >;
     const label = asStr(attrs.label) || asStr(attrs.formula) || asStr(attrs.expr) || asStr(r.text);
-    return label ? `[🎲 ${label}]` : '';
+    return label ? `[roll: ${label}]` : '';
   }
   if (type === 'resource') {
     onResourceRef?.();
@@ -567,7 +567,7 @@ function extractInlineText(
     const id = asStr(attrs.id);
     const res = id ? resourcesMap[id] : undefined;
     if (res) {
-      return `[⚡ ${res.name}: ${res.current}/${res.max}]`;
+      return `[res: ${res.name}: ${res.current}/${res.max}]`;
     }
     return '';
   }
@@ -700,7 +700,7 @@ function inlineLineToProseMirrorNodes(
 ): Array<Record<string, unknown>> {
   if (!line) return [];
   const TOKEN_RE =
-    /(\*\*\*([^\n]+?)\*\*\*|\*\*([^\n]+?)\*\*|__([^\n]+?)__|~~([^\n]+?)~~|\*([^\n*]+?)\*|`([^\n`]+?)`|\[🎲\s*([^\]]+?)\])/g;
+    /(\*\*\*([^\n]+?)\*\*\*|\*\*([^\n]+?)\*\*|__([^\n]+?)__|~~([^\n]+?)~~|\*([^\n*]+?)\*|`([^\n`]+?)`|\[(?:roll:|\u{1F3B2})\s*([^\]]+?)\])/gu;
 
   const out: Array<Record<string, unknown>> = [];
   let lastIndex = 0;
@@ -1485,7 +1485,7 @@ export function parseLssSheetFromObjects(
     const recoverMode: ResourceRecoverMode = VALID_RECOVER_MODES.has(rawRec) ? rawRec : 'all';
     const rawColor = asStr(rr.color) as ResourceColorKey;
     const color: ResourceColorKey = VALID_RES_COLORS.has(rawColor) ? rawColor : 'amber';
-    const glyph = asStr(rr.glyph) || (dieRaw ? '🎲' : spendLimit > 0 ? '🧠' : '⚡');
+    const glyph = asStr(rr.glyph) || (dieRaw ? 'dice' : spendLimit > 0 ? 'orb' : 'bolt');
     const isShortRest = Boolean(rr.isShortRest);
     const isLongRest = Boolean(rr.isLongRest);
     const recSuffix =

@@ -1,4 +1,5 @@
 import React from 'react';
+import { HudIcon } from './HudIcon';
 import { apiFetch } from '../../lib/api';
 import { rollDamageExpression } from '../../lib/lssSheetParser';
 import { useCampaignStore } from '../../lib/store';
@@ -11,13 +12,13 @@ interface FormattedTextProps {
 }
 
 const INLINE_TOKEN_RE =
-  /(\[🎲\s*[^\]]+\]|\[⚡\s*[^\]]+\]|\{(?:violet|cyan|gold|crimson):[\s\S]*?\}|\*\*[\s\S]+?\*\*|__[\s\S]+?__|~~[\s\S]+?~~|`[^`\n]+`|\*[^*\n]+\*)/g;
+  /(\[(?:roll:|\u{1F3B2})\s*[^\]]+\]|\[(?:res:|\u26A1)\s*[^\]]+\]|\{(?:violet|cyan|gold|crimson):[\s\S]*?\}|\*\*[\s\S]+?\*\*|__[\s\S]+?__|~~[\s\S]+?~~|`[^`\n]+`|\*[^*\n]+\*)/gu;
 
 const COLOR_CLASS_MAP: Record<string, string> = {
-  violet: 'text-purple-300 bg-purple-500/15 px-1 rounded font-medium',
-  cyan: 'text-cyan-300 bg-cyan-500/15 px-1 rounded font-medium',
-  gold: 'text-amber-300 bg-amber-500/15 px-1 rounded font-medium',
-  crimson: 'text-rose-300 bg-rose-500/15 px-1 rounded font-medium',
+  violet: 'text-purple-300 bg-purple-500/15 px-1 border border-purple-500/30 font-medium',
+  cyan: 'text-cyan-300 bg-cyan-500/15 px-1 border border-cyan-500/30 font-medium',
+  gold: 'text-amber-300 bg-amber-500/15 px-1 border border-amber-500/30 font-medium',
+  crimson: 'text-rose-300 bg-rose-500/15 px-1 border border-rose-500/30 font-medium',
 };
 
 async function triggerInlineDiceRoll(
@@ -51,13 +52,13 @@ async function triggerInlineDiceRoll(
     });
     store.prependRoll(res.roll);
     store.pushToast({
-      title: `🎲 ${cleanFormula}: ${roll.total}`,
+      title: `[DICE] ${cleanFormula}: ${roll.total}`,
       message: roll.breakdown,
       variant: 'info',
     });
   } catch {
     store.pushToast({
-      title: `🎲 ${cleanFormula}: ${roll.total}`,
+      title: `[DICE] ${cleanFormula}: ${roll.total}`,
       message: roll.breakdown,
       variant: 'info',
     });
@@ -76,8 +77,9 @@ export function renderInlineFormatted(
   return parts.map((part, idx) => {
     if (!part) return null;
 
-    if (part.startsWith('[🎲') && part.endsWith(']')) {
-      const inner = part.slice(3, -1).trim();
+    const rollMatch = part.match(/^\[(?:roll:|\u{1F3B2})\s*([^\]]+)\]$/u);
+    if (rollMatch) {
+      const inner = rollMatch[1].trim();
       return (
         <button
           key={idx}
@@ -87,21 +89,24 @@ export function renderInlineFormatted(
             void triggerInlineDiceRoll(inner, characterName);
           }}
           title="Нажмите, чтобы бросить кубики в общий лог стола"
-          className="inline-flex items-center gap-1 px-1.5 py-0.2 mx-0.5 rounded-md bg-accent/15 hover:bg-accent/25 border border-accent/40 text-accent font-mono text-[0.9em] font-bold transition-colors cursor-pointer"
+          className="inline-flex items-center gap-1 px-1.5 py-0.5 mx-0.5 bg-primary/15 hover:bg-primary/25 border border-primary/50 text-primary font-mono text-[0.9em] font-bold transition-colors cursor-pointer"
         >
-          🎲 {inner}
+          <HudIcon asset="dice" size="xs" />
+          <span>{inner}</span>
         </button>
       );
     }
 
-    if (part.startsWith('[⚡') && part.endsWith(']')) {
-      const inner = part.slice(3, -1).trim();
+    const resMatch = part.match(/^\[(?:res:|\u26A1)\s*([^\]]+)\]$/u);
+    if (resMatch) {
+      const inner = resMatch[1].trim();
       return (
         <span
           key={idx}
-          className="inline-flex items-center gap-1 px-1.5 py-0.2 mx-0.5 rounded-md bg-amber-500/15 border border-amber-500/35 text-amber-300 font-mono text-[0.9em] font-semibold"
+          className="inline-flex items-center gap-1 px-1.5 py-0.5 mx-0.5 bg-amber-500/15 border border-amber-500/40 text-amber-300 font-mono text-[0.9em] font-semibold"
         >
-          ⚡ {inner}
+          <HudIcon asset="bolt" size="xs" />
+          <span>{inner}</span>
         </span>
       );
     }
@@ -144,7 +149,7 @@ export function renderInlineFormatted(
       return (
         <code
           key={idx}
-          className="px-1.5 py-0.2 rounded bg-bg/80 border border-border font-mono text-[0.9em] text-accent"
+          className="px-1.5 py-0.2 bg-bg/80 border border-border font-mono text-[0.9em] text-primary"
         >
           {part.slice(1, -1)}
         </code>
@@ -166,7 +171,7 @@ export function renderInlineFormatted(
 /**
  * Renders rich formatted text supporting bold (**), italic (*), underline (__),
  * strikethrough (~~), code (`), headings (###), bullet/ordered lists, quotes (>),
- * dividers (---), colored highlights ({gold:...}), and clickable dice rolls ([🎲 2к6+3]).
+ * dividers (---), colored highlights ({gold:...}), and clickable dice rolls ([roll: 2к6+3]).
  */
 export const FormattedText: React.FC<FormattedTextProps> = React.memo(({
   text,
@@ -203,7 +208,7 @@ export const FormattedText: React.FC<FormattedTextProps> = React.memo(({
         level === 1
           ? 'text-base font-extrabold text-primary'
           : level === 2
-            ? 'text-sm font-extrabold text-accent'
+            ? 'text-sm font-extrabold text-primary/90'
             : 'text-xs font-extrabold uppercase tracking-wider text-primary';
       blocks.push(
         <div key={`h-${i}`} className={`font-anime mt-1.5 ${sizeCls}`}>
@@ -224,7 +229,7 @@ export const FormattedText: React.FC<FormattedTextProps> = React.memo(({
       blocks.push(
         <blockquote
           key={`q-${i}`}
-          className="border-l-2 border-primary/80 bg-primary/10 px-3 py-1.5 rounded-r-xl italic text-text/90 space-y-1"
+          className="border-l-2 border-primary bg-primary/10 px-3 py-1.5 italic text-text/90 space-y-1"
         >
           {quoteLines.map((ql, qi) => (
             <div key={qi}>{renderInlineFormatted(ql, 0, characterName)}</div>
@@ -275,7 +280,7 @@ export const FormattedText: React.FC<FormattedTextProps> = React.memo(({
       lines[i].trim() &&
       lines[i].trim() !== '---' &&
       lines[i].trim() !== '***' &&
-      !/^(#{1,3}\s+|>\s+|(?:•|-|\*)\s+|\d+\.\s+)/.test(lines[i].trim())
+      !/^(?:#{1,3}\s+|>\s+|(?:•|-|\*)\s+|\d+\.\s+)/.test(lines[i].trim())
     ) {
       paraLines.push(lines[i]);
       i++;

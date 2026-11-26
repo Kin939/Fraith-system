@@ -88,7 +88,6 @@ export const JournalEditor: React.FC<JournalEditorProps> = ({ playerId, journal,
     }
   };
 
-  // Switch players cleanly, and NEVER overwrite local typing on background polls/echoes!
   useEffect(() => {
     if (playerId !== activePidRef.current) {
       if (autoSaveTimerRef.current) {
@@ -106,7 +105,6 @@ export const JournalEditor: React.FC<JournalEditorProps> = ({ playerId, journal,
       return;
     }
 
-    // Same player: only adopt external updates when user is NOT editing locally
     if (editSeqRef.current > syncedSeqRef.current || saveInFlightRef.current) {
       return;
     }
@@ -152,27 +150,34 @@ export const JournalEditor: React.FC<JournalEditorProps> = ({ playerId, journal,
   };
 
   return (
-    <div className="glass-panel rounded-3xl p-5 space-y-3.5">
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <BookText className="w-5 h-5 text-primary" />
-          <h3 className="font-anime font-bold text-base">Личный журнал приключенца</h3>
+    <div className="glass-panel hud-neon-top hud-corners p-5 space-y-3.5">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <div className="flex items-center gap-2.5">
+          <BookText className="w-4 h-4 text-primary" />
+          <div>
+            <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-primary">
+              JOURNAL // PERSONAL LOG
+            </div>
+            <h3 className="font-anime font-bold text-base uppercase">
+              Личный журнал приключенца
+            </h3>
+          </div>
         </div>
 
         {readOnly ? (
-          <span className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-xl bg-bg/60 border border-border text-muted">
-            <Eye className="w-3.5 h-3.5 text-accent" />
-            Просмотр Мастера (только чтение)
+          <span className="inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider px-2.5 py-1 bg-[#070B14]/80 border border-primary/30 text-muted">
+            <Eye className="w-3.5 h-3.5 text-primary" />
+            READ-ONLY // MASTER VIEW
           </span>
         ) : (
           <div className="flex items-center gap-1.5">
             <button
               type="button"
               onClick={() => setPreviewMode((v) => !v)}
-              className={`px-2.5 py-1.5 rounded-xl text-xs font-semibold border inline-flex items-center gap-1.5 transition-colors ${
+              className={`px-2.5 py-1.5 text-xs font-mono uppercase tracking-wider border inline-flex items-center gap-1.5 transition-colors ${
                 previewMode
-                  ? 'bg-accent/20 border-accent text-accent'
-                  : 'bg-bg/60 border-border text-muted hover:text-text'
+                  ? 'bg-primary/15 border-primary text-primary'
+                  : 'bg-[#070B14]/80 border-primary/30 text-muted hover:text-text'
               }`}
             >
               {previewMode ? <Edit3 className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
@@ -208,8 +213,8 @@ export const JournalEditor: React.FC<JournalEditorProps> = ({ playerId, journal,
           onClick={() => {
             if (!readOnly) setPreviewMode(false);
           }}
-          className={`min-h-[10rem] p-3.5 rounded-2xl bg-bg/60 border border-border text-sm ${
-            !readOnly ? 'cursor-text hover:border-primary/40' : ''
+          className={`min-h-[10rem] p-3.5 bg-[#070B14]/75 border border-primary/25 text-sm ${
+            !readOnly ? 'cursor-text hover:border-primary/60' : ''
           }`}
         >
           {content.trim() ? (
@@ -237,19 +242,21 @@ export const JournalEditor: React.FC<JournalEditorProps> = ({ playerId, journal,
             }
           }}
           rows={7}
-          placeholder="Ведите заметки о тайнах кампании, уликах и NPC. Выделите любой фрагмент текста, чтобы сделать его жирным, курсивом, цветным или кликабельным броском кубиков!"
+          placeholder="Ведите заметки о тайнах кампании, уликах и NPC. Выделите любой фрагмент текста, чтобы сделать его жирным, курсивом, цветным или кликабельным броском кубиков."
           className="anime-input w-full text-sm leading-relaxed resize-y"
         />
       )}
 
-      <div className="text-[11px] text-muted flex flex-wrap items-center justify-between gap-2">
+      <div className="font-mono text-[10px] uppercase tracking-wider text-muted flex flex-wrap items-center justify-between gap-2">
         <span>
           {!readOnly
-            ? 'Автосохранение включено • Выделите текст мышью/пальцем для панели вёрстки (Ctrl+B / Ctrl+I)'
-            : 'Таблица D1: journal_entries'}
+            ? 'AUTO-SAVE // ВЫДЕЛИТЕ ТЕКСТ ДЛЯ ПАНЕЛИ ВЁРСТКИ (CTRL+B / CTRL+I)'
+            : 'TABLE // JOURNAL_ENTRIES'}
         </span>
         {journal?.updatedAt && (
-          <span>Обновлено: {new Date(journal.updatedAt).toLocaleString('ru-RU')}</span>
+          <span className="tabular-nums">
+            SYNC: {new Date(journal.updatedAt).toLocaleString('ru-RU')}
+          </span>
         )}
       </div>
     </div>

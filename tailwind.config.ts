@@ -4,6 +4,17 @@ const config: Config = {
   content: ['./index.html', './src/**/*.{ts,tsx}'],
   darkMode: 'class',
   theme: {
+    borderRadius: {
+      none: '0px',
+      sm: '0px',
+      DEFAULT: '0px',
+      md: '0px',
+      lg: '0px',
+      xl: '0px',
+      '2xl': '0px',
+      '3xl': '0px',
+      full: '9999px',
+    },
     extend: {
       colors: {
         bg: 'var(--bg)',
@@ -16,16 +27,14 @@ const config: Config = {
         glow: 'var(--glow)',
       },
       fontFamily: {
-        anime: ['"M PLUS Rounded 1c"', '"Zen Maru Gothic"', 'system-ui', 'sans-serif'],
-        sans: ['"Noto Sans"', 'Inter', 'system-ui', 'sans-serif'],
+        anime: ['"Orbitron"', '"Rajdhani"', '"Exo 2"', '"Inter"', 'system-ui', 'sans-serif'],
+        sans: ['"Inter"', 'system-ui', '-apple-system', 'sans-serif'],
+        mono: ['"JetBrains Mono"', 'ui-monospace', 'SFMono-Regular', 'monospace'],
       },
       boxShadow: {
-        neon: '0 0 20px var(--glow), inset 0 0 12px rgba(255, 255, 255, 0.04)',
-        glass: '0 8px 32px rgba(0, 0, 0, 0.45)',
-      },
-      borderRadius: {
-        '2xl': '1rem',
-        '3xl': '1.5rem',
+        neon: '0 0 0 1px var(--primary), 0 0 24px -6px var(--primary)',
+        rim: '0 0 0 1px var(--primary), 0 0 24px -6px var(--primary)',
+        glass: '0 18px 42px -12px rgba(0, 0, 0, 0.72)',
       },
     },
   },

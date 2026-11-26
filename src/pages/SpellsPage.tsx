@@ -13,6 +13,7 @@ import {
   SlidersHorizontal,
   Sparkles,
 } from 'lucide-react';
+import { HudIcon } from '../components/common/HudIcon';
 import { PlayerSwitcher } from '../components/dm/PlayerSwitcher';
 import { DndsuMultiSelect } from '../components/spells/DndsuMultiSelect';
 import { SpellCard } from '../components/spells/SpellCard';
@@ -343,9 +344,9 @@ export const SpellsPage: React.FC = () => {
                         target="_blank"
                         rel="noreferrer"
                         title={`Открыть Homebrew-класс «${hb.labelRu}» на dnd.su`}
-                        className="px-1.5 py-0.2 rounded bg-purple-500/25 border border-purple-400/40 text-purple-200 text-[10px] font-bold hover:bg-purple-500/35"
+                        className="px-1.5 py-0.2 bg-purple-500/25 border border-purple-400/40 text-purple-200 text-[10px] font-mono font-bold hover:bg-purple-500/35"
                       >
-                        HB ↗
+                        HB
                       </a>
                     );
                   })}
@@ -533,10 +534,10 @@ export const SpellsPage: React.FC = () => {
               {SCHOOL_META_LIST.map((s) => (
                 <span
                   key={s.id}
-                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] font-medium"
+                  className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-medium border border-primary/20"
                   style={{ backgroundColor: s.bg, color: s.color }}
                 >
-                  <span>{s.glyph}</span>
+                  <HudIcon glyph={s.glyph} size="xs" />
                   <span>{s.ru}</span>
                 </span>
               ))}
@@ -714,6 +715,48 @@ export const SpellsPage: React.FC = () => {
             </div>
           )}
 
+          {/* Quick Level Filter Chips (Active state in Accent) */}
+          <div className="flex items-center gap-1.5 flex-wrap pt-1">
+            <span className="font-mono text-[10px] uppercase tracking-widest text-muted mr-1">
+              КРУГ //
+            </span>
+            <button
+              type="button"
+              onClick={() => setFilters((f) => ({ ...f, levels: [] }))}
+              className={`px-2.5 py-1 font-mono text-[11px] font-bold uppercase border transition-all duration-200 ${
+                filters.levels.length === 0
+                  ? 'bg-primary text-[#040810] border-primary shadow-rim'
+                  : 'bg-[#070B14]/80 border-primary/25 text-muted hover:text-text hover:border-primary/60'
+              }`}
+            >
+              ВСЕ
+            </button>
+            {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((lvl) => {
+              const active = filters.levels.includes(lvl);
+              return (
+                <button
+                  key={lvl}
+                  type="button"
+                  onClick={() =>
+                    setFilters((f) => ({
+                      ...f,
+                      levels: active
+                        ? f.levels.filter((x) => x !== lvl)
+                        : [...f.levels, lvl],
+                    }))
+                  }
+                  className={`px-2.5 py-1 font-mono text-[11px] font-bold tabular-nums border transition-all duration-200 ${
+                    active
+                      ? 'bg-primary text-[#040810] border-primary shadow-rim'
+                      : 'bg-[#070B14]/80 border-primary/25 text-muted hover:text-text hover:border-primary/60'
+                  }`}
+                >
+                  {lvl === 0 ? '0' : `${lvl}`}
+                </button>
+              );
+            })}
+          </div>
+
           {/* Status & Sort Bar */}
           <div className="flex flex-wrap items-center justify-between gap-2 pt-1 text-xs text-muted">
             <div className="flex items-center gap-2 flex-wrap">
@@ -873,11 +916,11 @@ export const SpellsPage: React.FC = () => {
                               [{sp.level}]
                             </span>
                             <span
-                              className="w-4 h-4 rounded flex items-center justify-center text-[10px] shrink-0"
-                              style={{ backgroundColor: school.bg, color: school.color }}
+                              className="w-4 h-4 flex items-center justify-center text-[10px] shrink-0"
+                              style={{ backgroundColor: school.bg }}
                               title={school.ru}
                             >
-                              {school.glyph}
+                              <HudIcon glyph={school.glyph} size="xs" />
                             </span>
                             <span className="text-xs sm:text-[13px] truncate">{sp.name}</span>
                             {isLearned && (

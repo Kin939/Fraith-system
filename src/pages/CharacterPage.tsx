@@ -1,4 +1,5 @@
 import React, { useCallback } from 'react';
+import { LearnedSpells } from '../components/character/LearnedSpells';
 import { LssSheetEmbed } from '../components/character/LssSheetEmbed';
 import { PlayerSwitcher } from '../components/dm/PlayerSwitcher';
 import { useLssSync } from '../hooks/useLssSync';
@@ -41,8 +42,8 @@ export const CharacterPage: React.FC = () => {
     return (
       <div className="space-y-4">
         {isDm && <PlayerSwitcher />}
-        <div className="glass-panel rounded-3xl p-8 text-center text-sm text-muted">
-          Загрузка слота Игрока #{activePlayerId}...
+        <div className="glass-panel hud-corners hud-cut p-8 text-center font-mono text-xs uppercase tracking-widest text-muted">
+          LOADING OPERATOR SLOT // P0{activePlayerId}...
         </div>
       </div>
     );
@@ -63,6 +64,11 @@ export const CharacterPage: React.FC = () => {
         onResetSlot={handleResetSlot}
         onRefreshCache={refreshNow}
         syncing={syncing}
+      />
+
+      <LearnedSpells
+        learnedSpells={learnedSpells}
+        maxSpells={profile.maxSpells}
       />
     </div>
   );

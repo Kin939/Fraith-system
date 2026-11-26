@@ -111,7 +111,7 @@ export const LSS_RESOURCE_PRESETS: LssResourcePreset[] = [
     category: 'rogue_mystic',
     title: 'Кости Скрытой атаки (Плут)',
     subtitle: 'Авто-пул к6 по уровню плута (1 раз в ход)',
-    glyph: '🗡',
+    glyph: 'blades',
     color: 'amber',
     build: ({ level }) => {
       const diceCount = Math.max(1, Math.ceil(level / 2));
@@ -133,7 +133,7 @@ export const LSS_RESOURCE_PRESETS: LssResourcePreset[] = [
     category: 'rogue_mystic',
     title: 'Псионические кости энергии (Душегуб / Пси-воин)',
     subtitle: '2 × БМ костей к6–к12 + быстрый бросок с тратой',
-    glyph: '🔮',
+    glyph: 'orb',
     color: 'cyan',
     build: ({ level, prof }) => {
       const dieSides = level >= 17 ? 12 : level >= 11 ? 10 : level >= 5 ? 8 : 6;
@@ -155,7 +155,7 @@ export const LSS_RESOURCE_PRESETS: LssResourcePreset[] = [
     category: 'rogue_mystic',
     title: 'Пси-заряды / Пси-очки (Мистик HB)',
     subtitle: 'Шкала пси-энергии + Пси-лимит траты за раз',
-    glyph: '🧠',
+    glyph: 'orb',
     color: 'cyan',
     build: ({ level }) => ({
       name: 'Пси-заряды (Мистик)',
@@ -174,7 +174,7 @@ export const LSS_RESOURCE_PRESETS: LssResourcePreset[] = [
     category: 'classic',
     title: 'Кости превосходства (Воин)',
     subtitle: '4–6 костей к8/к10/к12 • Короткий отдых',
-    glyph: '⚔',
+    glyph: 'blades',
     color: 'crimson',
     build: ({ level }) => ({
       name: 'Кости превосходства',
@@ -193,7 +193,7 @@ export const LSS_RESOURCE_PRESETS: LssResourcePreset[] = [
     category: 'classic',
     title: 'Очки Ци / Фокуса (Монах)',
     subtitle: '[LVL] зарядов + кость боевых искусств',
-    glyph: '☯',
+    glyph: 'spark',
     color: 'cyan',
     build: ({ level }) => ({
       name: 'Очки Ци',
@@ -212,7 +212,7 @@ export const LSS_RESOURCE_PRESETS: LssResourcePreset[] = [
     category: 'classic',
     title: 'Единицы чародейства (Чародей)',
     subtitle: '[LVL] единиц • Метамагия и гибкие ячейки',
-    glyph: '✦',
+    glyph: 'spark',
     color: 'violet',
     build: ({ level }) => ({
       name: 'Единицы чародейства',
@@ -231,7 +231,7 @@ export const LSS_RESOURCE_PRESETS: LssResourcePreset[] = [
     category: 'classic',
     title: 'Кости Вдохновения барда',
     subtitle: 'max(1,[CHA]) костей к6–к12',
-    glyph: '🎵',
+    glyph: 'spark',
     color: 'amber',
     build: ({ level }) => ({
       name: 'Вдохновение барда',
@@ -250,7 +250,7 @@ export const LSS_RESOURCE_PRESETS: LssResourcePreset[] = [
     category: 'classic',
     title: 'Ярость (Варвар)',
     subtitle: 'Заряды ярости за продолжительный отдых',
-    glyph: '🔥',
+    glyph: 'flame',
     color: 'crimson',
     build: ({ level }) => ({
       name: 'Ярость',
@@ -269,7 +269,7 @@ export const LSS_RESOURCE_PRESETS: LssResourcePreset[] = [
     category: 'homebrew',
     title: 'Проклятия крови и Гемокрафтия (Кровавый охотник HB)',
     subtitle: 'Заряды проклятий + кость гемокрафтии',
-    glyph: '🩸',
+    glyph: 'flame',
     color: 'crimson',
     build: ({ level }) => ({
       name: 'Проклятия крови (Гемокрафтия)',
@@ -288,7 +288,7 @@ export const LSS_RESOURCE_PRESETS: LssResourcePreset[] = [
     category: 'homebrew',
     title: 'Мистический запас (Магус HB)',
     subtitle: 'Заряды Чародейского удара и усиления клинка',
-    glyph: '⚡',
+    glyph: 'bolt',
     color: 'violet',
     build: ({ level }) => ({
       name: 'Мистический запас (Магус)',
@@ -307,7 +307,7 @@ export const LSS_RESOURCE_PRESETS: LssResourcePreset[] = [
     category: 'homebrew',
     title: 'Рунические печати (Хранитель рун / Шаман HB)',
     subtitle: '[PROF] рунических зарядов • Короткий отдых',
-    glyph: 'ᚱ',
+    glyph: 'shield',
     color: 'emerald',
     build: ({ prof }) => ({
       name: 'Рунические заряды',
@@ -326,7 +326,7 @@ export const LSS_RESOURCE_PRESETS: LssResourcePreset[] = [
     category: 'homebrew',
     title: 'Алхимические реагенты и Бомбы (Алхимик HB)',
     subtitle: '[LVL]+[INT] реагентов + урон бомбы',
-    glyph: '⚗',
+    glyph: 'flame',
     color: 'emerald',
     build: ({ level }) => ({
       name: 'Алхимические реагенты',

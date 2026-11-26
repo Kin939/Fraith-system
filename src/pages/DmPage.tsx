@@ -84,13 +84,18 @@ export const DmPage: React.FC = () => {
   return (
     <div className="space-y-5">
       {/* DM Header */}
-      <div className="glass-panel neon-border rounded-3xl p-5 flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-2xl anime-btn-primary flex items-center justify-center">
-            <Crown className="w-6 h-6 text-white" />
+      <div className="glass-panel neon-border hud-corners hud-cut p-5 flex flex-wrap items-center justify-between gap-4">
+        <div className="flex items-center gap-3.5">
+          <div className="w-12 h-12 bg-[#070B14] border border-primary shadow-rim flex items-center justify-center">
+            <Crown className="w-6 h-6 text-primary" />
           </div>
           <div>
-            <h1 className="font-anime font-extrabold text-xl">Пульт Архитектора Кампании (DM)</h1>
+            <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-primary">
+              ARCHITECT CONSOLE // LEVEL 99 CLEARANCE
+            </div>
+            <h1 className="font-anime font-extrabold text-xl uppercase">
+              // Пульт Архитектора Кампании (DM)
+            </h1>
             <p className="text-xs text-muted">
               Управление паролями игроков, квестами, бестиарием, заклинаниями, деревом талантов и темами аккаунтов
             </p>
@@ -173,10 +178,10 @@ const CharacterRosterCard: React.FC<{
   }, [profile, dirty, saving]);
 
   return (
-    <div className="glass-panel rounded-3xl p-5 space-y-3">
+    <div className="glass-panel hud-corners hud-cut p-5 space-y-3">
       <div className="flex items-center justify-between gap-2">
-        <div className="font-anime font-bold text-base text-primary">
-          Игрок #{profile.playerId}
+        <div className="font-anime font-bold text-base uppercase text-primary">
+          // Игрок #{profile.playerId}
         </div>
         <button
           type="button"
