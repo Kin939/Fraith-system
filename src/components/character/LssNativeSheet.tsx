@@ -2608,7 +2608,7 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
             {/* COLUMN 3: Initiative/Speed/Passive/Conditions + Weapons Table + Resources + Features & Feats */}
             <div className="lg:col-span-6 space-y-3.5">
               {/* Top 4 Combat Plaques */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
                 {/* Initiative */}
                 <div className="sheet-frame p-2.5 text-center">
                   <div className="text-[11px] font-semibold  text-muted">
@@ -2661,18 +2661,68 @@ export const LssNativeSheet: React.FC<LssNativeSheetProps> = ({
                   )}
                 </div>
 
-                {/* Passive Perception */}
-                <div
-                  className="sheet-frame p-2.5 text-center"
-                  title={`Пассивная Проницательность: ${sheet.combat.passiveInsight} • Пассивный Анализ: ${sheet.combat.passiveInvestigation}`}
-                >
-                  <div className="text-[11px] font-semibold  text-muted">
-                    П. Восприятие
-                  </div>
-                  <div className="mt-1 font-anime font-semibold text-xl text-text">
-                    {sheet.combat.passivePerception}
-                  </div>
-                </div>
+                {/* Passive Perception / Investigation / Insight */}
+                {(
+                  [
+                    {
+                      key: 'perception',
+                      label: 'П. Восприятие',
+                      full: 'Пассивная Внимательность (Восприятие)',
+                      value: sheet.combat.passivePerception,
+                    },
+                    {
+                      key: 'investigation',
+                      label: 'П. Анализ',
+                      full: 'Пассивный Анализ (Интеллект)',
+                      value: sheet.combat.passiveInvestigation,
+                    },
+                    {
+                      key: 'insight',
+                      label: 'П. Проницат.',
+                      full: 'Пассивная Проницательность (Мудрость)',
+                      value: sheet.combat.passiveInsight,
+                    },
+                  ] as const
+                ).map((passive) => {
+                  const skill = sheet.skills.find((sk) => sk.key === passive.key);
+                  const checkBonus = skill?.total ?? passive.value - 10;
+                  const profLabel =
+                    skill?.profLevel === 2
+                      ? 'компетентность'
+                      : skill?.profLevel === 1
+                        ? 'владение'
+                        : 'без владения';
+                  return (
+                    <button
+                      key={passive.key}
+                      type="button"
+                      onClick={() =>
+                        handleD20Roll(
+                          `Проверка: ${passive.full.split(' (')[0]}`,
+                          checkBonus
+                        )
+                      }
+                      className="sheet-frame p-2.5 text-center hover:border-primary/50 transition-colors"
+                      title={`${passive.full} = 10 ${formatSigned(checkBonus)} · ${profLabel}${
+                        skill?.extraBonus ? ` · бонус ${formatSigned(skill.extraBonus)}` : ''
+                      } · клик — бросок проверки`}
+                    >
+                      <div className="text-[11px] font-semibold  text-muted">
+                        {passive.label}
+                      </div>
+                      <div className="mt-1 font-anime font-semibold text-xl text-text">
+                        {passive.value}
+                      </div>
+                      <div className="text-[10px]  text-muted leading-none">
+                        {skill?.profLevel === 2
+                          ? 'компетентность'
+                          : skill?.profLevel === 1
+                            ? 'владение'
+                            : '10 + мод'}
+                      </div>
+                    </button>
+                  );
+                })}
 
                 {/* Conditions Plaque */}
                 <button

@@ -2,8 +2,13 @@ import React, { useEffect, useState } from 'react';
 import { Plus, Save, Sparkles, Trash2, Upload, X } from 'lucide-react';
 import { apiFetch, uploadImageAsset } from '../../lib/api';
 import { resolveImageUrl } from '../../lib/artwork';
+import { normalizeQuestPattern, talentAccentFallback } from '../../lib/questStyle';
 import { useCampaignStore } from '../../lib/store';
-import type { PurchasedTalent, TalentNode } from '../../lib/types';
+import { tileNodePx, useTileSize } from '../../lib/tileSize';
+import type { PurchasedTalent, QuestTilePattern, TalentNode } from '../../lib/types';
+import { TileStyleControls } from '../common/TileStyleControls';
+import { TileSizeControl } from '../common/TileSizeControl';
+import { TalentNode as TalentNodeTile } from './TalentNode';
 import { TalentTree } from './TalentTree';
 
 export interface TalentNodeModalProps {
@@ -29,6 +34,10 @@ export const TalentNodeModal: React.FC<TalentNodeModalProps> = ({
   const [cost, setCost] = useState(2);
   const [parentId, setParentId] = useState<number | null>(null);
   const [imageKey, setImageKey] = useState<string | null>(null);
+  const [tileAccent, setTileAccent] = useState<string | null>(null);
+  const [tileEmblem, setTileEmblem] = useState<string | null>(null);
+  const [tilePattern, setTilePattern] = useState<QuestTilePattern>('none');
+  const [isFeatured, setIsFeatured] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -40,12 +49,20 @@ export const TalentNodeModal: React.FC<TalentNodeModalProps> = ({
       setCost(editingNode.cost);
       setParentId(editingNode.parentId);
       setImageKey(editingNode.imageKey);
+      setTileAccent(editingNode.tileStyle?.accent ?? null);
+      setTileEmblem(editingNode.tileStyle?.emblem ?? null);
+      setTilePattern(normalizeQuestPattern(editingNode.tileStyle?.pattern));
+      setIsFeatured(Boolean(editingNode.tileStyle?.isImportant));
     } else {
       setTitle('');
       setDescription('');
       setCost(2);
       setParentId(null);
       setImageKey(null);
+      setTileAccent(null);
+      setTileEmblem(null);
+      setTilePattern('none');
+      setIsFeatured(false);
     }
   }, [open, editingNode]);
 
@@ -93,6 +110,10 @@ export const TalentNodeModal: React.FC<TalentNodeModalProps> = ({
               cost,
               parentId,
               imageKey,
+              tileAccent,
+              tileEmblem,
+              tilePattern,
+              isFeatured,
             }),
           })
         : await apiFetch<{
@@ -109,6 +130,10 @@ export const TalentNodeModal: React.FC<TalentNodeModalProps> = ({
               positionY: initialPos.y,
               parentId,
               imageKey,
+              tileAccent,
+              tileEmblem,
+              tilePattern,
+              isFeatured,
             }),
           });
       setTalentsBundle(res);
@@ -153,7 +178,7 @@ export const TalentNodeModal: React.FC<TalentNodeModalProps> = ({
       <form
         onClick={(e) => e.stopPropagation()}
         onSubmit={handleSubmit}
-        className="glass-panel hud-cut max-w-lg w-full p-6 space-y-4 shadow-glass"
+        className="glass-panel hud-cut max-w-2xl w-full p-6 space-y-4 shadow-glass max-h-[92vh] overflow-y-auto"
       >
         <div className="flex items-center justify-between gap-3 border-b border-border pb-3">
           <h3 className="font-medium text-base text-text">
@@ -235,6 +260,72 @@ export const TalentNodeModal: React.FC<TalentNodeModalProps> = ({
           </label>
         </div>
 
+        <div className="border-t border-border pt-3 space-y-3">
+          <div className="flex items-center justify-between gap-2">
+            <h4 className="text-sm font-medium text-text">Оформление плитки таланта</h4>
+            <span className="text-[11px] text-muted">
+              цвет, эмблема, узор и метка «ключевой»
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+            <div className="lg:col-span-4">
+              <div className="p-3 bg-bg border border-border">
+                <div className="text-[10px] font-mono uppercase tracking-wider text-muted mb-2">
+                  Предпросмотр
+                </div>
+                <div className="flex justify-center">
+                  <TalentNodeTile
+                    node={{
+                      id: editingNode?.id ?? 0,
+                      title: title || 'Новый талант',
+                      description: description,
+                      imageKey,
+                      cost,
+                      positionX: 0,
+                      positionY: 0,
+                      parentId,
+                      isUnlocked: Boolean(editingNode?.isUnlocked),
+                      unlockedAt: editingNode?.unlockedAt ?? null,
+                      tileStyle: {
+                        accent: tileAccent,
+                        emblem: tileEmblem,
+                        pattern: tilePattern,
+                        isImportant: isFeatured,
+                      },
+                    }}
+                    unlockedPrerequisite
+                    canAfford
+                    isDm={false}
+                    sizePx={150}
+                    onSelect={() => {}}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="lg:col-span-8">
+              <TileStyleControls
+                value={{
+                  accent: tileAccent,
+                  emblem: tileEmblem,
+                  pattern: tilePattern,
+                  isImportant: isFeatured,
+                }}
+                onChange={(patch) => {
+                  if (patch.accent !== undefined) setTileAccent(patch.accent);
+                  if (patch.emblem !== undefined) setTileEmblem(patch.emblem);
+                  if (patch.pattern !== undefined) setTilePattern(normalizeQuestPattern(patch.pattern));
+                  if (patch.isImportant !== undefined) setIsFeatured(patch.isImportant);
+                }}
+                importantLabel="Ключевой"
+                importantInactiveLabel="Обычный"
+                compact
+              />
+            </div>
+          </div>
+        </div>
+
         <div className="flex items-center justify-between gap-2 pt-3 border-t border-border">
           {editingNode ? (
             <button
@@ -284,6 +375,7 @@ export const TalentEditor: React.FC = () => {
   const setTalentsBundle = useCampaignStore((s) => s.setTalentsBundle);
   const pushToast = useCampaignStore((s) => s.pushToast);
 
+  const [tileSize] = useTileSize('talents');
   const [customInspirationSet, setCustomInspirationSet] = useState<string>('');
   const [modalOpen, setModalOpen] = useState(false);
   const [editingNode, setEditingNode] = useState<TalentNode | null>(null);
@@ -365,10 +457,18 @@ export const TalentEditor: React.FC = () => {
         </div>
       </div>
 
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="text-xs text-muted">
+          Плитки дерева можно масштабировать — позиции узлов при этом сохраняются
+        </div>
+        <TileSizeControl scope="talents" />
+      </div>
+
       <TalentTree
         nodes={nodes}
         inspirationPoints={inspirationPoints}
         selectedEditorId={editingNode?.id ?? null}
+        nodeSizePx={tileNodePx(tileSize)}
         onRequestCreateAt={(x, y) => {
           setEditingNode(null);
           setSpawnPos({ x, y });

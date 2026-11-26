@@ -142,3 +142,22 @@ export async function uploadCustomCampaignEmoji(
     timeoutMs: 30000,
   });
 }
+
+export async function patchTalentTile(
+  talentId: number,
+  patch: {
+    accent?: string | null;
+    emblem?: string | null;
+    pattern?: string | null;
+    isFeatured?: boolean;
+  }
+): Promise<{
+  inspirationPoints: number;
+  nodes: import('./types').TalentNode[];
+  purchases: import('./types').PurchasedTalent[];
+}> {
+  return apiFetch(`/api/dm/talents/${talentId}/tile`, {
+    method: 'PATCH',
+    body: JSON.stringify(patch),
+  });
+}

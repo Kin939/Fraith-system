@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { Check, CheckCircle2, Lock, Pencil, Unlock, X } from 'lucide-react';
+import { Check, CheckCircle2, Lock, Pencil, Star, Unlock, X } from 'lucide-react';
 import { apiFetch } from '../../lib/api';
 import { resolveImageUrl } from '../../lib/artwork';
+import { questEmblemUrl, talentAccentFallback, tileCssVars } from '../../lib/questStyle';
 import { useCampaignStore } from '../../lib/store';
 import type { PurchasedTalent, TalentNode } from '../../lib/types';
 import { FormattedText } from '../common/FormattedText';
@@ -31,6 +32,10 @@ export const TalentDetail: React.FC<TalentDetailProps> = ({
 
   const isDm = user?.role === 'dm';
   const isUnlocked = Boolean(node.isUnlocked);
+  const featured = Boolean(node.tileStyle?.isImportant);
+  const accent = node.tileStyle?.accent || talentAccentFallback(node.tileStyle);
+  const emblemUrl = questEmblemUrl(node.tileStyle?.emblem);
+  const artUrl = node.imageKey ? resolveImageUrl(node.imageKey, 'spark') : emblemUrl;
   const prerequisiteMet = !parentNode || Boolean(parentNode.isUnlocked);
   const enoughPoints = inspirationPoints >= node.cost;
 
@@ -99,20 +104,39 @@ export const TalentDetail: React.FC<TalentDetailProps> = ({
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="glass-panel hud-cut max-w-md w-full p-6 space-y-5 shadow-glass"
+        style={tileCssVars(node.tileStyle, accent)}
+        className={`glass-panel hud-cut max-w-md w-full p-6 space-y-5 shadow-glass relative ${
+          featured ? 'quest-tile--important' : ''
+        }`}
       >
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-4">
-            <img
-              src={resolveImageUrl(node.imageKey, 'spark')}
-              alt={node.title}
-              className="w-16 h-16 object-cover border border-border bg-deep shrink-0"
-            />
+            <span
+              className="w-16 h-16 border bg-deep shrink-0 overflow-hidden flex items-center justify-center"
+              style={{ borderColor: `${accent}66` }}
+            >
+              {artUrl ? (
+                <img
+                  src={artUrl}
+                  alt={node.title}
+                  className={`w-full h-full ${node.imageKey ? 'object-cover' : 'object-contain p-2'}`}
+                />
+              ) : (
+                <Star className="w-6 h-6" strokeWidth={1.4} style={{ color: accent }} />
+              )}
+            </span>
             <div>
-              <span className="hud-keycap">
-                Стоимость: {node.cost}
-              </span>
+              <span className="hud-keycap">Стоимость: {node.cost}</span>
               <h3 className="font-medium text-lg text-text mt-1.5">{node.title}</h3>
+              {featured && (
+                <span
+                  className="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] tracking-wide border"
+                  style={{ borderColor: `${accent}99`, color: accent }}
+                >
+                  <Star className="w-2.5 h-2.5" strokeWidth={2} fill="currentColor" />
+                  КЛЮЧЕВОЙ ТАЛАНТ
+                </span>
+              )}
             </div>
           </div>
 

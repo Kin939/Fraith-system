@@ -100,6 +100,21 @@ export function resolveQuestAccent(quest: Pick<Quest, 'status' | 'tileStyle'>): 
   return quest.tileStyle?.accent || STATUS_ACCENT[quest.status] || STATUS_ACCENT.active;
 }
 
+/** Generic accent CSS variables for any tile (quests, talents, …). */
+export function tileCssVars(
+  style: { accent?: string | null; isImportant?: boolean } | null | undefined,
+  fallbackAccent: string
+): Record<string, string> {
+  const accent = style?.accent || fallbackAccent;
+  const important = Boolean(style?.isImportant);
+  return {
+    '--q-accent': accent,
+    '--q-accent-soft': `${accent}2e`,
+    '--q-accent-strong': `${accent}80`,
+    '--q-glow': important ? `${accent}55` : 'transparent',
+  };
+}
+
 export function questEmblemUrl(emblem?: string | null): string | null {
   if (!emblem || !isHudAssetKey(emblem)) return null;
   return getHudAssetUrl(emblem);
@@ -109,12 +124,10 @@ export function questEmblemUrl(emblem?: string | null): string | null {
 export function questTileCssVars(
   quest: Pick<Quest, 'status' | 'tileStyle'>
 ): Record<string, string> {
-  const accent = resolveQuestAccent(quest);
-  const important = Boolean(quest.tileStyle?.isImportant);
-  return {
-    '--q-accent': accent,
-    '--q-accent-soft': `${accent}2e`,
-    '--q-accent-strong': `${accent}80`,
-    '--q-glow': important ? `${accent}55` : 'transparent',
-  };
+  return tileCssVars(quest.tileStyle, resolveQuestAccent(quest));
+}
+
+/** Talents default to an arcane violet, gold when marked as a key talent. */
+export function talentAccentFallback(style?: { isImportant?: boolean } | null): string {
+  return style?.isImportant ? '#f59e0b' : '#7c4dff';
 }

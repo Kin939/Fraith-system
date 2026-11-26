@@ -987,7 +987,7 @@ export async function getTalentsState(
     .first<{ points: number }>();
 
   const { results: nodeRows } = await db
-    .prepare(`SELECT * FROM talent_tree ORDER BY id ASC`)
+    .prepare(`SELECT * FROM talent_tree ORDER BY is_featured DESC, id ASC`)
     .all<{
       id: number;
       title: string;
@@ -999,6 +999,10 @@ export async function getTalentsState(
       parent_id: number | null;
       is_unlocked?: number;
       unlocked_at?: string | null;
+      tile_accent?: string | null;
+      tile_emblem?: string | null;
+      tile_pattern?: string | null;
+      is_featured?: number | null;
     }>();
 
   const { results: purchaseRows } = await db
@@ -1035,6 +1039,12 @@ export async function getTalentsState(
         parentId: n.parent_id,
         isUnlocked: Boolean(n.is_unlocked) || legacyUnlockedIds.has(n.id),
         unlockedAt: n.unlocked_at ?? null,
+        tileStyle: {
+          accent: normalizeQuestAccent(n.tile_accent),
+          emblem: (n.tile_emblem || '').trim() || null,
+          pattern: normalizeQuestPattern(n.tile_pattern),
+          isImportant: Boolean(n.is_featured),
+        },
       };
     }),
     purchases: purchaseRows.map((p) => ({

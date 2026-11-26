@@ -75,7 +75,9 @@ export interface JournalEntry {
 
 export type QuestStatus = 'active' | 'completed' | 'failed' | 'available';
 
-export type QuestTilePattern = 'none' | 'runes' | 'grid' | 'hazard' | 'stars' | 'scanlines';
+export type TilePattern = 'none' | 'runes' | 'grid' | 'hazard' | 'stars' | 'scanlines';
+
+export type QuestTilePattern = TilePattern;
 
 export interface QuestTileStyle {
   /** Hex accent used for the tile rim, glow & progress bar */
@@ -216,6 +218,9 @@ export interface LearnedSpellRecord {
   spell: Spell;
 }
 
+/** Talents reuse the quest tile styling vocabulary (accent / emblem / pattern / featured). */
+export type TalentTileStyle = QuestTileStyle;
+
 export interface TalentNode {
   id: number;
   title: string;
@@ -227,6 +232,7 @@ export interface TalentNode {
   parentId: number | null;
   isUnlocked: boolean;
   unlockedAt: string | null;
+  tileStyle: TalentTileStyle;
 }
 
 export interface PurchasedTalent {
