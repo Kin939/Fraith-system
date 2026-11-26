@@ -11,7 +11,7 @@ interface DeathSaveTrackerProps {
 
 const Pip: React.FC<{ filled: boolean; tone: 'positive' | 'negative' }> = ({ filled, tone }) => (
   <span
-    className={`w-2.5 h-2.5 border ${
+    className={`w-3.5 h-3.5 border ${
       filled
         ? tone === 'positive'
           ? 'bg-positive border-positive'
@@ -23,20 +23,23 @@ const Pip: React.FC<{ filled: boolean; tone: 'positive' | 'negative' }> = ({ fil
 
 /**
  * Спасброски от смерти: 3 успеха — стабилизация, 3 провала — смерть.
- * Полностью автоматизирован только счётчик; сами броски делает игрок/мастер.
+ * Броски делает игрок/мастер, приложение ведёт счётчик.
  */
 export const DeathSaveTracker: React.FC<DeathSaveTrackerProps> = ({ saves, canEdit, onSave, onStabilize }) => {
   const outcome = deathSaveOutcome(saves.successes, saves.failures, saves.stable);
-  const label =
-    outcome === 'stable' ? 'Стабилен' : outcome === 'dead' ? 'Мёртв' : 'При смерти';
+  const label = outcome === 'stable' ? 'Стабилен' : outcome === 'dead' ? 'Мёртв' : 'При смерти';
   const tone =
-    outcome === 'stable' ? 'text-positive border-positive/50' : outcome === 'dead' ? 'text-negative border-negative/60' : 'text-warning border-warning/50';
+    outcome === 'stable'
+      ? 'text-positive border-positive/50'
+      : outcome === 'dead'
+        ? 'text-negative border-negative/60'
+        : 'text-warning border-warning/50';
 
   return (
-    <div className={`mt-1.5 px-2 py-1.5 border bg-deep/50 ${tone}`}>
+    <div className={`mt-2 px-2.5 py-2 border bg-deep/50 ${tone}`}>
       <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-wide">
-          <HeartPulse className="w-3 h-3" strokeWidth={1.75} />
+        <div className="flex items-center gap-1.5 text-[11px] font-mono uppercase tracking-wide">
+          <HeartPulse className="w-4 h-4" strokeWidth={1.75} />
           {label}
         </div>
         <div className="flex items-center gap-3">
@@ -54,11 +57,11 @@ export const DeathSaveTracker: React.FC<DeathSaveTrackerProps> = ({ saves, canEd
       </div>
 
       {canEdit && (
-        <div className="flex items-center gap-1 mt-1.5">
+        <div className="flex items-center gap-1.5 mt-2">
           <button
             type="button"
             onClick={() => onSave?.('success')}
-            className="h-6 px-1.5 text-[9px] font-mono uppercase border border-positive/50 text-positive hover:bg-positive/10"
+            className="h-9 px-3 text-xs font-mono uppercase border border-positive/50 text-positive hover:bg-positive/10"
             title="Отметить успех"
           >
             + успех
@@ -66,7 +69,7 @@ export const DeathSaveTracker: React.FC<DeathSaveTrackerProps> = ({ saves, canEd
           <button
             type="button"
             onClick={() => onSave?.('failure')}
-            className="h-6 px-1.5 text-[9px] font-mono uppercase border border-negative/50 text-negative hover:bg-negative/10"
+            className="h-9 px-3 text-xs font-mono uppercase border border-negative/50 text-negative hover:bg-negative/10"
             title="Отметить провал"
           >
             + провал
@@ -74,10 +77,10 @@ export const DeathSaveTracker: React.FC<DeathSaveTrackerProps> = ({ saves, canEd
           <button
             type="button"
             onClick={() => onStabilize?.(!saves.stable)}
-            className="h-6 px-1.5 text-[9px] font-mono uppercase border border-border text-muted hover:text-text flex items-center gap-1"
+            className="h-9 px-3 text-xs font-mono uppercase border border-border text-secondary hover:text-text flex items-center gap-1.5"
             title="Стабилизировать / снять стабилизацию"
           >
-            <ShieldCheck className="w-3 h-3" strokeWidth={1.75} /> стабилизировать
+            <ShieldCheck className="w-4 h-4" strokeWidth={1.75} /> стабилизировать
           </button>
         </div>
       )}

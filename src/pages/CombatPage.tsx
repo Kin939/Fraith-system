@@ -40,6 +40,7 @@ import { useCombatState } from '../hooks/useCombatState';
 import { InitiativeTracker } from '../components/combat/InitiativeTracker';
 import { TurnTimer } from '../components/combat/TurnTimer';
 import { CombatBuilder, type CombatBuilderSubmit } from '../components/combat/CombatBuilder';
+import { ParticipantEditor } from '../components/combat/ParticipantEditor';
 import type { ParticipantCardHandlers } from '../components/combat/ParticipantCard';
 import { PeerAvatar } from '../components/common/PeerAvatar';
 import type { CombatLogEntry } from '../lib/combatProtocol';
@@ -52,6 +53,54 @@ import type { CombatLogEntry } from '../lib/combatProtocol';
  * CombatRoom (Durable Object) остальным участникам; игроки получают урезанное
  * состояние — без HP/AC/стат-блоков скрытых мобов.
  */
+const LOG_LABELS: Record<string, string> = {
+  combat_started: 'бой начат',
+  combat_paused: 'пауза',
+  combat_finished: 'бой завершён',
+  combat_reset: 'сброс',
+  round_start: 'новый раунд',
+  turn_start: 'ход начат',
+  turn_end: 'ход завершён',
+  damage: 'урон',
+  heal: 'лечение',
+  hp_set: 'HP изменены',
+  temp_hp: 'временные HP',
+  death_save: 'спасбросок от смерти',
+  stabilized: 'стабилизация',
+  exhaustion_changed: 'истощение',
+  effect_added: 'эффект добавлен',
+  effect_removed: 'эффект снят',
+  participant_added: 'участник добавлен',
+  participant_removed: 'участник убран',
+  participant_updated: 'участник изменён',
+  timer_configured: 'таймер настроен',
+  timer_paused: 'таймер на паузе',
+  timer_restarted: 'таймер перезапущен',
+  timer_extended: 'таймер продлён',
+};
+
+/** Строка настройки в боковой панели: подпись слева, контрол справа. */
+const SettingRow: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
+  <div className="flex items-center justify-between gap-2 min-h-9">
+    <span className="text-[11px] font-mono uppercase tracking-wide text-secondary">{label}</span>
+    {children}
+  </div>
+);
+
+/** Компактный тумблер в стиле HUD. */
+const Toggle: React.FC<{ checked: boolean; onChange: (value: boolean) => void }> = ({ checked, onChange }) => (
+  <button
+    type="button"
+    role="switch"
+    aria-checked={checked}
+    onClick={() => onChange(!checked)}
+    className={`w-10 h-6 border relative shrink-0 ${checked ? 'border-primary/70 bg-primary/10' : 'border-border'}`}
+    title={checked ? 'Включено' : 'Выключено'}
+  >
+    <span className={`absolute top-0.5 w-4 h-4 transition-all ${checked ? 'right-0.5 bg-primary' : 'left-0.5 bg-secondary/60'}`} />
+  </button>
+);
+
 export const CombatPage: React.FC = () => {
   const user = useCampaignStore((s) => s.user);
   const pushToast = useCampaignStore((s) => s.pushToast);
@@ -69,6 +118,7 @@ export const CombatPage: React.FC = () => {
   });
   const [builderLoading, setBuilderLoading] = useState(false);
   const [logOpen, setLogOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [log, setLog] = useState<CombatLogEntry[]>([]);
 
   const socket = useCombatSocket({ combatId: selectedId, enabled: Boolean(selectedId), initialState });
@@ -181,12 +231,36 @@ export const CombatPage: React.FC = () => {
 
   /* --------------------------------------------------------------- handlers */
 
+  /**
+   * Мгновенный отклик: сначала правим HP локально, потом отправляем на сервер.
+   * Авторитетный ответ DO всё равно придёт по WebSocket и заменит локальную оценку.
+   */
+  const applyLocalHp = useCallback(
+    (participantId: string, delta: number) => {
+      const current = socket.state;
+      if (!current) return;
+      const participants = current.participants.map((item) => {
+        if (item.id !== participantId || item.currentHp == null || item.maxHp == null) return item;
+        const next = Math.max(0, Math.min(item.maxHp, item.currentHp + delta));
+        return {
+          ...item,
+          currentHp: next,
+          hpPercent: item.maxHp > 0 ? Math.max(0, Math.min(100, Math.round((next / item.maxHp) * 100))) : item.hpPercent,
+        };
+      });
+      socket.setState({ ...current, participants });
+    },
+    [socket]
+  );
+
   const handlers: ParticipantCardHandlers = useMemo(
     () => ({
       onHpDelta: (participantId, delta) => {
         if (!selectedId) return;
+        applyLocalHp(participantId, delta);
         void run(() => patchParticipant(selectedId, participantId, { hpDelta: delta }));
       },
+      onOpenEditor: (participantId) => setEditingId(participantId),
       onSetHp: (participantId, value, maxHp) => {
         if (!selectedId) return;
         void run(() => patchParticipant(selectedId, participantId, { currentHp: value, maxHp }));
@@ -238,7 +312,7 @@ export const CombatPage: React.FC = () => {
         void run(() => deleteParticipant(selectedId, participantId));
       },
     }),
-    [selectedId, run]
+    [selectedId, run, applyLocalHp]
   );
 
   const openBuilder = async (mode: 'create' | 'add') => {
@@ -324,6 +398,10 @@ export const CombatPage: React.FC = () => {
     }
   };
 
+  const editingParticipant = useMemo(
+    () => (state?.participants ?? []).find((participant) => participant.id === editingId) ?? null,
+    [state, editingId]
+  );
   const currentName = derived.current?.displayName ?? null;
   const statusLabel: Record<string, string> = {
     setup: 'подготовка',
@@ -337,12 +415,12 @@ export const CombatPage: React.FC = () => {
   return (
     <div className="space-y-3">
       {/* Шапка вкладки */}
-      <div className="glass-panel hud-cut px-3 py-2 flex flex-wrap items-center gap-2">
-        <div className="flex items-center gap-2 min-w-0">
-          <Swords className="w-4 h-4 text-primary shrink-0" strokeWidth={1.5} />
+      <div className="glass-panel hud-cut px-3.5 py-3 flex flex-wrap items-center gap-x-3 gap-y-2">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <Swords className="w-5 h-5 text-primary shrink-0" strokeWidth={1.5} />
           <div className="min-w-0">
-            <div className="text-sm text-text truncate">{state?.name ?? 'Бой'}</div>
-            <div className="text-[10px] font-mono uppercase tracking-wide text-muted">
+            <div className="text-base leading-tight text-text truncate">{state?.name ?? 'Бой'}</div>
+            <div className="text-[11px] font-mono uppercase tracking-wide text-secondary">
               {state ? `${statusLabel[state.status]} · раунд ${state.roundNumber}` : 'трекер инициативы'}
             </div>
           </div>
@@ -354,7 +432,7 @@ export const CombatPage: React.FC = () => {
             <select
               value={selectedId ?? ''}
               onChange={(event) => setSelectedId(event.target.value || null)}
-              className="h-8 max-w-[16rem] bg-deep border border-border pl-2 pr-6 text-[11px] text-text outline-none focus:border-primary/60 appearance-none"
+              className="h-10 max-w-[18rem] bg-deep border border-border pl-2.5 pr-7 text-xs text-text outline-none focus:border-primary/60 appearance-none"
               title="Выбрать бой"
             >
               {combats.map((combat) => (
@@ -364,98 +442,98 @@ export const CombatPage: React.FC = () => {
                 </option>
               ))}
             </select>
-            <ChevronDown className="w-3 h-3 text-muted absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <ChevronDown className="w-3.5 h-3.5 text-muted absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
           </div>
         )}
 
         <span
-          className={`h-7 px-2 flex items-center gap-1 border text-[10px] font-mono uppercase ${
+          className={`h-8 px-2.5 flex items-center gap-1.5 border text-[11px] font-mono uppercase ${
             socket.status === 'open' ? 'border-positive/40 text-positive' : 'border-warning/40 text-warning'
           }`}
           title={socket.status === 'open' ? 'Синхронизация активна' : 'Переподключение…'}
         >
-          {socket.status === 'open' ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}
+          {socket.status === 'open' ? <Wifi className="w-3.5 h-3.5" /> : <WifiOff className="w-3.5 h-3.5" />}
           {socket.status === 'open' ? 'live' : 'sync'}
         </span>
 
         {socket.peers.length > 0 && (
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1.5">
             {socket.peers.slice(0, 6).map((peer) => (
               <PeerAvatar
                 key={peer.userId}
                 name={peer.displayName}
                 color={peer.color}
                 avatarUrl={peer.avatarUrl}
-                size={22}
+                size={26}
                 crown={peer.role === 'dm'}
               />
             ))}
           </div>
         )}
 
-        <div className="flex items-center gap-1 ml-auto flex-wrap">
+        <div className="flex items-center gap-1.5 ml-auto flex-wrap">
           {isDm && state && state.status === 'setup' && (
             <button
               type="button"
               onClick={() => changeStatus('active')}
               disabled={busy || state.participants.length === 0}
-              className="anime-btn-primary h-8 px-2.5 text-[10px] font-mono uppercase flex items-center gap-1 disabled:opacity-40"
+              className="anime-btn-primary h-10 px-3.5 text-[11px] font-mono uppercase flex items-center gap-1.5 disabled:opacity-40"
             >
-              <Play className="w-3 h-3" strokeWidth={2} /> начать бой
+              <Play className="w-4 h-4" strokeWidth={2} /> начать бой
             </button>
           )}
           {isDm && state && state.status === 'active' && (
             <button
               type="button"
               onClick={() => changeStatus('paused')}
-              className="h-8 px-2 text-[10px] font-mono uppercase border border-border text-muted hover:text-warning flex items-center gap-1"
+              className="h-10 px-3 text-[11px] font-mono uppercase border border-border text-secondary hover:text-warning hover:border-warning/50 flex items-center gap-1.5"
             >
-              <Pause className="w-3 h-3" strokeWidth={2} /> пауза
+              <Pause className="w-4 h-4" strokeWidth={2} /> пауза
             </button>
           )}
           {isDm && state && state.status === 'paused' && (
             <button
               type="button"
               onClick={() => changeStatus('active')}
-              className="h-8 px-2 text-[10px] font-mono uppercase border border-border text-muted hover:text-positive flex items-center gap-1"
+              className="h-10 px-3 text-[11px] font-mono uppercase border border-border text-secondary hover:text-positive hover:border-positive/50 flex items-center gap-1.5"
             >
-              <Play className="w-3 h-3" strokeWidth={2} /> продолжить
+              <Play className="w-4 h-4" strokeWidth={2} /> продолжить
             </button>
           )}
           {isDm && state && state.status !== 'finished' && (
             <button
               type="button"
               onClick={() => changeStatus('finished')}
-              className="h-8 px-2 text-[10px] font-mono uppercase border border-border text-muted hover:text-negative flex items-center gap-1"
+              className="h-10 px-3 text-[11px] font-mono uppercase border border-border text-secondary hover:text-negative hover:border-negative/50 flex items-center gap-1.5"
               title="Завершить бой (трекер станет read-only)"
             >
-              <ShieldAlert className="w-3 h-3" strokeWidth={2} /> завершить
+              <ShieldAlert className="w-4 h-4" strokeWidth={2} /> завершить
             </button>
           )}
           {isDm && state && state.status === 'finished' && (
             <button
               type="button"
               onClick={() => changeStatus('setup')}
-              className="h-8 px-2 text-[10px] font-mono uppercase border border-border text-muted hover:text-primary flex items-center gap-1"
+              className="h-10 px-3 text-[11px] font-mono uppercase border border-border text-secondary hover:text-primary flex items-center gap-1.5"
               title="Вернуть бой в подготовку с теми же участниками"
             >
-              <RotateCcw className="w-3 h-3" strokeWidth={2} /> сбросить
+              <RotateCcw className="w-4 h-4" strokeWidth={2} /> сбросить
             </button>
           )}
           {isDm && state && state.status !== 'finished' && (
             <button
               type="button"
               onClick={() => void openBuilder('add')}
-              className="h-8 px-2 text-[10px] font-mono uppercase border border-border text-muted hover:text-primary flex items-center gap-1"
+              className="h-10 px-3 text-[11px] font-mono uppercase border border-border text-secondary hover:text-primary hover:border-primary/50 flex items-center gap-1.5"
             >
-              <Skull className="w-3 h-3" strokeWidth={2} /> участники
+              <Skull className="w-4 h-4" strokeWidth={2} /> участники
             </button>
           )}
           {isDm && (
             <button
               type="button"
               onClick={() => void openBuilder('create')}
-              className="h-8 px-2.5 text-[10px] font-mono uppercase border border-primary/50 text-primary hover:bg-primary/10"
+              className="h-10 px-3.5 text-[11px] font-mono uppercase border border-primary/50 text-primary hover:bg-primary/10"
             >
               + новый бой
             </button>
@@ -464,22 +542,22 @@ export const CombatPage: React.FC = () => {
             <button
               type="button"
               onClick={toggleLog}
-              className={`w-8 h-8 flex items-center justify-center border ${
-                logOpen ? 'border-primary/60 text-primary' : 'border-border text-muted hover:text-text'
+              className={`h-10 w-10 flex items-center justify-center border ${
+                logOpen ? 'border-primary/60 text-primary' : 'border-border text-secondary hover:text-text'
               }`}
               title="Журнал боя"
             >
-              <History className="w-3.5 h-3.5" strokeWidth={1.5} />
+              <History className="w-4 h-4" strokeWidth={1.5} />
             </button>
           )}
           {isDm && state && (
             <button
               type="button"
               onClick={() => void onDeleteCombat()}
-              className="w-8 h-8 flex items-center justify-center border border-border text-muted hover:text-negative"
+              className="h-10 w-10 flex items-center justify-center border border-border text-secondary hover:text-negative hover:border-negative/50"
               title="Удалить бой"
             >
-              <Trash2 className="w-3.5 h-3.5" strokeWidth={1.5} />
+              <Trash2 className="w-4 h-4" strokeWidth={1.5} />
             </button>
           )}
         </div>
@@ -503,26 +581,30 @@ export const CombatPage: React.FC = () => {
 
       {/* Основная область */}
       {loading && !state ? (
-        <div className="glass-panel hud-cut p-8 flex items-center justify-center gap-2 text-sm text-muted">
-          <Loader2 className="w-4 h-4 animate-spin" /> Загрузка боя…
+        <div className="glass-panel hud-cut p-10 flex items-center justify-center gap-2.5 text-sm text-muted">
+          <Loader2 className="w-5 h-5 animate-spin" /> Загрузка боя…
         </div>
       ) : !state ? (
-        <div className="glass-panel hud-cut p-6 text-center space-y-2">
-          <Swords className="w-5 h-5 text-primary mx-auto" strokeWidth={1.5} />
-          <div className="text-sm text-text">Активных боёв нет</div>
-          <p className="text-xs text-muted leading-relaxed max-w-md mx-auto">
+        <div className="glass-panel hud-cut p-8 text-center space-y-3">
+          <Swords className="w-6 h-6 text-primary mx-auto" strokeWidth={1.5} />
+          <div className="text-base text-text">Активных боёв нет</div>
+          <p className="text-sm text-secondary leading-relaxed max-w-lg mx-auto">
             {isDm
               ? 'Соберите бой из игроков партии и существ бестиария, задайте инициативу и нажмите «Начать бой» — трекер появится у всех участников.'
               : 'Мастер ещё не начал бой. Как только бой начнётся, здесь появится трекер инициативы.'}
           </p>
           {isDm && (
-            <button type="button" onClick={() => void openBuilder('create')} className="anime-btn-primary px-3 py-1.5 text-xs">
+            <button
+              type="button"
+              onClick={() => void openBuilder('create')}
+              className="anime-btn-primary h-10 px-4 text-sm"
+            >
               Создать бой
             </button>
           )}
         </div>
       ) : (
-        <div className={`grid gap-3 ${isDm ? 'lg:grid-cols-[minmax(0,1fr)_20rem]' : ''}`}>
+        <div className={`grid gap-3 ${isDm ? 'xl:grid-cols-[minmax(0,1fr)_22rem]' : ''}`}>
           <div className="min-h-[26rem]">
             <InitiativeTracker
               state={state}
@@ -538,50 +620,38 @@ export const CombatPage: React.FC = () => {
 
           {isDm && (
             <aside className="space-y-3 min-w-0">
-              <div className="glass-panel hud-cut p-3 space-y-2">
-                <div className="text-[10px] font-mono uppercase tracking-wide text-secondary">Настройки боя</div>
-                <label className="flex items-center justify-between gap-2 text-[10px] font-mono uppercase text-muted">
-                  игрок завершает ход
-                  <input
-                    type="checkbox"
+              <div className="glass-panel hud-cut p-3.5 space-y-2.5">
+                <div className="text-[11px] font-mono uppercase tracking-wide text-secondary">Настройки боя</div>
+
+                <SettingRow label="Игрок завершает ход">
+                  <Toggle
                     checked={state.settings.allowPlayerTurn}
-                    onChange={(event) =>
-                      selectedId &&
-                      void run(() =>
-                        patchCombat(selectedId, { settings: { allowPlayerTurn: event.target.checked } })
-                      )
+                    onChange={(value) =>
+                      selectedId && void run(() => patchCombat(selectedId, { settings: { allowPlayerTurn: value } }))
                     }
-                    className="accent-cyan-400"
                   />
-                </label>
-                <label className="flex items-center justify-between gap-2 text-[10px] font-mono uppercase text-muted">
-                  HP игроков видны
-                  <input
-                    type="checkbox"
+                </SettingRow>
+
+                <SettingRow label="HP игроков видны всем">
+                  <Toggle
                     checked={state.settings.showPlayerHp}
-                    onChange={(event) =>
-                      selectedId &&
-                      void run(() => patchCombat(selectedId, { settings: { showPlayerHp: event.target.checked } }))
+                    onChange={(value) =>
+                      selectedId && void run(() => patchCombat(selectedId, { settings: { showPlayerHp: value } }))
                     }
-                    className="accent-cyan-400"
                   />
-                </label>
-                <label className="flex items-center justify-between gap-2 text-[10px] font-mono uppercase text-muted">
-                  чужие спасброски
-                  <input
-                    type="checkbox"
+                </SettingRow>
+
+                <SettingRow label="Чужие спасброски">
+                  <Toggle
                     checked={state.settings.showOtherDeathSaves}
-                    onChange={(event) =>
+                    onChange={(value) =>
                       selectedId &&
-                      void run(() =>
-                        patchCombat(selectedId, { settings: { showOtherDeathSaves: event.target.checked } })
-                      )
+                      void run(() => patchCombat(selectedId, { settings: { showOtherDeathSaves: value } }))
                     }
-                    className="accent-cyan-400"
                   />
-                </label>
-                <label className="flex items-center justify-between gap-2 text-[10px] font-mono uppercase text-muted">
-                  HP мобов
+                </SettingRow>
+
+                <SettingRow label="HP мобов">
                   <select
                     value={state.settings.monsterHpVisibility}
                     onChange={(event) =>
@@ -594,15 +664,15 @@ export const CombatPage: React.FC = () => {
                         })
                       )
                     }
-                    className="h-6 bg-deep border border-border px-1 text-[10px] text-text outline-none"
+                    className="h-9 bg-deep border border-border px-2 text-[11px] text-text outline-none focus:border-primary/60"
                   >
                     <option value="hidden">скрыто</option>
                     <option value="bar">полоса</option>
                     <option value="numbers">числа</option>
                   </select>
-                </label>
-                <div className="flex items-center justify-between gap-2 text-[10px] font-mono uppercase text-muted">
-                  таймер
+                </SettingRow>
+
+                <SettingRow label="Таймер хода">
                   <select
                     value={state.settings.turnTimerSeconds ?? 0}
                     onChange={(event) =>
@@ -613,7 +683,7 @@ export const CombatPage: React.FC = () => {
                         })
                       )
                     }
-                    className="h-6 bg-deep border border-border px-1 text-[10px] text-text outline-none"
+                    className="h-9 bg-deep border border-border px-2 text-[11px] text-text outline-none focus:border-primary/60"
                   >
                     <option value={0}>без таймера</option>
                     <option value={30}>30 с</option>
@@ -622,22 +692,23 @@ export const CombatPage: React.FC = () => {
                     <option value={120}>120 с</option>
                     <option value={180}>180 с</option>
                   </select>
-                </div>
+                </SettingRow>
               </div>
 
               {logOpen && (
-                <div className="glass-panel hud-cut p-3 space-y-1 max-h-72 overflow-y-auto">
-                  <div className="text-[10px] font-mono uppercase tracking-wide text-secondary">Журнал боя</div>
-                  {log.length === 0 && <div className="text-[10px] text-muted">Пока пусто.</div>}
+                <div className="glass-panel hud-cut p-3.5 space-y-1.5 max-h-80 overflow-y-auto">
+                  <div className="text-[11px] font-mono uppercase tracking-wide text-secondary">Журнал боя</div>
+                  {log.length === 0 && <div className="text-[11px] text-muted">Пока пусто.</div>}
                   {log.map((entry) => (
-                    <div key={entry.id} className="text-[9px] font-mono text-muted flex gap-1.5">
-                      <span className="text-muted/60 shrink-0">
+                    <div key={entry.id} className="text-[11px] font-mono text-secondary flex gap-2">
+                      <span className="text-muted shrink-0">
                         {new Date(entry.createdAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}
                       </span>
                       <span className="truncate">
-                        {entry.eventType}
+                        {LOG_LABELS[entry.eventType] ?? entry.eventType}
                         {typeof entry.payload.name === 'string' ? ` · ${entry.payload.name}` : ''}
                         {typeof entry.payload.delta === 'number' ? ` · ${entry.payload.delta}` : ''}
+                        {typeof entry.payload.hp === 'number' ? ` → ${entry.payload.hp}` : ''}
                       </span>
                     </div>
                   ))}
@@ -661,8 +732,18 @@ export const CombatPage: React.FC = () => {
           onClose={() => setBuilderOpen(false)}
         />
       )}
+
+      {editingId && editingParticipant && (
+        <ParticipantEditor
+          participant={editingParticipant}
+          handlers={handlers}
+          readOnly={readOnly}
+          onClose={() => setEditingId(null)}
+        />
+      )}
     </div>
   );
+
 };
 
 export default CombatPage;

@@ -114,6 +114,9 @@ export const patchParticipant = (
     { method: 'PATCH', body: JSON.stringify(input) }
   );
 
+/** Патч участника — те же поля, что принимает PATCH /combats/:id/participants/:pid. */
+export type CombatParticipantPatch = Parameters<typeof patchParticipant>[2];
+
 export const deleteParticipant = (combatId: string, participantId: string) =>
   apiFetch<{ combat: CombatView }>(
     `/api/combats/${encodeURIComponent(combatId)}/participants/${encodeURIComponent(participantId)}`,

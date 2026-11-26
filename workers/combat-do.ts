@@ -687,9 +687,20 @@ export class CombatRoom extends DurableObject<CombatRoomEnv> {
   private async setHp(payload: Record<string, unknown>): Promise<void> {
     const row = this.participant(payload.participantId);
     if (!row) return;
-    const max = row.max_hp ?? clampInt(payload.maxHp, 1, 9999, 1);
-    if (payload.maxHp !== undefined) row.max_hp = max;
-    const value = clampInt(payload.value, 0, Math.max(max, 9999), 0);
+    // Раньше здесь стоял `row.max_hp ?? clampInt(payload.maxHp, …)`: при уже
+    // заданном максимуме новое значение из панели игнорировалось.
+    if (payload.maxHp !== undefined) row.max_hp = clampInt(payload.maxHp, 1, 9999, row.max_hp ?? 10);
+    const max = Math.max(1, row.max_hp ?? 10);
+
+    // Меняли только максимум — текущие HP не трогаем (иначе персонаж «умирал»
+    // от одного изменения максимального значения). Просто подрезаем до нового максимума.
+    if (payload.value === undefined) {
+      if ((row.current_hp ?? 0) > max) row.current_hp = max;
+      await this.appendLog('participant_updated', row.id, { name: row.display_name, max });
+      return;
+    }
+
+    const value = clampInt(payload.value, 0, max, 0);
     row.current_hp = value;
     row.is_defeated = value <= 0 ? 1 : 0;
     if (row.participant_type === 'player') {
@@ -789,6 +800,30 @@ export class CombatRoom extends DurableObject<CombatRoomEnv> {
       row.max_hp = clampInt(payload.maxHp, 1, 9999, row.max_hp ?? 1);
       if ((row.current_hp ?? 0) > row.max_hp) row.current_hp = row.max_hp;
     }
+    if (payload.currentHp !== undefined) {
+      const max = row.max_hp ?? 10;
+      const value = clampInt(payload.currentHp, 0, max, row.current_hp ?? 0);
+      row.current_hp = value;
+      row.is_defeated = value <= 0 ? 1 : 0;
+      if (row.participant_type === 'player') {
+        if (value > 0) {
+          row.is_stable = 0;
+          row.death_saves_successes = 0;
+          row.death_saves_failures = 0;
+          this.state!.effects = this.state!.effects.filter(
+            (effect) =>
+              !(
+                effect.participant_id === row.id &&
+                effect.effect_type === 'condition' &&
+                effect.effect_name === 'Unconscious'
+              )
+          );
+        } else {
+          this.ensureUnconscious(row);
+        }
+      }
+    }
+    if (payload.tempHp !== undefined) row.temp_hp = clampInt(payload.tempHp, 0, 999, 0);
     if (payload.isHiddenFromPlayers !== undefined) {
       row.is_hidden_from_players = payload.isHiddenFromPlayers ? 1 : 0;
     }

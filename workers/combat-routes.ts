@@ -677,7 +677,13 @@ export function registerCombatRoutes(app: Hono<AppEnv>): void {
         c.env,
         combat.id,
         'set-hp',
-        { ...payload, value: body.currentHp, maxHp: body.maxHp },
+        {
+          ...payload,
+          // undefined = «не менять текущие HP»; иначе смена одного максимума
+          // обнуляла здоровье участника.
+          value: typeof body.currentHp === 'number' ? body.currentHp : undefined,
+          maxHp: body.maxHp,
+        },
         actor
       );
       if (!result.ok) return c.json({ error: result.error }, (result.status ?? 400) as 400);

@@ -53,21 +53,21 @@ export const TurnTimer: React.FC<TurnTimerProps> = ({
       style={{ boxShadow: expired ? `0 0 18px ${color}66` : `0 0 12px ${color}22` }}
       title={expired ? 'Время хода истекло — решение за мастером' : 'Таймер хода'}
     >
-      <TimerIcon className="w-4 h-4 shrink-0" strokeWidth={1.5} style={{ color }} />
+      <TimerIcon className="w-5 h-5 shrink-0" strokeWidth={1.5} style={{ color }} />
       <div className="min-w-0">
         <div
-          className="font-mono text-xl tabular-nums leading-none"
+          className="font-mono text-3xl tabular-nums leading-none"
           style={{ color, textShadow: `0 0 12px ${color}66` }}
         >
           {formatSeconds(remainingMs)}
         </div>
-        <div className="text-[9px] font-mono uppercase tracking-wide text-muted mt-0.5">
+        <div className="text-[10px] font-mono uppercase tracking-wide text-secondary mt-1">
           {paused ? 'пауза' : expired ? 'время вышло' : `ход · ${totalSeconds} с`}
         </div>
       </div>
 
-      <div className="w-24 sm:w-40 self-center">
-        <div className="h-1.5 bg-raised overflow-hidden">
+      <div className="w-28 sm:w-48 self-center">
+        <div className="h-2 bg-raised overflow-hidden">
           <div
             className="h-full transition-[width] duration-500"
             style={{ width: `${Math.round(ratio * 100)}%`, backgroundColor: color }}
@@ -76,41 +76,41 @@ export const TurnTimer: React.FC<TurnTimerProps> = ({
       </div>
 
       {canControl && (
-        <div className="flex items-center gap-1 ml-auto">
+        <div className="flex items-center gap-1.5 ml-auto">
           {paused || !running ? (
             <button
               type="button"
               onClick={onStart}
-              className="w-7 h-7 flex items-center justify-center border border-border text-muted hover:text-primary hover:border-primary/60"
+              className="w-9 h-9 flex items-center justify-center border border-border text-secondary hover:text-primary hover:border-primary/60"
               title="Запустить отсчёт"
             >
-              <Play className="w-3 h-3" strokeWidth={1.75} />
+              <Play className="w-4 h-4" strokeWidth={1.75} />
             </button>
           ) : (
             <button
               type="button"
               onClick={onPause}
-              className="w-7 h-7 flex items-center justify-center border border-border text-muted hover:text-warning hover:border-warning/60"
+              className="w-9 h-9 flex items-center justify-center border border-border text-secondary hover:text-warning hover:border-warning/60"
               title="Пауза"
             >
-              <Pause className="w-3 h-3" strokeWidth={1.75} />
+              <Pause className="w-4 h-4" strokeWidth={1.75} />
             </button>
           )}
           <button
             type="button"
             onClick={onReset}
-            className="w-7 h-7 flex items-center justify-center border border-border text-muted hover:text-text"
+            className="w-9 h-9 flex items-center justify-center border border-border text-secondary hover:text-text"
             title="Сбросить и запустить заново"
           >
-            <RotateCcw className="w-3 h-3" strokeWidth={1.75} />
+            <RotateCcw className="w-4 h-4" strokeWidth={1.75} />
           </button>
           <button
             type="button"
             onClick={onExtend}
-            className="h-7 px-1.5 flex items-center gap-1 border border-border text-[9px] font-mono uppercase text-muted hover:text-primary hover:border-primary/60"
+            className="h-9 px-2 flex items-center gap-1 border border-border text-[11px] font-mono uppercase text-secondary hover:text-primary hover:border-primary/60"
             title="Продлить на 30 секунд"
           >
-            <PlusCircle className="w-3 h-3" strokeWidth={1.75} /> 30с
+            <PlusCircle className="w-4 h-4" strokeWidth={1.75} /> 30с
           </button>
         </div>
       )}
