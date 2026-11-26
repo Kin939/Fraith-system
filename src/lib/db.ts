@@ -4,9 +4,18 @@ import type {
   AuthUser,
   BestiaryCreature,
   CharacterProfile,
+  ChatAttachment,
+  ChatMessage,
+  ChatParticipantBadge,
+  ChatPoll,
+  ChatPollKind,
+  ChatPollOption,
+  ChatReactionSummary,
+  ChatReplyPreview,
   DmManagedAccountInfo,
   JournalEntry,
   LearnedSpellRecord,
+  NextSessionBanner,
   PlayerId,
   PurchasedTalent,
   Quest,
@@ -956,4 +965,825 @@ export async function listRecentRolls(db: D1Database, limit = 20): Promise<RollL
     critKind: r.crit_kind,
     createdAt: r.created_at,
   }));
+}
+
+// ============================================================================
+// Campaign Messenger, Polls, Reactions & Session Scheduling
+// ============================================================================
+
+interface RawChatMessageRow {
+  id: number;
+  user_id: number;
+  sender_username: string;
+  sender_display_name: string;
+  sender_role: UserRole;
+  sender_player_id: PlayerId | null;
+  content: string;
+  reply_to_id: number | null;
+  attachments_json: string;
+  poll_id: number | null;
+  is_pinned: number;
+  edited_at: string | null;
+  created_at: string;
+}
+
+function parseChatAttachments(raw: string | null | undefined): ChatAttachment[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter((item) => item && typeof item.key === 'string' && typeof item.url === 'string')
+      .map((item) => ({
+        key: String(item.key),
+        url: String(item.url),
+        name: String(item.name || 'file'),
+        mimeType: String(item.mimeType || 'application/octet-stream'),
+        size: Number(item.size) || 0,
+        kind:
+          item.kind === 'image' || item.kind === 'audio' || item.kind === 'video'
+            ? item.kind
+            : 'file',
+      }));
+  } catch {
+    return [];
+  }
+}
+
+async function loadUsersBadgeMap(db: D1Database): Promise<Map<number, ChatParticipantBadge>> {
+  const { results } = await db
+    .prepare(`SELECT id, display_name, role, player_id FROM users`)
+    .all<{
+      id: number;
+      display_name: string;
+      role: UserRole;
+      player_id: PlayerId | null;
+    }>();
+
+  const map = new Map<number, ChatParticipantBadge>();
+  for (const row of results) {
+    map.set(row.id, {
+      userId: row.id,
+      displayName: row.display_name,
+      role: row.role,
+      playerId: row.player_id,
+    });
+  }
+  return map;
+}
+
+export async function hydrateChatPollsByIds(
+  db: D1Database,
+  pollIds: number[],
+  usersMap?: Map<number, ChatParticipantBadge>
+): Promise<Map<number, ChatPoll>> {
+  const result = new Map<number, ChatPoll>();
+  const uniqueIds = Array.from(new Set(pollIds.filter((id) => Number.isInteger(id) && id > 0)));
+  if (uniqueIds.length === 0) return result;
+
+  const badgeMap = usersMap ?? (await loadUsersBadgeMap(db));
+  const minPollId = Math.min(...uniqueIds);
+  const maxPollId = Math.max(...uniqueIds);
+  const idSet = new Set(uniqueIds);
+
+  const { results: pollRows } = await db
+    .prepare(`SELECT * FROM chat_polls WHERE id BETWEEN ? AND ?`)
+    .bind(minPollId, maxPollId)
+    .all<{
+      id: number;
+      creator_id: number;
+      kind: ChatPollKind;
+      question: string;
+      allow_multiple: number;
+      is_anonymous: number;
+      allow_add_options: number;
+      is_closed: number;
+      confirmed_option_id: number | null;
+      created_at: string;
+    }>();
+
+  const filteredPolls = pollRows.filter((p) => idSet.has(p.id));
+  if (filteredPolls.length === 0) return result;
+
+  const { results: optionRows } = await db
+    .prepare(
+      `SELECT * FROM chat_poll_options
+       WHERE poll_id BETWEEN ? AND ?
+       ORDER BY sort_order ASC, id ASC`
+    )
+    .bind(minPollId, maxPollId)
+    .all<{
+      id: number;
+      poll_id: number;
+      label: string;
+      date_iso: string | null;
+      sort_order: number;
+    }>();
+
+  const { results: voteRows } = await db
+    .prepare(
+      `SELECT poll_id, option_id, user_id
+       FROM chat_poll_votes
+       WHERE poll_id BETWEEN ? AND ?
+       ORDER BY created_at ASC`
+    )
+    .bind(minPollId, maxPollId)
+    .all<{
+      poll_id: number;
+      option_id: number;
+      user_id: number;
+    }>();
+
+  const votesByOption = new Map<number, number[]>();
+  const distinctVotersByPoll = new Map<number, Set<number>>();
+
+  for (const v of voteRows) {
+    if (!idSet.has(v.poll_id)) continue;
+    const arr = votesByOption.get(v.option_id) ?? [];
+    arr.push(v.user_id);
+    votesByOption.set(v.option_id, arr);
+
+    const set = distinctVotersByPoll.get(v.poll_id) ?? new Set<number>();
+    set.add(v.user_id);
+    distinctVotersByPoll.set(v.poll_id, set);
+  }
+
+  const optionsByPoll = new Map<number, RawPollOptionWithVotes[]>();
+  interface RawPollOptionWithVotes extends ChatPollOption {}
+
+  for (const opt of optionRows) {
+    if (!idSet.has(opt.poll_id)) continue;
+    const rawUserIds = votesByOption.get(opt.id) ?? [];
+    const list = optionsByPoll.get(opt.poll_id) ?? [];
+    list.push({
+      id: opt.id,
+      pollId: opt.poll_id,
+      label: opt.label,
+      dateIso: opt.date_iso,
+      sortOrder: opt.sort_order,
+      voteCount: rawUserIds.length,
+      userIds: rawUserIds,
+      voters: rawUserIds.map(
+        (uid) =>
+          badgeMap.get(uid) ?? {
+            userId: uid,
+            displayName: `Участник #${uid}`,
+            role: 'player',
+            playerId: null,
+          }
+      ),
+    });
+    optionsByPoll.set(opt.poll_id, list);
+  }
+
+  for (const p of filteredPolls) {
+    const isAnon = Boolean(p.is_anonymous);
+    const rawOptions = optionsByPoll.get(p.id) ?? [];
+    const creator = badgeMap.get(p.creator_id);
+
+    result.set(p.id, {
+      id: p.id,
+      creatorId: p.creator_id,
+      creatorName: creator?.displayName ?? 'Участник',
+      kind: p.kind === 'date' ? 'date' : 'general',
+      question: p.question,
+      allowMultiple: Boolean(p.allow_multiple),
+      isAnonymous: isAnon,
+      allowAddOptions: Boolean(p.allow_add_options),
+      isClosed: Boolean(p.is_closed),
+      confirmedOptionId: p.confirmed_option_id ?? null,
+      totalVoters: distinctVotersByPoll.get(p.id)?.size ?? 0,
+      options: rawOptions.map((o) => ({
+        ...o,
+        voters: isAnon ? [] : o.voters,
+      })),
+      createdAt: p.created_at,
+    });
+  }
+
+  return result;
+}
+
+export async function getChatPollById(
+  db: D1Database,
+  pollId: number
+): Promise<ChatPoll | null> {
+  const map = await hydrateChatPollsByIds(db, [pollId]);
+  return map.get(pollId) ?? null;
+}
+
+async function hydrateChatMessageRows(
+  db: D1Database,
+  rows: RawChatMessageRow[]
+): Promise<ChatMessage[]> {
+  if (rows.length === 0) return [];
+  const badgeMap = await loadUsersBadgeMap(db);
+
+  const msgIds = rows.map((r) => r.id);
+  const minMsgId = Math.min(...msgIds);
+  const maxMsgId = Math.max(...msgIds);
+  const msgIdSet = new Set(msgIds);
+
+  // Reactions
+  const { results: reactionRows } = await db
+    .prepare(
+      `SELECT message_id, user_id, emoji
+       FROM chat_reactions
+       WHERE message_id BETWEEN ? AND ?
+       ORDER BY created_at ASC`
+    )
+    .bind(minMsgId, maxMsgId)
+    .all<{ message_id: number; user_id: number; emoji: string }>();
+
+  const reactionsByMessage = new Map<number, Map<string, number[]>>();
+  for (const r of reactionRows) {
+    if (!msgIdSet.has(r.message_id)) continue;
+    let emojiMap = reactionsByMessage.get(r.message_id);
+    if (!emojiMap) {
+      emojiMap = new Map<string, number[]>();
+      reactionsByMessage.set(r.message_id, emojiMap);
+    }
+    const uids = emojiMap.get(r.emoji) ?? [];
+    uids.push(r.user_id);
+    emojiMap.set(r.emoji, uids);
+  }
+
+  // Reply previews
+  const replyIds = Array.from(
+    new Set(rows.map((r) => r.reply_to_id).filter((id): id is number => id !== null && id > 0))
+  );
+  const replyMap = new Map<number, ChatReplyPreview>();
+
+  for (const r of rows) {
+    if (replyIds.includes(r.id)) {
+      const atts = parseChatAttachments(r.attachments_json);
+      replyMap.set(r.id, {
+        id: r.id,
+        senderDisplayName: badgeMap.get(r.user_id)?.displayName ?? r.sender_display_name,
+        senderRole: r.sender_role,
+        senderPlayerId: r.sender_player_id,
+        content: r.content,
+        hasAttachments: atts.length > 0,
+        hasPoll: r.poll_id !== null,
+      });
+    }
+  }
+
+  const missingReplyIds = replyIds.filter((id) => !replyMap.has(id));
+  if (missingReplyIds.length > 0) {
+    const minRep = Math.min(...missingReplyIds);
+    const maxRep = Math.max(...missingReplyIds);
+    const missingSet = new Set(missingReplyIds);
+    const { results: extraReplies } = await db
+      .prepare(
+        `SELECT id, user_id, sender_display_name, sender_role, sender_player_id, content, attachments_json, poll_id
+         FROM chat_messages
+         WHERE id BETWEEN ? AND ?`
+      )
+      .bind(minRep, maxRep)
+      .all<{
+        id: number;
+        user_id: number;
+        sender_display_name: string;
+        sender_role: UserRole;
+        sender_player_id: PlayerId | null;
+        content: string;
+        attachments_json: string;
+        poll_id: number | null;
+      }>();
+
+    for (const er of extraReplies) {
+      if (!missingSet.has(er.id)) continue;
+      replyMap.set(er.id, {
+        id: er.id,
+        senderDisplayName: badgeMap.get(er.user_id)?.displayName ?? er.sender_display_name,
+        senderRole: er.sender_role,
+        senderPlayerId: er.sender_player_id,
+        content: er.content,
+        hasAttachments: parseChatAttachments(er.attachments_json).length > 0,
+        hasPoll: er.poll_id !== null,
+      });
+    }
+  }
+
+  // Polls
+  const pollIds = rows
+    .map((r) => r.poll_id)
+    .filter((id): id is number => id !== null && id > 0);
+  const pollsMap = await hydrateChatPollsByIds(db, pollIds, badgeMap);
+
+  return rows.map((row) => {
+    const liveSender = badgeMap.get(row.user_id);
+    const emojiMap = reactionsByMessage.get(row.id);
+    const reactions: ChatReactionSummary[] = [];
+    if (emojiMap) {
+      for (const [emoji, userIds] of emojiMap.entries()) {
+        reactions.push({
+          emoji,
+          count: userIds.length,
+          userIds,
+          users: userIds.map(
+            (uid) =>
+              badgeMap.get(uid) ?? {
+                userId: uid,
+                displayName: `Участник #${uid}`,
+                role: 'player',
+                playerId: null,
+              }
+          ),
+        });
+      }
+    }
+
+    return {
+      id: row.id,
+      userId: row.user_id,
+      senderUsername: row.sender_username,
+      senderDisplayName: liveSender?.displayName ?? row.sender_display_name,
+      senderRole: row.sender_role,
+      senderPlayerId: row.sender_player_id,
+      content: row.content,
+      replyToId: row.reply_to_id,
+      replyPreview: row.reply_to_id ? replyMap.get(row.reply_to_id) ?? null : null,
+      attachments: parseChatAttachments(row.attachments_json),
+      pollId: row.poll_id,
+      poll: row.poll_id ? pollsMap.get(row.poll_id) ?? null : null,
+      reactions,
+      isPinned: Boolean(row.is_pinned),
+      editedAt: row.edited_at,
+      createdAt: row.created_at,
+    };
+  });
+}
+
+export async function listChatMessages(
+  db: D1Database,
+  limit = 200
+): Promise<ChatMessage[]> {
+  const safeLimit = Math.min(500, Math.max(20, limit));
+  const { results } = await db
+    .prepare(
+      `SELECT * FROM (
+         SELECT * FROM chat_messages ORDER BY id DESC LIMIT ?
+       ) sub
+       ORDER BY id ASC`
+    )
+    .bind(safeLimit)
+    .all<RawChatMessageRow>();
+
+  return hydrateChatMessageRows(db, results);
+}
+
+export async function getChatMessageById(
+  db: D1Database,
+  messageId: number
+): Promise<ChatMessage | null> {
+  const row = await db
+    .prepare(`SELECT * FROM chat_messages WHERE id = ?`)
+    .bind(messageId)
+    .first<RawChatMessageRow>();
+
+  if (!row) return null;
+  const hydrated = await hydrateChatMessageRows(db, [row]);
+  return hydrated[0] ?? null;
+}
+
+export async function createChatMessage(
+  db: D1Database,
+  params: {
+    user: AuthUser;
+    content: string;
+    replyToId?: number | null;
+    attachments?: ChatAttachment[];
+    pollId?: number | null;
+  }
+): Promise<ChatMessage> {
+  const cleanAttachments = (params.attachments ?? []).slice(0, 10);
+  const res = await db
+    .prepare(
+      `INSERT INTO chat_messages (
+         user_id, sender_username, sender_display_name, sender_role, sender_player_id,
+         content, reply_to_id, attachments_json, poll_id, is_pinned, created_at
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, datetime('now'))`
+    )
+    .bind(
+      params.user.id,
+      params.user.username,
+      params.user.displayName,
+      params.user.role,
+      params.user.playerId,
+      params.content,
+      params.replyToId ?? null,
+      JSON.stringify(cleanAttachments),
+      params.pollId ?? null
+    )
+    .run();
+
+  const messageId = Number(res.meta.last_row_id);
+  const msg = await getChatMessageById(db, messageId);
+  if (!msg) {
+    throw new Error('Не удалось загрузить отправленное сообщение');
+  }
+  return msg;
+}
+
+export async function createChatPollWithMessage(
+  db: D1Database,
+  params: {
+    user: AuthUser;
+    kind: ChatPollKind;
+    question: string;
+    options: Array<{ label: string; dateIso?: string | null }>;
+    allowMultiple: boolean;
+    isAnonymous: boolean;
+    allowAddOptions: boolean;
+    comment?: string;
+    pinMessage?: boolean;
+  }
+): Promise<ChatMessage> {
+  const pollRes = await db
+    .prepare(
+      `INSERT INTO chat_polls (
+         creator_id, kind, question, allow_multiple, is_anonymous, allow_add_options, is_closed, created_at
+       ) VALUES (?, ?, ?, ?, ?, ?, 0, datetime('now'))`
+    )
+    .bind(
+      params.user.id,
+      params.kind === 'date' ? 'date' : 'general',
+      params.question.trim(),
+      params.allowMultiple ? 1 : 0,
+      params.isAnonymous ? 1 : 0,
+      params.allowAddOptions ? 1 : 0
+    )
+    .run();
+
+  const pollId = Number(pollRes.meta.last_row_id);
+  const optionStatements = params.options.map((opt, idx) =>
+    db
+      .prepare(
+        `INSERT INTO chat_poll_options (poll_id, label, date_iso, sort_order)
+         VALUES (?, ?, ?, ?)`
+      )
+      .bind(pollId, opt.label.trim(), opt.dateIso?.trim() || null, idx)
+  );
+
+  if (optionStatements.length > 0) {
+    await db.batch(optionStatements);
+  }
+
+  const msg = await createChatMessage(db, {
+    user: params.user,
+    content: (params.comment ?? '').trim(),
+    pollId,
+  });
+
+  if (params.pinMessage) {
+    await db
+      .prepare(`UPDATE chat_messages SET is_pinned = 1 WHERE id = ?`)
+      .bind(msg.id)
+      .run();
+    msg.isPinned = true;
+  }
+
+  return msg;
+}
+
+export async function updateChatMessageContent(
+  db: D1Database,
+  messageId: number,
+  content: string
+): Promise<ChatMessage | null> {
+  await db
+    .prepare(
+      `UPDATE chat_messages
+       SET content = ?, edited_at = datetime('now')
+       WHERE id = ?`
+    )
+    .bind(content, messageId)
+    .run();
+  return getChatMessageById(db, messageId);
+}
+
+export async function togglePinChatMessage(
+  db: D1Database,
+  messageId: number,
+  isPinned: boolean
+): Promise<ChatMessage | null> {
+  await db
+    .prepare(`UPDATE chat_messages SET is_pinned = ? WHERE id = ?`)
+    .bind(isPinned ? 1 : 0, messageId)
+    .run();
+  return getChatMessageById(db, messageId);
+}
+
+export async function deleteChatMessage(
+  db: D1Database,
+  messageId: number
+): Promise<{ deleted: boolean; pollId: number | null }> {
+  const existing = await db
+    .prepare(`SELECT id, poll_id FROM chat_messages WHERE id = ?`)
+    .bind(messageId)
+    .first<{ id: number; poll_id: number | null }>();
+
+  if (!existing) {
+    return { deleted: false, pollId: null };
+  }
+
+  await db.prepare(`DELETE FROM chat_messages WHERE id = ?`).bind(messageId).run();
+  if (existing.poll_id) {
+    await db.prepare(`DELETE FROM chat_polls WHERE id = ?`).bind(existing.poll_id).run();
+  }
+  return { deleted: true, pollId: existing.poll_id };
+}
+
+export async function toggleChatReaction(
+  db: D1Database,
+  messageId: number,
+  userId: number,
+  emoji: string
+): Promise<ChatMessage | null> {
+  const existing = await db
+    .prepare(
+      `SELECT 1 AS ok FROM chat_reactions WHERE message_id = ? AND user_id = ? AND emoji = ?`
+    )
+    .bind(messageId, userId, emoji)
+    .first<{ ok: number }>();
+
+  if (existing) {
+    await db
+      .prepare(`DELETE FROM chat_reactions WHERE message_id = ? AND user_id = ? AND emoji = ?`)
+      .bind(messageId, userId, emoji)
+      .run();
+  } else {
+    await db
+      .prepare(
+        `INSERT OR IGNORE INTO chat_reactions (message_id, user_id, emoji, created_at)
+         VALUES (?, ?, ?, datetime('now'))`
+      )
+      .bind(messageId, userId, emoji)
+      .run();
+  }
+
+  return getChatMessageById(db, messageId);
+}
+
+export async function toggleChatPollVote(
+  db: D1Database,
+  pollId: number,
+  optionId: number,
+  userId: number
+): Promise<{ ok: true; poll: ChatPoll } | { ok: false; error: string }> {
+  const pollRow = await db
+    .prepare(`SELECT id, allow_multiple, is_closed FROM chat_polls WHERE id = ?`)
+    .bind(pollId)
+    .first<{ id: number; allow_multiple: number; is_closed: number }>();
+
+  if (!pollRow) {
+    return { ok: false, error: 'Голосование не найдено' };
+  }
+  if (pollRow.is_closed) {
+    return { ok: false, error: 'Голосование уже закрыто' };
+  }
+
+  const optRow = await db
+    .prepare(`SELECT id FROM chat_poll_options WHERE id = ? AND poll_id = ?`)
+    .bind(optionId, pollId)
+    .first<{ id: number }>();
+
+  if (!optRow) {
+    return { ok: false, error: 'Вариант ответа не найден' };
+  }
+
+  const alreadyVoted = await db
+    .prepare(`SELECT 1 AS ok FROM chat_poll_votes WHERE option_id = ? AND user_id = ?`)
+    .bind(optionId, userId)
+    .first<{ ok: number }>();
+
+  if (alreadyVoted) {
+    await db
+      .prepare(`DELETE FROM chat_poll_votes WHERE option_id = ? AND user_id = ?`)
+      .bind(optionId, userId)
+      .run();
+  } else {
+    if (!pollRow.allow_multiple) {
+      await db
+        .prepare(`DELETE FROM chat_poll_votes WHERE poll_id = ? AND user_id = ?`)
+        .bind(pollId, userId)
+        .run();
+    }
+    await db
+      .prepare(
+        `INSERT OR IGNORE INTO chat_poll_votes (poll_id, option_id, user_id, created_at)
+         VALUES (?, ?, ?, datetime('now'))`
+      )
+      .bind(pollId, optionId, userId)
+      .run();
+  }
+
+  const updated = await getChatPollById(db, pollId);
+  if (!updated) {
+    return { ok: false, error: 'Не удалось обновить результаты голосования' };
+  }
+  return { ok: true, poll: updated };
+}
+
+export async function addChatPollOption(
+  db: D1Database,
+  pollId: number,
+  label: string,
+  dateIso: string | null,
+  autoVoteUserId?: number
+): Promise<{ ok: true; poll: ChatPoll } | { ok: false; error: string }> {
+  const pollRow = await db
+    .prepare(
+      `SELECT id, creator_id, allow_add_options, allow_multiple, is_closed
+       FROM chat_polls WHERE id = ?`
+    )
+    .bind(pollId)
+    .first<{
+      id: number;
+      creator_id: number;
+      allow_add_options: number;
+      allow_multiple: number;
+      is_closed: number;
+    }>();
+
+  if (!pollRow) {
+    return { ok: false, error: 'Голосование не найдено' };
+  }
+  if (pollRow.is_closed) {
+    return { ok: false, error: 'Голосование уже закрыто' };
+  }
+
+  const maxSort = await db
+    .prepare(
+      `SELECT COALESCE(MAX(sort_order), -1) AS max_sort, COUNT(*) AS cnt
+       FROM chat_poll_options WHERE poll_id = ?`
+    )
+    .bind(pollId)
+    .first<{ max_sort: number; cnt: number }>();
+
+  if ((maxSort?.cnt ?? 0) >= 24) {
+    return { ok: false, error: 'Достигнут лимит вариантов ответа (24)' };
+  }
+
+  const ins = await db
+    .prepare(
+      `INSERT INTO chat_poll_options (poll_id, label, date_iso, sort_order)
+       VALUES (?, ?, ?, ?)`
+    )
+    .bind(pollId, label.trim(), dateIso?.trim() || null, (maxSort?.max_sort ?? -1) + 1)
+    .run();
+
+  const newOptId = Number(ins.meta.last_row_id);
+  if (autoVoteUserId) {
+    if (!pollRow.allow_multiple) {
+      await db
+        .prepare(`DELETE FROM chat_poll_votes WHERE poll_id = ? AND user_id = ?`)
+        .bind(pollId, autoVoteUserId)
+        .run();
+    }
+    await db
+      .prepare(
+        `INSERT OR IGNORE INTO chat_poll_votes (poll_id, option_id, user_id, created_at)
+         VALUES (?, ?, ?, datetime('now'))`
+      )
+      .bind(pollId, newOptId, autoVoteUserId)
+      .run();
+  }
+
+  const updated = await getChatPollById(db, pollId);
+  if (!updated) {
+    return { ok: false, error: 'Не удалось загрузить обновлённое голосование' };
+  }
+  return { ok: true, poll: updated };
+}
+
+export async function setChatPollClosed(
+  db: D1Database,
+  pollId: number,
+  isClosed: boolean
+): Promise<ChatPoll | null> {
+  await db
+    .prepare(`UPDATE chat_polls SET is_closed = ? WHERE id = ?`)
+    .bind(isClosed ? 1 : 0, pollId)
+    .run();
+  return getChatPollById(db, pollId);
+}
+
+export async function getNextSessionBanner(
+  db: D1Database,
+  campaignId: string
+): Promise<NextSessionBanner | null> {
+  const row = await db
+    .prepare(`SELECT * FROM campaign_next_session WHERE campaign_id = ?`)
+    .bind(campaignId)
+    .first<{
+      campaign_id: string;
+      label: string;
+      date_iso: string | null;
+      note: string;
+      poll_id: number | null;
+      updated_by: number | null;
+      updated_at: string;
+    }>();
+
+  if (!row) return null;
+  return {
+    campaignId: row.campaign_id,
+    label: row.label,
+    dateIso: row.date_iso,
+    note: row.note,
+    pollId: row.poll_id,
+    updatedBy: row.updated_by,
+    updatedAt: row.updated_at,
+  };
+}
+
+export async function upsertNextSessionBanner(
+  db: D1Database,
+  params: {
+    campaignId: string;
+    label: string;
+    dateIso?: string | null;
+    note?: string;
+    pollId?: number | null;
+    updatedBy: number;
+  }
+): Promise<NextSessionBanner> {
+  await db
+    .prepare(
+      `INSERT INTO campaign_next_session (
+         campaign_id, label, date_iso, note, poll_id, updated_by, updated_at
+       ) VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+       ON CONFLICT(campaign_id) DO UPDATE SET
+         label = excluded.label,
+         date_iso = excluded.date_iso,
+         note = excluded.note,
+         poll_id = excluded.poll_id,
+         updated_by = excluded.updated_by,
+         updated_at = datetime('now')`
+    )
+    .bind(
+      params.campaignId,
+      params.label.trim(),
+      params.dateIso?.trim() || null,
+      (params.note ?? '').trim(),
+      params.pollId ?? null,
+      params.updatedBy
+    )
+    .run();
+
+  const banner = await getNextSessionBanner(db, params.campaignId);
+  if (!banner) {
+    throw new Error('Не удалось сохранить дату следующей сессии');
+  }
+  return banner;
+}
+
+export async function clearNextSessionBanner(
+  db: D1Database,
+  campaignId: string
+): Promise<void> {
+  await db
+    .prepare(`DELETE FROM campaign_next_session WHERE campaign_id = ?`)
+    .bind(campaignId)
+    .run();
+}
+
+export async function confirmPollOptionAsNextSession(
+  db: D1Database,
+  params: {
+    campaignId: string;
+    pollId: number;
+    optionId: number;
+    note?: string;
+    updatedBy: number;
+  }
+): Promise<{ poll: ChatPoll; nextSession: NextSessionBanner } | null> {
+  const opt = await db
+    .prepare(`SELECT id, label, date_iso FROM chat_poll_options WHERE id = ? AND poll_id = ?`)
+    .bind(params.optionId, params.pollId)
+    .first<{ id: number; label: string; date_iso: string | null }>();
+
+  if (!opt) return null;
+
+  await db
+    .prepare(`UPDATE chat_polls SET confirmed_option_id = ? WHERE id = ?`)
+    .bind(opt.id, params.pollId)
+    .run();
+
+  const nextSession = await upsertNextSessionBanner(db, {
+    campaignId: params.campaignId,
+    label: opt.label,
+    dateIso: opt.date_iso,
+    note: params.note ?? '',
+    pollId: params.pollId,
+    updatedBy: params.updatedBy,
+  });
+
+  const poll = await getChatPollById(db, params.pollId);
+  if (!poll) return null;
+
+  return { poll, nextSession };
 }

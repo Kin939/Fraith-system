@@ -109,12 +109,24 @@ export class CampaignRoom extends DurableObject<DoEnv> {
 
     const sender = ws.deserializeAttachment() as ClientAttachment | null;
 
-    // Relay live LSS postMessage events (rolls & HP updates) to the entire campaign table
+    // Relay live LSS postMessage events (rolls & HP updates) & chat typing indicators to the entire campaign table
     if (parsed.type === 'lss:roll' || parsed.type === 'lss:health') {
       this.broadcastJson({
         type: parsed.type,
         payload: parsed.payload,
         senderId: sender?.userId,
+        timestamp: Date.now(),
+      });
+    } else if (parsed.type === 'chat:typing' && sender) {
+      this.broadcastJson({
+        type: 'chat:typing',
+        payload: {
+          userId: sender.userId,
+          displayName: sender.displayName,
+          role: sender.role,
+          playerId: sender.playerId,
+        },
+        senderId: sender.userId,
         timestamp: Date.now(),
       });
     }

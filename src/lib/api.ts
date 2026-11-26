@@ -67,3 +67,18 @@ export async function uploadImageAsset(
     body: fd,
   });
 }
+
+export async function uploadChatAttachment(
+  file: File
+): Promise<{
+  attachment: import('./types').ChatAttachment;
+}> {
+  const fd = new FormData();
+  fd.append('file', file);
+
+  return apiFetch<{ attachment: import('./types').ChatAttachment }>('/api/chat/upload', {
+    method: 'POST',
+    body: fd,
+    timeoutMs: 30000,
+  });
+}

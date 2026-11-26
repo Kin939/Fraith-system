@@ -4,8 +4,11 @@ import { isJournalLocallyBusy, isSheetLocallyBusy } from '../lib/syncTracker';
 import type {
   CampaignWsMessage,
   CharacterProfile,
+  ChatMessage,
+  ChatPoll,
   JournalEntry,
   LearnedSpellRecord,
+  NextSessionBanner,
   PlayerId,
   PurchasedTalent,
   Quest,
@@ -162,9 +165,50 @@ export function useWebSocket() {
               store.applyLiveTheme(p.theme);
               store.pushToast({
                 title: 'Тема обновлена Мастером',
-                message: 'Новое неоновое оформление применено в реальном времени.',
+                message: 'Новое оформление применено в реальном времени.',
                 variant: 'info',
               });
+            }
+            break;
+          }
+          case 'chat:message_created': {
+            const p = msg.payload as { message?: ChatMessage };
+            if (p?.message) {
+              const isFromOther = p.message.userId !== store.user?.id;
+              store.upsertChatMessage(p.message, isFromOther);
+            }
+            break;
+          }
+          case 'chat:message_updated': {
+            const p = msg.payload as { message?: ChatMessage };
+            if (p?.message) {
+              store.upsertChatMessage(p.message, false);
+            }
+            break;
+          }
+          case 'chat:message_deleted': {
+            const p = msg.payload as { messageId?: number };
+            if (typeof p?.messageId === 'number') {
+              store.removeChatMessage(p.messageId);
+            }
+            break;
+          }
+          case 'chat:poll_updated': {
+            const p = msg.payload as { poll?: ChatPoll };
+            if (p?.poll) {
+              store.updateChatPollInStore(p.poll);
+            }
+            break;
+          }
+          case 'chat:session_updated': {
+            const p = msg.payload as { nextSession?: NextSessionBanner | null };
+            store.setNextSessionInStore(p?.nextSession ?? null);
+            break;
+          }
+          case 'chat:typing': {
+            const p = msg.payload as { userId?: number; displayName?: string };
+            if (typeof p?.userId === 'number' && p.displayName) {
+              store.registerTypingUser(p.userId, p.displayName);
             }
             break;
           }

@@ -23,6 +23,9 @@ const SpellsPage = lazy(() =>
 const TalentsPage = lazy(() =>
   import('./pages/TalentsPage').then((m) => ({ default: m.TalentsPage }))
 );
+const MessengerPage = lazy(() =>
+  import('./pages/MessengerPage').then((m) => ({ default: m.MessengerPage }))
+);
 const DmPage = lazy(() =>
   import('./pages/DmPage').then((m) => ({ default: m.DmPage }))
 );
@@ -112,6 +115,7 @@ export const App: React.FC = () => {
             {activeTab === 'bestiary' && <BestiaryPage />}
             {activeTab === 'spells' && <SpellsPage />}
             {activeTab === 'talents' && <TalentsPage />}
+            {activeTab === 'chat' && <MessengerPage />}
             {activeTab === 'dm' && <DmPage />}
           </Suspense>
         </PageErrorBoundary>

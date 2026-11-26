@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import {
   BookOpen,
+  CalendarClock,
   Crown,
   LogOut,
+  MessageSquare,
   ScrollText,
   Skull,
   Sparkles,
@@ -25,6 +27,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ onLogout }) => {
   const wsConnected = useCampaignStore((s) => s.wsConnected);
   const onlineUsers = useCampaignStore((s) => s.onlineUsers);
   const inspirationPoints = useCampaignStore((s) => s.inspirationPoints);
+  const unreadChatCount = useCampaignStore((s) => s.unreadChatCount);
+  const nextSession = useCampaignStore((s) => s.nextSession);
   const rolls = useCampaignStore((s) => s.rolls);
   const setRolls = useCampaignStore((s) => s.setRolls);
   const pushToast = useCampaignStore((s) => s.pushToast);
@@ -35,7 +39,12 @@ export const Sidebar: React.FC<SidebarProps> = ({ onLogout }) => {
 
   const isDm = user.role === 'dm';
 
-  const navItems: Array<{ id: CampaignTabId; label: string; icon: React.ReactNode }> = [
+  const navItems: Array<{
+    id: CampaignTabId;
+    label: string;
+    icon: React.ReactNode;
+    badge?: number;
+  }> = [
     {
       id: 'character',
       label: isDm ? 'Персонажи' : 'Мой персонаж',
@@ -49,6 +58,12 @@ export const Sidebar: React.FC<SidebarProps> = ({ onLogout }) => {
     { id: 'bestiary', label: 'Бестиарий', icon: <Skull className="w-4 h-4" strokeWidth={1.5} /> },
     { id: 'spells', label: 'Заклинания', icon: <BookOpen className="w-4 h-4" strokeWidth={1.5} /> },
     { id: 'talents', label: 'Дерево талантов', icon: <Sparkles className="w-4 h-4" strokeWidth={1.5} /> },
+    {
+      id: 'chat',
+      label: 'Мессенджер',
+      icon: <MessageSquare className="w-4 h-4" strokeWidth={1.5} />,
+      badge: unreadChatCount > 0 ? unreadChatCount : undefined,
+    },
   ];
 
   if (isDm) {
@@ -123,6 +138,24 @@ export const Sidebar: React.FC<SidebarProps> = ({ onLogout }) => {
           </span>
         </div>
 
+        {/* Upcoming Session Indicator (click jumps to Messenger) */}
+        {nextSession && (
+          <button
+            type="button"
+            onClick={() => setActiveTab('chat')}
+            className="mt-2 w-full px-2.5 py-2 bg-surface hover:bg-raised border border-border border-l-2 border-l-primary text-left transition-colors"
+            title="Перейти к планированию игры"
+          >
+            <div className="flex items-center gap-1.5 text-xs text-muted">
+              <CalendarClock className="w-3.5 h-3.5 text-primary shrink-0" strokeWidth={1.5} />
+              <span>Следующий сбор</span>
+            </div>
+            <div className="text-xs font-medium text-text truncate mt-0.5 tabular-nums">
+              {nextSession.label}
+            </div>
+          </button>
+        )}
+
         {/* Navigation Section (24px above, 8px below, 36px rows, 4px gap) */}
         <div className="mt-6 mb-2 px-2 text-xs text-muted">Навигация</div>
         <nav className="space-y-1" aria-label="Основная навигация">
@@ -133,20 +166,27 @@ export const Sidebar: React.FC<SidebarProps> = ({ onLogout }) => {
                 key={item.id}
                 type="button"
                 onClick={() => setActiveTab(item.id)}
-                className={`group w-full h-9 flex items-center gap-2.5 px-2.5 text-sm transition-colors border-l-2 ${
+                className={`group w-full h-9 flex items-center justify-between gap-2 px-2.5 text-sm transition-colors border-l-2 ${
                   active
                     ? 'bg-raised text-text font-medium border-l-primary shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]'
                     : 'text-secondary hover:text-text hover:bg-surface border-l-transparent'
                 }`}
               >
-                <span
-                  className={`w-4 h-4 flex items-center justify-center shrink-0 transition-colors ${
-                    active ? 'text-primary' : 'text-muted group-hover:text-secondary'
-                  }`}
-                >
-                  {item.icon}
+                <span className="flex items-center gap-2.5 min-w-0">
+                  <span
+                    className={`w-4 h-4 flex items-center justify-center shrink-0 transition-colors ${
+                      active ? 'text-primary' : 'text-muted group-hover:text-secondary'
+                    }`}
+                  >
+                    {item.icon}
+                  </span>
+                  <span className="truncate">{item.label}</span>
                 </span>
-                <span className="truncate">{item.label}</span>
+                {item.badge ? (
+                  <span className="hud-keycap text-primary border-primary/40 font-mono tabular-nums">
+                    {item.badge > 99 ? '99+' : item.badge}
+                  </span>
+                ) : null}
               </button>
             );
           })}

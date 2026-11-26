@@ -12,8 +12,16 @@ import {
 } from '../../src/lib/auth';
 import { ensureDatabaseInitialized } from '../../src/lib/bootstrap';
 import {
+  addChatPollOption,
+  clearNextSessionBanner,
+  confirmPollOptionAsNextSession,
+  createChatMessage,
+  createChatPollWithMessage,
+  deleteChatMessage,
   getCharacterProfile,
+  getChatMessageById,
   getJournalEntry,
+  getNextSessionBanner,
   getTalentsState,
   getUserByEmail,
   getUserById,
@@ -22,6 +30,7 @@ import {
   listAllUsersWithThemes,
   listBestiary,
   listCharacterProfiles,
+  listChatMessages,
   listDmManagedAccounts,
   listLearnedSpellsForPlayer,
   listQuests,
@@ -31,17 +40,30 @@ import {
   nextCustomSpellId,
   parseCrToNumeric,
   saveJournalEntry,
+  setChatPollClosed,
+  toggleChatPollVote,
+  toggleChatReaction,
+  togglePinChatMessage,
   unlearnSpellForPlayer,
   unlockTalentForParty,
   updateAccountPassword,
+  updateChatMessageContent,
   updateLearnedSpellMeta,
+  upsertNextSessionBanner,
   upsertUserTheme,
 } from '../../src/lib/db';
 import { parseLssCharacterPayload } from '../../src/lib/lss';
-import { getImageFromR2, uploadImageToR2 } from '../../src/lib/r2';
+import {
+  getChatAttachmentFromR2,
+  getImageFromR2,
+  uploadChatAttachmentToR2,
+  uploadImageToR2,
+} from '../../src/lib/r2';
 import { parseThemeJson } from '../../src/lib/theme';
 import type {
   AuthUser,
+  ChatAttachment,
+  ChatPollKind,
   PlayerId,
   QuestStatus,
   Spell,
@@ -1769,6 +1791,450 @@ app.post('/dm/characters/:playerId/xp', async (c) => {
   const profile = await getCharacterProfile(c.env.DB, playerId);
   await broadcastCampaignEvent(c.env, 'character:updated', { playerId, profile }, dmUser.id);
   return c.json({ profile });
+});
+
+// ============================================================================
+// Tab 6: Campaign Messenger, File/Photo Sharing, Polls & Session Scheduling
+// ============================================================================
+
+app.use('/chat/*', async (c, next) => {
+  const user = c.get('user');
+  if (!user) {
+    return c.json({ error: 'Необходима авторизация' }, 401);
+  }
+  await next();
+});
+
+app.get('/chat', async (c) => {
+  const limitParam = Number.parseInt(c.req.query('limit') || '200', 10);
+  const campaignId = c.env.CAMPAIGN_ID || 'fraith-main';
+  const [messages, nextSession, partyUsers] = await Promise.all([
+    listChatMessages(c.env.DB, Number.isFinite(limitParam) ? limitParam : 200),
+    getNextSessionBanner(c.env.DB, campaignId),
+    listAllUsersWithThemes(c.env.DB),
+  ]);
+  return c.json({ messages, nextSession, partyUsers });
+});
+
+app.post('/chat/upload', async (c) => {
+  let formData: FormData;
+  try {
+    formData = await c.req.formData();
+  } catch {
+    return c.json({ error: 'Некорректные данные формы загрузки файла' }, 400);
+  }
+
+  const file = formData.get('file');
+  if (!(file instanceof File)) {
+    return c.json({ error: 'Файл не передан' }, 400);
+  }
+
+  try {
+    const attachment = await uploadChatAttachmentToR2(c.env.BUCKET, c.env.DB, file);
+    return c.json({ attachment });
+  } catch (err) {
+    return c.json(
+      { error: err instanceof Error ? err.message : 'Ошибка при загрузке файла' },
+      400
+    );
+  }
+});
+
+app.get('/chat/files/:key{.*}', async (c) => {
+  const rawKey = decodeURIComponent(c.req.param('key'));
+  const downloadName = c.req.query('name') || null;
+  return getChatAttachmentFromR2(c.env.BUCKET, c.env.DB, rawKey, downloadName);
+});
+
+app.post('/chat/messages', async (c) => {
+  const user = c.get('user')!;
+  const body = await c.req
+    .json<{
+      content?: string;
+      replyToId?: number | null;
+      attachments?: ChatAttachment[];
+    }>()
+    .catch(
+      (): {
+        content?: string;
+        replyToId?: number | null;
+        attachments?: ChatAttachment[];
+      } => ({})
+    );
+
+  const content = (body.content ?? '').trim().slice(0, 6000);
+  const attachments = Array.isArray(body.attachments) ? body.attachments.slice(0, 10) : [];
+  const replyToId =
+    typeof body.replyToId === 'number' && Number.isInteger(body.replyToId) && body.replyToId > 0
+      ? body.replyToId
+      : null;
+
+  if (!content && attachments.length === 0) {
+    return c.json({ error: 'Введите текст сообщения или прикрепите файл' }, 400);
+  }
+
+  const message = await createChatMessage(c.env.DB, {
+    user,
+    content,
+    replyToId,
+    attachments,
+  });
+
+  await broadcastCampaignEvent(c.env, 'chat:message_created', { message }, user.id);
+  return c.json({ message });
+});
+
+app.put('/chat/messages/:id', async (c) => {
+  const user = c.get('user')!;
+  const messageId = Number.parseInt(c.req.param('id'), 10);
+  if (!Number.isFinite(messageId) || messageId <= 0) {
+    return c.json({ error: 'Некорректный идентификатор сообщения' }, 400);
+  }
+
+  const existing = await getChatMessageById(c.env.DB, messageId);
+  if (!existing) {
+    return c.json({ error: 'Сообщение не найдено' }, 404);
+  }
+  if (existing.userId !== user.id) {
+    return c.json({ error: 'Редактировать можно только свои сообщения' }, 403);
+  }
+
+  const body = await c.req.json<{ content?: string }>().catch((): { content?: string } => ({}));
+  const content = (body.content ?? '').trim().slice(0, 6000);
+  if (!content && existing.attachments.length === 0 && !existing.pollId) {
+    return c.json({ error: 'Текст сообщения не может быть пустым' }, 400);
+  }
+
+  const message = await updateChatMessageContent(c.env.DB, messageId, content);
+  if (!message) {
+    return c.json({ error: 'Сообщение не найдено' }, 404);
+  }
+
+  await broadcastCampaignEvent(c.env, 'chat:message_updated', { message }, user.id);
+  return c.json({ message });
+});
+
+app.delete('/chat/messages/:id', async (c) => {
+  const user = c.get('user')!;
+  const messageId = Number.parseInt(c.req.param('id'), 10);
+  if (!Number.isFinite(messageId) || messageId <= 0) {
+    return c.json({ error: 'Некорректный идентификатор сообщения' }, 400);
+  }
+
+  const existing = await getChatMessageById(c.env.DB, messageId);
+  if (!existing) {
+    return c.json({ error: 'Сообщение не найдено' }, 404);
+  }
+  if (existing.userId !== user.id && user.role !== 'dm') {
+    return c.json({ error: 'Удалить чужое сообщение может только Мастер' }, 403);
+  }
+
+  await deleteChatMessage(c.env.DB, messageId);
+  await broadcastCampaignEvent(c.env, 'chat:message_deleted', { messageId }, user.id);
+  return c.json({ ok: true, messageId });
+});
+
+app.post('/chat/messages/:id/pin', async (c) => {
+  const user = c.get('user')!;
+  const messageId = Number.parseInt(c.req.param('id'), 10);
+  if (!Number.isFinite(messageId) || messageId <= 0) {
+    return c.json({ error: 'Некорректный идентификатор сообщения' }, 400);
+  }
+
+  const existing = await getChatMessageById(c.env.DB, messageId);
+  if (!existing) {
+    return c.json({ error: 'Сообщение не найдено' }, 404);
+  }
+
+  const body = await c.req
+    .json<{ isPinned?: boolean }>()
+    .catch((): { isPinned?: boolean } => ({}));
+  const nextPinned = typeof body.isPinned === 'boolean' ? body.isPinned : !existing.isPinned;
+
+  const message = await togglePinChatMessage(c.env.DB, messageId, nextPinned);
+  if (!message) {
+    return c.json({ error: 'Сообщение не найдено' }, 404);
+  }
+
+  await broadcastCampaignEvent(c.env, 'chat:message_updated', { message }, user.id);
+  return c.json({ message });
+});
+
+app.post('/chat/messages/:id/react', async (c) => {
+  const user = c.get('user')!;
+  const messageId = Number.parseInt(c.req.param('id'), 10);
+  if (!Number.isFinite(messageId) || messageId <= 0) {
+    return c.json({ error: 'Некорректный идентификатор сообщения' }, 400);
+  }
+
+  const body = await c.req.json<{ emoji?: string }>().catch((): { emoji?: string } => ({}));
+  const emoji = (body.emoji ?? '').trim().slice(0, 16);
+  if (!emoji) {
+    return c.json({ error: 'Выберите эмодзи для реакции' }, 400);
+  }
+
+  const existing = await getChatMessageById(c.env.DB, messageId);
+  if (!existing) {
+    return c.json({ error: 'Сообщение не найдено' }, 404);
+  }
+
+  const message = await toggleChatReaction(c.env.DB, messageId, user.id, emoji);
+  if (!message) {
+    return c.json({ error: 'Сообщение не найдено' }, 404);
+  }
+
+  await broadcastCampaignEvent(c.env, 'chat:message_updated', { message }, user.id);
+  return c.json({ message });
+});
+
+app.post('/chat/polls', async (c) => {
+  const user = c.get('user')!;
+  const body = await c.req
+    .json<{
+      kind?: ChatPollKind;
+      question?: string;
+      options?: Array<{ label?: string; dateIso?: string | null }>;
+      allowMultiple?: boolean;
+      isAnonymous?: boolean;
+      allowAddOptions?: boolean;
+      comment?: string;
+      pinMessage?: boolean;
+    }>()
+    .catch(
+      (): {
+        kind?: ChatPollKind;
+        question?: string;
+        options?: Array<{ label?: string; dateIso?: string | null }>;
+        allowMultiple?: boolean;
+        isAnonymous?: boolean;
+        allowAddOptions?: boolean;
+        comment?: string;
+        pinMessage?: boolean;
+      } => ({})
+    );
+
+  const kind: ChatPollKind = body.kind === 'date' ? 'date' : 'general';
+  const question = (body.question ?? '').trim().slice(0, 300);
+  if (!question) {
+    return c.json({ error: 'Укажите тему голосования' }, 400);
+  }
+
+  const rawOptions = Array.isArray(body.options) ? body.options : [];
+  const cleanOptions = rawOptions
+    .map((o) => ({
+      label: (o?.label ?? '').trim().slice(0, 160),
+      dateIso: o?.dateIso ? String(o.dateIso).trim().slice(0, 40) : null,
+    }))
+    .filter((o) => o.label.length > 0)
+    .slice(0, 24);
+
+  if (cleanOptions.length < 2) {
+    return c.json({ error: 'Добавьте минимум 2 варианта ответа' }, 400);
+  }
+
+  const message = await createChatPollWithMessage(c.env.DB, {
+    user,
+    kind,
+    question,
+    options: cleanOptions,
+    allowMultiple: body.allowMultiple ?? kind === 'date',
+    isAnonymous: Boolean(body.isAnonymous),
+    allowAddOptions: body.allowAddOptions ?? kind === 'date',
+    comment: (body.comment ?? '').trim().slice(0, 2000),
+    pinMessage: Boolean(body.pinMessage),
+  });
+
+  await broadcastCampaignEvent(c.env, 'chat:message_created', { message }, user.id);
+  return c.json({ message });
+});
+
+app.post('/chat/polls/:id/vote', async (c) => {
+  const user = c.get('user')!;
+  const pollId = Number.parseInt(c.req.param('id'), 10);
+  if (!Number.isFinite(pollId) || pollId <= 0) {
+    return c.json({ error: 'Некорректный идентификатор голосования' }, 400);
+  }
+
+  const body = await c.req
+    .json<{ optionId?: number }>()
+    .catch((): { optionId?: number } => ({}));
+  const optionId = Number(body.optionId);
+  if (!Number.isInteger(optionId) || optionId <= 0) {
+    return c.json({ error: 'Укажите вариант ответа' }, 400);
+  }
+
+  const res = await toggleChatPollVote(c.env.DB, pollId, optionId, user.id);
+  if (!res.ok) {
+    return c.json({ error: res.error }, 400);
+  }
+
+  await broadcastCampaignEvent(c.env, 'chat:poll_updated', { poll: res.poll }, user.id);
+  return c.json({ poll: res.poll });
+});
+
+app.post('/chat/polls/:id/options', async (c) => {
+  const user = c.get('user')!;
+  const pollId = Number.parseInt(c.req.param('id'), 10);
+  if (!Number.isFinite(pollId) || pollId <= 0) {
+    return c.json({ error: 'Некорректный идентификатор голосования' }, 400);
+  }
+
+  const pollMeta = await c.env.DB.prepare(
+    `SELECT creator_id, allow_add_options FROM chat_polls WHERE id = ?`
+  )
+    .bind(pollId)
+    .first<{ creator_id: number; allow_add_options: number }>();
+
+  if (!pollMeta) {
+    return c.json({ error: 'Голосование не найдено' }, 404);
+  }
+  if (!pollMeta.allow_add_options && pollMeta.creator_id !== user.id && user.role !== 'dm') {
+    return c.json({ error: 'Добавление вариантов в этом опросе отключено' }, 403);
+  }
+
+  const body = await c.req
+    .json<{ label?: string; dateIso?: string | null }>()
+    .catch((): { label?: string; dateIso?: string | null } => ({}));
+
+  const label = (body.label ?? '').trim().slice(0, 160);
+  if (!label) {
+    return c.json({ error: 'Введите текст варианта' }, 400);
+  }
+
+  const res = await addChatPollOption(
+    c.env.DB,
+    pollId,
+    label,
+    body.dateIso ? String(body.dateIso).trim().slice(0, 40) : null,
+    user.id
+  );
+  if (!res.ok) {
+    return c.json({ error: res.error }, 400);
+  }
+
+  await broadcastCampaignEvent(c.env, 'chat:poll_updated', { poll: res.poll }, user.id);
+  return c.json({ poll: res.poll });
+});
+
+app.post('/chat/polls/:id/close', async (c) => {
+  const user = c.get('user')!;
+  const pollId = Number.parseInt(c.req.param('id'), 10);
+  if (!Number.isFinite(pollId) || pollId <= 0) {
+    return c.json({ error: 'Некорректный идентификатор голосования' }, 400);
+  }
+
+  const pollMeta = await c.env.DB.prepare(
+    `SELECT creator_id, is_closed FROM chat_polls WHERE id = ?`
+  )
+    .bind(pollId)
+    .first<{ creator_id: number; is_closed: number }>();
+
+  if (!pollMeta) {
+    return c.json({ error: 'Голосование не найдено' }, 404);
+  }
+  if (pollMeta.creator_id !== user.id && user.role !== 'dm') {
+    return c.json({ error: 'Закрыть опрос может его автор или Мастер' }, 403);
+  }
+
+  const body = await c.req
+    .json<{ isClosed?: boolean }>()
+    .catch((): { isClosed?: boolean } => ({}));
+  const nextClosed = typeof body.isClosed === 'boolean' ? body.isClosed : !pollMeta.is_closed;
+
+  const poll = await setChatPollClosed(c.env.DB, pollId, nextClosed);
+  if (!poll) {
+    return c.json({ error: 'Голосование не найдено' }, 404);
+  }
+
+  await broadcastCampaignEvent(c.env, 'chat:poll_updated', { poll }, user.id);
+  return c.json({ poll });
+});
+
+app.post('/chat/polls/:id/confirm-session', async (c) => {
+  const user = c.get('user')!;
+  const pollId = Number.parseInt(c.req.param('id'), 10);
+  if (!Number.isFinite(pollId) || pollId <= 0) {
+    return c.json({ error: 'Некорректный идентификатор голосования' }, 400);
+  }
+
+  const pollMeta = await c.env.DB.prepare(
+    `SELECT creator_id FROM chat_polls WHERE id = ?`
+  )
+    .bind(pollId)
+    .first<{ creator_id: number }>();
+
+  if (!pollMeta) {
+    return c.json({ error: 'Голосование не найдено' }, 404);
+  }
+  if (pollMeta.creator_id !== user.id && user.role !== 'dm') {
+    return c.json({ error: 'Утвердить дату сессии может автор голосования или Мастер' }, 403);
+  }
+
+  const body = await c.req
+    .json<{ optionId?: number; note?: string }>()
+    .catch((): { optionId?: number; note?: string } => ({}));
+
+  const optionId = Number(body.optionId);
+  if (!Number.isInteger(optionId) || optionId <= 0) {
+    return c.json({ error: 'Выберите вариант даты для утверждения' }, 400);
+  }
+
+  const campaignId = c.env.CAMPAIGN_ID || 'fraith-main';
+  const confirmed = await confirmPollOptionAsNextSession(c.env.DB, {
+    campaignId,
+    pollId,
+    optionId,
+    note: (body.note ?? '').trim().slice(0, 240),
+    updatedBy: user.id,
+  });
+
+  if (!confirmed) {
+    return c.json({ error: 'Вариант даты не найден' }, 404);
+  }
+
+  await Promise.all([
+    broadcastCampaignEvent(c.env, 'chat:poll_updated', { poll: confirmed.poll }, user.id),
+    broadcastCampaignEvent(
+      c.env,
+      'chat:session_updated',
+      { nextSession: confirmed.nextSession },
+      user.id
+    ),
+  ]);
+
+  return c.json(confirmed);
+});
+
+app.put('/chat/session', async (c) => {
+  const user = c.get('user')!;
+  const body = await c.req
+    .json<{ label?: string; dateIso?: string | null; note?: string }>()
+    .catch((): { label?: string; dateIso?: string | null; note?: string } => ({}));
+
+  const label = (body.label ?? '').trim().slice(0, 160);
+  if (!label) {
+    return c.json({ error: 'Укажите дату и время следующей сессии' }, 400);
+  }
+
+  const campaignId = c.env.CAMPAIGN_ID || 'fraith-main';
+  const nextSession = await upsertNextSessionBanner(c.env.DB, {
+    campaignId,
+    label,
+    dateIso: body.dateIso ? String(body.dateIso).trim().slice(0, 40) : null,
+    note: (body.note ?? '').trim().slice(0, 240),
+    updatedBy: user.id,
+  });
+
+  await broadcastCampaignEvent(c.env, 'chat:session_updated', { nextSession }, user.id);
+  return c.json({ nextSession });
+});
+
+app.delete('/chat/session', async (c) => {
+  const user = c.get('user')!;
+  const campaignId = c.env.CAMPAIGN_ID || 'fraith-main';
+  await clearNextSessionBanner(c.env.DB, campaignId);
+  await broadcastCampaignEvent(c.env, 'chat:session_updated', { nextSession: null }, user.id);
+  return c.json({ ok: true });
 });
 
 export const onRequest = handle(app);

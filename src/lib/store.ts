@@ -10,8 +10,11 @@ import type {
   AuthUser,
   BestiaryCreature,
   CharacterProfile,
+  ChatMessage,
+  ChatPoll,
   JournalEntry,
   LearnedSpellRecord,
+  NextSessionBanner,
   PlayerId,
   PurchasedTalent,
   Quest,
@@ -21,7 +24,20 @@ import type {
   ThemeVariables,
 } from './types';
 
-export type CampaignTabId = 'character' | 'quests' | 'bestiary' | 'spells' | 'talents' | 'dm';
+export type CampaignTabId =
+  | 'character'
+  | 'quests'
+  | 'bestiary'
+  | 'spells'
+  | 'talents'
+  | 'chat'
+  | 'dm';
+
+export interface TypingMember {
+  userId: number;
+  displayName: string;
+  expiresAt: number;
+}
 
 export interface OnlineMember {
   userId: number;
@@ -59,6 +75,10 @@ interface CampaignState {
   talentNodes: TalentNode[];
   talentPurchases: PurchasedTalent[];
   rolls: RollLogEntry[];
+  chatMessages: ChatMessage[];
+  nextSession: NextSessionBanner | null;
+  unreadChatCount: number;
+  typingUsers: TypingMember[];
   toasts: ToastNotice[];
 
   setUser: (user: AuthUser | null) => void;
@@ -96,6 +116,14 @@ interface CampaignState {
 
   prependRoll: (roll: RollLogEntry) => void;
   setRolls: (rolls: RollLogEntry[]) => void;
+
+  setChatMessages: (messages: ChatMessage[]) => void;
+  upsertChatMessage: (message: ChatMessage, isIncomingFromOther?: boolean) => void;
+  removeChatMessage: (messageId: number) => void;
+  updateChatPollInStore: (poll: ChatPoll) => void;
+  setNextSessionInStore: (nextSession: NextSessionBanner | null) => void;
+  registerTypingUser: (userId: number, displayName: string) => void;
+
   applyLiveTheme: (theme: ThemeVariables) => void;
 
   pushToast: (notice: Omit<ToastNotice, 'id'>) => void;
@@ -126,6 +154,10 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
   talentNodes: [],
   talentPurchases: [],
   rolls: [],
+  chatMessages: [],
+  nextSession: null,
+  unreadChatCount: 0,
+  typingUsers: [],
   toasts: [],
 
   setUser: (user) => {
@@ -138,6 +170,10 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
         charactersById: {},
         journalsById: {},
         learnedSpellsById: { 1: [], 2: [], 3: [] },
+        chatMessages: [],
+        nextSession: null,
+        unreadChatCount: 0,
+        typingUsers: [],
       });
       return;
     }
@@ -148,7 +184,11 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
     }));
   },
   setAuthReady: (authReady) => set({ authReady }),
-  setActiveTab: (activeTab) => set({ activeTab }),
+  setActiveTab: (activeTab) =>
+    set((s) => ({
+      activeTab,
+      unreadChatCount: activeTab === 'chat' ? 0 : s.unreadChatCount,
+    })),
   setDmSelectedPlayerId: (dmSelectedPlayerId) => set({ dmSelectedPlayerId }),
 
   jumpToSpellInCatalog: (spellId) => set({ activeTab: 'spells', highlightedSpellId: spellId }),
@@ -217,6 +257,77 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
 
   setRolls: (rolls) => set({ rolls }),
 
+  setChatMessages: (chatMessages) => set({ chatMessages }),
+
+  upsertChatMessage: (message, isIncomingFromOther = false) =>
+    set((s) => {
+      const idx = s.chatMessages.findIndex((m) => m.id === message.id);
+      const isBrandNew = idx === -1;
+      const nextMessages = isBrandNew
+        ? [...s.chatMessages, message].sort((a, b) => a.id - b.id)
+        : s.chatMessages.map((m) => (m.id === message.id ? message : m));
+
+      // Also refresh replyPreview references if an edited message is quoted
+      const syncedReplies = isBrandNew
+        ? nextMessages
+        : nextMessages.map((m) =>
+            m.replyToId === message.id && m.replyPreview
+              ? {
+                  ...m,
+                  replyPreview: {
+                    ...m.replyPreview,
+                    content: message.content,
+                    hasAttachments: message.attachments.length > 0,
+                    hasPoll: message.pollId !== null,
+                  },
+                }
+              : m
+          );
+
+      const shouldIncrementUnread =
+        isBrandNew && isIncomingFromOther && s.activeTab !== 'chat';
+
+      return {
+        chatMessages: syncedReplies,
+        unreadChatCount: shouldIncrementUnread
+          ? s.unreadChatCount + 1
+          : s.unreadChatCount,
+        typingUsers: isBrandNew
+          ? s.typingUsers.filter((t) => t.userId !== message.userId)
+          : s.typingUsers,
+      };
+    }),
+
+  removeChatMessage: (messageId) =>
+    set((s) => ({
+      chatMessages: s.chatMessages
+        .filter((m) => m.id !== messageId)
+        .map((m) => (m.replyToId === messageId ? { ...m, replyPreview: null } : m)),
+    })),
+
+  updateChatPollInStore: (poll) =>
+    set((s) => ({
+      chatMessages: s.chatMessages.map((m) =>
+        m.pollId === poll.id || m.poll?.id === poll.id ? { ...m, poll } : m
+      ),
+    })),
+
+  setNextSessionInStore: (nextSession) => set({ nextSession }),
+
+  registerTypingUser: (userId, displayName) => {
+    const expiresAt = Date.now() + 4000;
+    set((s) => {
+      if (s.user?.id === userId) return s;
+      const rest = s.typingUsers.filter((t) => t.userId !== userId && t.expiresAt > Date.now());
+      return { typingUsers: [...rest, { userId, displayName, expiresAt }] };
+    });
+    window.setTimeout(() => {
+      set((s) => ({
+        typingUsers: s.typingUsers.filter((t) => t.expiresAt > Date.now()),
+      }));
+    }, 4200);
+  },
+
   applyLiveTheme: (theme) => {
     const current = get().user;
     applyThemeToDocument(theme, getUserThemeSlot(current));
@@ -251,26 +362,47 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
         });
     }
 
-    const [questsRes, bestiaryRes, spellsRes, talentsRes, rollsRes, allCharsRes, ...playerBundles] =
-      await Promise.all([
-        apiFetch<{ quests: Quest[] }>('/api/quests'),
-        apiFetch<{ creatures: BestiaryCreature[] }>('/api/bestiary'),
-        apiFetch<{ spells: Spell[]; learnedSpellIds: number[] }>('/api/spells'),
+    const [
+      questsRes,
+      bestiaryRes,
+      spellsRes,
+      talentsRes,
+      rollsRes,
+      allCharsRes,
+      chatRes,
+      ...playerBundles
+    ] = await Promise.all([
+      apiFetch<{ quests: Quest[] }>('/api/quests'),
+      apiFetch<{ creatures: BestiaryCreature[] }>('/api/bestiary'),
+      apiFetch<{ spells: Spell[]; learnedSpellIds: number[] }>('/api/spells'),
+      apiFetch<{
+        inspirationPoints: number;
+        nodes: TalentNode[];
+        purchases: PurchasedTalent[];
+      }>('/api/talents'),
+      apiFetch<{ rolls: RollLogEntry[] }>('/api/rolls'),
+      apiFetch<{ characters: CharacterProfile[] }>('/api/characters'),
+      apiFetch<{
+        messages: ChatMessage[];
+        nextSession: NextSessionBanner | null;
+        partyUsers?: AuthUser[];
+      }>('/api/chat').catch(() => ({
+        messages: [] as ChatMessage[],
+        nextSession: null as NextSessionBanner | null,
+        partyUsers: [] as AuthUser[],
+      })),
+      ...playerIdsToLoad.map((pid) =>
         apiFetch<{
-          inspirationPoints: number;
-          nodes: TalentNode[];
-          purchases: PurchasedTalent[];
-        }>('/api/talents'),
-        apiFetch<{ rolls: RollLogEntry[] }>('/api/rolls'),
-        apiFetch<{ characters: CharacterProfile[] }>('/api/characters'),
-        ...playerIdsToLoad.map((pid) =>
-          apiFetch<{
-            profile: CharacterProfile | null;
-            journal: JournalEntry;
-            learnedSpells: LearnedSpellRecord[];
-          }>(`/api/player/${pid}`)
-        ),
-      ]);
+          profile: CharacterProfile | null;
+          journal: JournalEntry;
+          learnedSpells: LearnedSpellRecord[];
+        }>(`/api/player/${pid}`)
+      ),
+    ]);
+
+    if (Array.isArray(chatRes.partyUsers) && chatRes.partyUsers.length > 0) {
+      syncAllAccountThemes(chatRes.partyUsers);
+    }
 
     const charMap: Partial<Record<PlayerId, CharacterProfile>> = {};
     for (const c of allCharsRes.characters) {
@@ -298,6 +430,8 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
       talentNodes: talentsRes.nodes,
       talentPurchases: talentsRes.purchases,
       rolls: rollsRes.rolls,
+      chatMessages: chatRes.messages,
+      nextSession: chatRes.nextSession,
       charactersById: { ...s.charactersById, ...charMap },
       journalsById: { ...s.journalsById, ...journalMap },
       learnedSpellsById: { ...s.learnedSpellsById, ...learnedMap },
