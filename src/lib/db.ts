@@ -793,8 +793,11 @@ interface BestiaryBaseRow {
   alignment: string | null;
   ac: number;
   hp: string;
+  xp: number | null;
   description: string | null;
   image_key: string | null;
+  image_url: string | null;
+  image_full_url: string | null;
   is_revealed: number;
   sort_order: number;
   source_title: string | null;
@@ -819,7 +822,10 @@ function mapBestiarySummary(row: BestiaryBaseRow): BestiaryCreature {
     alignment: row.alignment ?? '',
     ac: row.ac,
     hp: row.hp,
+    xp: Number(row.xp ?? 0),
     imageKey: row.image_key,
+    imageUrl: row.image_url ?? '',
+    imageFullUrl: row.image_full_url ?? '',
     isRevealed: Boolean(row.is_revealed),
     sortOrder: row.sort_order,
     sourceTitle: row.source_title ?? '',
@@ -842,7 +848,8 @@ export async function listBestiary(
   const { results } = await db
     .prepare(
       `SELECT b.id, b.name, b.name_en, b.cr, b.cr_numeric, b.creature_type, b.size, b.alignment,
-              b.ac, b.hp, b.image_key, b.is_revealed, b.sort_order, b.source_title, b.source_url,
+              b.ac, b.hp, b.xp, b.image_key, b.image_url, b.image_full_url, b.is_revealed,
+              b.sort_order, b.source_title, b.source_url,
               b.import_key, b.is_compendium, b.speed, b.senses, b.languages, b.description,
               (SELECT COUNT(*) FROM entity_notes n
                 WHERE n.entity_type = 'creature' AND n.entity_id = b.id) AS notes_count
@@ -912,6 +919,9 @@ export interface CompendiumCreatureInput {
   alignment?: string;
   ac?: number;
   hp?: string;
+  xp?: number;
+  imageUrl?: string;
+  imageFullUrl?: string;
   speed?: string;
   senses?: string;
   languages?: string;
@@ -944,10 +954,10 @@ export async function upsertCompendiumCreatures(
 
   const statement = db.prepare(
     `INSERT INTO bestiary
-       (name, name_en, cr, cr_numeric, creature_type, size, alignment, ac, hp, speed, senses,
-        languages, description, is_revealed, sort_order, source_title, source_url, import_key,
-        is_compendium)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, 1)
+       (name, name_en, cr, cr_numeric, creature_type, size, alignment, ac, hp, xp, image_url,
+        image_full_url, speed, senses, languages, description, is_revealed, sort_order,
+        source_title, source_url, import_key, is_compendium)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, 1)
      ON CONFLICT(import_key) DO UPDATE SET
        name = excluded.name,
        name_en = excluded.name_en,
@@ -958,6 +968,9 @@ export async function upsertCompendiumCreatures(
        alignment = excluded.alignment,
        ac = excluded.ac,
        hp = excluded.hp,
+       xp = excluded.xp,
+       image_url = excluded.image_url,
+       image_full_url = excluded.image_full_url,
        speed = excluded.speed,
        senses = excluded.senses,
        languages = excluded.languages,
@@ -979,6 +992,9 @@ export async function upsertCompendiumCreatures(
       clip(item.alignment, 80),
       Math.round(clampNumber(item.ac, 10, 0, 100)),
       clip(item.hp, 80),
+      Math.round(clampNumber(item.xp, 0, 0, 10_000_000)),
+      clip(item.imageUrl, 500),
+      clip(item.imageFullUrl, 500),
       clip(item.speed, 200),
       clip(item.senses, 300),
       clip(item.languages, 300),

@@ -1,12 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { ExternalLink, Eye, EyeOff, Loader2, X } from 'lucide-react';
 import { apiFetch } from '../../lib/api';
-import { resolveImageUrl } from '../../lib/artwork';
 import { useCampaignStore } from '../../lib/store';
 import type { BestiaryCreature, BestiaryCreatureDetail } from '../../lib/types';
 import { EntityNotes } from '../common/EntityNotes';
 import { FormattedText } from '../common/FormattedText';
 import { getCrRimColor } from './BestiaryTile';
+import { MonsterArt } from './MonsterArt';
 
 interface BestiaryDetailProps {
   creature: BestiaryCreature | null;
@@ -73,10 +73,12 @@ export const BestiaryDetail: React.FC<BestiaryDetailProps> = ({
         className="glass-panel hud-cut max-w-3xl w-full my-6 overflow-hidden shadow-glass"
       >
         <div className="relative h-48 bg-deep border-b border-border">
-          <img
-            src={resolveImageUrl(view.imageKey, 'dragon')}
-            alt={view.name}
-            className="w-full h-full object-cover"
+          <MonsterArt
+            creature={view}
+            variant="full"
+            className="absolute inset-0 w-full h-full"
+            imgClassName="w-full h-full object-cover"
+            eager
           />
           <div className="absolute inset-0 bg-gradient-to-t from-surface via-surface/40 to-transparent" />
           <button
@@ -97,7 +99,9 @@ export const BestiaryDetail: React.FC<BestiaryDetailProps> = ({
             </div>
             <span className="hud-keycap shrink-0">
               <span className="w-2 h-2 rounded-full" style={{ backgroundColor: crColor }} />
-              <span>Опасность {view.cr}</span>
+              <span>
+                Опасность {view.cr} · {view.xp.toLocaleString('ru-RU')} опыта
+              </span>
             </span>
           </div>
         </div>
@@ -159,11 +163,17 @@ export const BestiaryDetail: React.FC<BestiaryDetailProps> = ({
             </div>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
             <div className="p-3 bg-bg border border-border">
               <div className="text-xs text-muted">Опасность</div>
               <div className="font-mono font-medium text-lg text-text mt-1 tabular-nums">
                 {view.cr}
+              </div>
+            </div>
+            <div className="p-3 bg-bg border border-border">
+              <div className="text-xs text-muted">Опыт</div>
+              <div className="font-mono font-medium text-lg text-text mt-1 tabular-nums">
+                {view.xp.toLocaleString('ru-RU')}
               </div>
             </div>
             <div className="p-3 bg-bg border border-border">
@@ -174,7 +184,7 @@ export const BestiaryDetail: React.FC<BestiaryDetailProps> = ({
             </div>
             <div className="p-3 bg-bg border border-border">
               <div className="text-xs text-muted">Хиты</div>
-              <div className="font-mono font-medium text-lg text-text mt-1 tabular-nums">
+              <div className="font-mono font-medium text-sm text-text mt-1.5 tabular-nums">
                 {view.hp}
               </div>
             </div>

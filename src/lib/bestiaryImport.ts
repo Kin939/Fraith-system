@@ -19,9 +19,12 @@ export interface DndsuCreatureRecord {
   languages: string;
   cr: string;
   crNumeric: number;
+  xp: number;
   environment: string;
   statblock: string;
   url: string;
+  imageUrl: string;
+  imageFullUrl: string;
 }
 
 const CHUNK_SIZE = 120;
@@ -52,6 +55,9 @@ function toImportItem(record: DndsuCreatureRecord) {
     alignment: record.alignment,
     ac: record.ac,
     hp: record.hp,
+    xp: record.xp,
+    imageUrl: record.imageUrl,
+    imageFullUrl: record.imageFullUrl,
     speed: record.speed,
     senses: record.senses,
     languages: record.languages,
