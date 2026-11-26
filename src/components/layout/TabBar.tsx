@@ -8,8 +8,6 @@ import {
   Sparkles,
   User,
   Users,
-  Wifi,
-  WifiOff,
 } from 'lucide-react';
 import { resolvePublicAssetUrl } from '../../lib/cdnAssets';
 import { CampaignTabId, useCampaignStore } from '../../lib/store';
@@ -31,21 +29,25 @@ export const TabBar: React.FC<TabBarProps> = ({ onLogout }) => {
     {
       id: 'character',
       label: isDm ? 'Персонажи' : 'Мой персонаж',
-      icon: isDm ? <Users className="w-4 h-4" /> : <User className="w-4 h-4" />,
+      icon: isDm ? (
+        <Users className="w-4 h-4" strokeWidth={1.5} />
+      ) : (
+        <User className="w-4 h-4" strokeWidth={1.5} />
+      ),
     },
-    { id: 'quests', label: 'Квесты', icon: <ScrollText className="w-4 h-4" /> },
-    { id: 'bestiary', label: 'Бестиарий', icon: <Skull className="w-4 h-4" /> },
-    { id: 'spells', label: 'Заклинания', icon: <BookOpen className="w-4 h-4" /> },
-    { id: 'talents', label: 'Дерево талантов', icon: <Sparkles className="w-4 h-4" /> },
+    { id: 'quests', label: 'Квесты', icon: <ScrollText className="w-4 h-4" strokeWidth={1.5} /> },
+    { id: 'bestiary', label: 'Бестиарий', icon: <Skull className="w-4 h-4" strokeWidth={1.5} /> },
+    { id: 'spells', label: 'Заклинания', icon: <BookOpen className="w-4 h-4" strokeWidth={1.5} /> },
+    { id: 'talents', label: 'Дерево талантов', icon: <Sparkles className="w-4 h-4" strokeWidth={1.5} /> },
   ];
 
   if (isDm) {
-    tabs.push({ id: 'dm', label: 'Мастер', icon: <Crown className="w-4 h-4" /> });
+    tabs.push({ id: 'dm', label: 'Мастер', icon: <Crown className="w-4 h-4" strokeWidth={1.5} /> });
   }
 
   return (
-    <header className="lg:hidden sticky top-0 z-30 glass-panel hud-corners border-b border-primary/35 px-3 py-2.5 space-y-2">
-      <div className="flex items-center justify-between">
+    <header className="lg:hidden sticky top-0 z-30 bg-deep border-b border-border px-4 py-2 space-y-2">
+      <div className="flex items-center justify-between h-9">
         <div className="flex items-center gap-2">
           <img
             src={resolvePublicAssetUrl('/favicon-64.png')}
@@ -54,40 +56,34 @@ export const TabBar: React.FC<TabBarProps> = ({ onLogout }) => {
                 e.currentTarget.src = '/favicon.svg';
               }
             }}
-            alt="FRAITH.SYS"
-            className="w-6 h-6 object-cover border border-primary/50"
+            alt="Fraith"
+            className="w-5 h-5 object-cover"
           />
-          <span className="font-anime font-extrabold text-sm tracking-wider">
-            FRAITH<span className="text-primary">.SYS</span>
-          </span>
+          <span className="font-medium text-sm text-text">Fraith</span>
           <span
-            className={`inline-flex items-center gap-1 font-mono text-[10px] px-1.5 py-0.5 border ${
-              wsConnected
-                ? 'border-emerald-400/50 text-emerald-300 bg-emerald-500/10'
-                : 'border-amber-400/50 text-amber-300 bg-amber-500/10'
+            className={`w-2 h-2 rounded-full ${
+              wsConnected ? 'bg-positive' : 'bg-warning'
             }`}
-          >
-            {wsConnected ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}
-            LIVE
-          </span>
+            title={wsConnected ? 'В сети' : 'Связь…'}
+          />
         </div>
 
         <div className="flex items-center gap-2">
-          <span className="font-mono text-[11px] text-muted truncate max-w-[130px]">
+          <span className="text-xs text-secondary truncate max-w-[140px]">
             {user.displayName}
           </span>
           <button
             type="button"
             onClick={onLogout}
-            className="p-1.5 border border-primary/30 bg-[#070B14]/80 text-muted hover:text-rose-300"
+            className="w-8 h-8 flex items-center justify-center border border-border bg-surface text-muted hover:text-text transition-colors"
             title="Выйти"
           >
-            <LogOut className="w-4 h-4" />
+            <LogOut className="w-4 h-4" strokeWidth={1.5} />
           </button>
         </div>
       </div>
 
-      <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+      <div className="flex items-center gap-1 overflow-x-auto pb-1">
         {tabs.map((tab) => {
           const active = activeTab === tab.id;
           return (
@@ -95,10 +91,10 @@ export const TabBar: React.FC<TabBarProps> = ({ onLogout }) => {
               key={tab.id}
               type="button"
               onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-anime uppercase tracking-wider whitespace-nowrap transition-all border ${
+              className={`h-9 flex items-center gap-2 px-3 text-xs whitespace-nowrap transition-colors border-b-2 ${
                 active
-                  ? 'bg-primary/15 text-text border-primary/60 border-b-2 border-b-primary shadow-[0_8px_18px_-8px_var(--primary)] font-bold'
-                  : 'bg-[#070B14]/65 text-muted border-primary/20'
+                  ? 'bg-raised text-text font-medium border-b-primary'
+                  : 'text-secondary hover:text-text border-b-transparent'
               }`}
             >
               <span className={active ? 'text-primary' : 'text-muted'}>{tab.icon}</span>

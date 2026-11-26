@@ -4,14 +4,14 @@ import type { AuthUser, PlayerId, ThemeVariables } from './types';
 export type ThemeUserSlot = 'dm' | 'player1' | 'player2' | 'player3';
 
 export const DEFAULT_ANIME_THEME: ThemeVariables = {
-  bg: '#070B14',
-  surface: '#0F172A',
-  primary: '#00E5FF',
-  accent: '#7C4DFF',
-  text: '#E6F1FF',
-  textMuted: '#8FA3BF',
-  border: 'rgba(0, 229, 255, 0.40)',
-  glow: 'rgba(0, 229, 255, 0.45)',
+  bg: '#0b0d14',
+  surface: '#11141c',
+  primary: '#38bdf8',
+  accent: '#a3a9b8',
+  text: '#eef0f5',
+  textMuted: '#7a8296',
+  border: 'rgba(238, 240, 245, 0.08)',
+  glow: 'rgba(56, 189, 248, 0.16)',
 };
 
 export interface ThemePreset {
@@ -23,77 +23,89 @@ export interface ThemePreset {
 
 export const ANIME_THEME_PRESETS: ThemePreset[] = [
   {
-    id: 'tactical-cyan',
-    name: 'TACTICAL // CYAN',
-    subtitle: 'Базовый тактический циан (#00E5FF) + фиолетовый вторичный (#7C4DFF)',
+    id: 'ink-sky',
+    name: 'Холодный сланец',
+    subtitle: 'Нейтральная палитра Ink (#0b0d14) и небесно-голубой акцент',
     theme: DEFAULT_ANIME_THEME,
   },
   {
-    id: 'vanguard-ice',
-    name: 'VANGUARD // ARCTIC',
-    subtitle: 'Ледяной голубой rim-контур и индиго-голограмма',
+    id: 'graphite-cyan',
+    name: 'Графит и бирюза',
+    subtitle: 'Тёмный графит (#141415) и чистый бирюзовый акцент',
     theme: {
-      bg: '#070B14',
-      surface: '#0F172A',
-      primary: '#38BDF8',
-      accent: '#7C4DFF',
-      text: '#E6F1FF',
-      textMuted: '#8FA3BF',
-      border: 'rgba(56, 189, 248, 0.40)',
-      glow: 'rgba(56, 189, 248, 0.45)',
+      bg: '#141415',
+      surface: '#19191b',
+      primary: '#2dd4bf',
+      accent: '#a1a1a6',
+      text: '#ededed',
+      textMuted: '#85858b',
+      border: 'rgba(237, 237, 237, 0.08)',
+      glow: 'rgba(45, 212, 191, 0.16)',
     },
   },
   {
-    id: 'valkyrie-amber',
-    name: 'VALKYRIE // SOLAR',
-    subtitle: 'Янтарный тактический контур и фиолетовый импульс',
+    id: 'warm-amber',
+    name: 'Тёплый янтарь',
+    subtitle: 'Тёплый угольный фон (#161513) и янтарный акцент',
     theme: {
-      bg: '#070B14',
-      surface: '#0F172A',
-      primary: '#FFB300',
-      accent: '#7C4DFF',
-      text: '#E6F1FF',
-      textMuted: '#8FA3BF',
-      border: 'rgba(255, 179, 0, 0.40)',
-      glow: 'rgba(255, 179, 0, 0.45)',
+      bg: '#161513',
+      surface: '#1c1a18',
+      primary: '#e5a93b',
+      accent: '#aaa398',
+      text: '#efe9de',
+      textMuted: '#8a847a',
+      border: 'rgba(239, 233, 222, 0.08)',
+      glow: 'rgba(229, 169, 59, 0.16)',
     },
   },
   {
-    id: 'phantom-crimson',
-    name: 'PHANTOM // MAGENTA',
-    subtitle: 'Агрессивный неоново-малиновый rim-свет оперативника',
+    id: 'ember-coral',
+    name: 'Алый уголь',
+    subtitle: 'Сланцевый фон (#0b0d14) и приглушённый кораллово-алый акцент',
     theme: {
-      bg: '#070B14',
-      surface: '#0F172A',
-      primary: '#FF2E93',
-      accent: '#7C4DFF',
-      text: '#E6F1FF',
-      textMuted: '#8FA3BF',
-      border: 'rgba(255, 46, 147, 0.40)',
-      glow: 'rgba(255, 46, 147, 0.45)',
+      bg: '#0b0d14',
+      surface: '#11141c',
+      primary: '#e5484d',
+      accent: '#a3a9b8',
+      text: '#eef0f5',
+      textMuted: '#7a8296',
+      border: 'rgba(238, 240, 245, 0.08)',
+      glow: 'rgba(229, 72, 77, 0.16)',
     },
   },
   {
-    id: 'wraith-emerald',
-    name: 'WRAITH // MATRIX',
-    subtitle: 'Изумрудный био-неон и холодный тактический обсидиан',
+    id: 'moss-sage',
+    name: 'Лесной шалфей',
+    subtitle: 'Спокойный сланцевый фон и приглушённый зелёный акцент',
     theme: {
-      bg: '#070B14',
-      surface: '#0F172A',
-      primary: '#00F5A0',
-      accent: '#7C4DFF',
-      text: '#E6F1FF',
-      textMuted: '#8FA3BF',
-      border: 'rgba(0, 245, 160, 0.40)',
-      glow: 'rgba(0, 245, 160, 0.45)',
+      bg: '#0b0d14',
+      surface: '#11141c',
+      primary: '#4cc38a',
+      accent: '#a3a9b8',
+      text: '#eef0f5',
+      textMuted: '#7a8296',
+      border: 'rgba(238, 240, 245, 0.08)',
+      glow: 'rgba(76, 195, 138, 0.16)',
     },
   },
 ];
 
-const LEGACY_SEED_BGS = new Set(['#0f0f1a', '#0b1020', '#130f1c', '#120b16']);
-const LEGACY_SEED_SURFACES = new Set(['#1a1a2e', '#151d36', '#211a30', '#201329']);
+const LEGACY_SEED_BGS = new Set([
+  '#0f0f1a',
+  '#0b1020',
+  '#130f1c',
+  '#120b16',
+  '#070b14',
+]);
+const LEGACY_SEED_SURFACES = new Set([
+  '#1a1a2e',
+  '#151d36',
+  '#211a30',
+  '#201329',
+  '#0f172a',
+]);
 
-export function hexToGlow(hex: string, alpha = 0.45): string {
+export function hexToGlow(hex: string, alpha = 0.16): string {
   const cleaned = hex.replace('#', '').trim();
   if (cleaned.length !== 6) return DEFAULT_ANIME_THEME.glow;
   const r = parseInt(cleaned.slice(0, 2), 16);
@@ -104,8 +116,8 @@ export function hexToGlow(hex: string, alpha = 0.45): string {
 }
 
 /**
- * Normalizes stored `user_themes` JSON while upgrading untouched legacy seed dark-purple
- * backgrounds to `#070B14` / `#0F172A` and `#00E5FF` fallback when uncustomized.
+ * Normalizes stored `user_themes` JSON onto the quiet Ink neutral ramp while keeping
+ * each player's distinct accent color and honoring custom ThemeEditor palettes.
  */
 export function parseThemeJson(raw?: string | null): ThemeVariables {
   if (!raw) return { ...DEFAULT_ANIME_THEME };
@@ -126,8 +138,17 @@ export function parseThemeJson(raw?: string | null): ThemeVariables {
     const isLegacySeedBg = LEGACY_SEED_BGS.has(rawBg.toLowerCase());
     const isLegacySeedSurface = LEGACY_SEED_SURFACES.has(rawSurface.toLowerCase());
 
-    const primary = rawPrimary || DEFAULT_ANIME_THEME.primary;
-    const accent = isLegacySeedBg ? DEFAULT_ANIME_THEME.accent : rawAccent || DEFAULT_ANIME_THEME.accent;
+    const normalizedPrimary =
+      rawPrimary.toLowerCase() === '#ec4899' || rawPrimary.toLowerCase() === '#ff2e93'
+        ? '#e5484d'
+        : rawPrimary.toLowerCase() === '#f59e0b' || rawPrimary.toLowerCase() === '#ffb300'
+          ? '#e5a93b'
+          : rawPrimary || DEFAULT_ANIME_THEME.primary;
+
+    const accent =
+      isLegacySeedBg || rawAccent.toLowerCase() === '#7c4dff'
+        ? DEFAULT_ANIME_THEME.accent
+        : rawAccent || DEFAULT_ANIME_THEME.accent;
     const bg = !rawBg || isLegacySeedBg ? DEFAULT_ANIME_THEME.bg : rawBg;
     const surface =
       !rawSurface || isLegacySeedSurface ? DEFAULT_ANIME_THEME.surface : rawSurface;
@@ -136,14 +157,15 @@ export function parseThemeJson(raw?: string | null): ThemeVariables {
     const textMuted =
       !parsed.textMuted || isLegacySeedBg ? DEFAULT_ANIME_THEME.textMuted : parsed.textMuted;
     const border =
-      !parsed.border || isLegacySeedBg ? hexToGlow(primary, 0.4) : parsed.border;
-    const glow =
-      !parsed.glow || isLegacySeedBg ? hexToGlow(primary, 0.45) : parsed.glow;
+      !parsed.border || isLegacySeedBg || parsed.border.includes('0.4')
+        ? DEFAULT_ANIME_THEME.border
+        : parsed.border;
+    const glow = hexToGlow(normalizedPrimary, 0.16);
 
     return {
       bg,
       surface,
-      primary,
+      primary: normalizedPrimary,
       accent,
       text,
       textMuted,
@@ -174,15 +196,13 @@ const slotThemesRegistry: Record<ThemeUserSlot, ThemeVariables> = {
   player1: { ...DEFAULT_ANIME_THEME },
   player2: {
     ...DEFAULT_ANIME_THEME,
-    primary: '#FFB300',
-    border: hexToGlow('#FFB300', 0.4),
-    glow: hexToGlow('#FFB300', 0.45),
+    primary: '#e5a93b',
+    glow: hexToGlow('#e5a93b', 0.16),
   },
   player3: {
     ...DEFAULT_ANIME_THEME,
-    primary: '#FF2E93',
-    border: hexToGlow('#FF2E93', 0.4),
-    glow: hexToGlow('#FF2E93', 0.45),
+    primary: '#e5484d',
+    glow: hexToGlow('#e5484d', 0.16),
   },
 };
 
@@ -244,10 +264,6 @@ export function getSlotTheme(slot: ThemeUserSlot): ThemeVariables {
   return slotThemesRegistry[slot];
 }
 
-/**
- * Applies per-user palette strictly via `[data-theme-user="player1|player2|player3|dm"]`
- * CSS variable rules without duplicating component styles or clobbering nested slot cards.
- */
 export function applyThemeToDocument(
   theme: ThemeVariables,
   slotOverride?: ThemeUserSlot
@@ -266,10 +282,6 @@ export function applyThemeToDocument(
   flushThemeSlotStylesheet();
 }
 
-/**
- * Generates an inline CSSProperties object with scoped CSS variables for live preview
- * inside ThemeEditor without mutating documentElement or saving to D1.
- */
 export function themeToScopedStyle(theme: ThemeVariables): CSSProperties {
   return {
     '--bg': theme.bg,

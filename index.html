@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#070B14" />
+    <meta name="theme-color" content="#0b0d14" />
     <link
       rel="icon"
       type="image/svg+xml"
@@ -13,10 +13,10 @@
       rel="apple-touch-icon"
       href="https://gcore.jsdelivr.net/gh/Kin939/Fraith-system@main/public/apple-touch-icon.png"
     />
-    <title>FRAITH // SYSTEM — D&amp;D 5e TACTICAL HUD</title>
+    <title>Fraith — Портал кампании D&amp;D 5e</title>
     <link
       rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=Exo+2:wght@600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700;800&family=Orbitron:wght@600;700;800&family=Rajdhani:wght@600;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
       media="print"
       onload="this.media='all'"
     />
@@ -24,8 +24,8 @@
       html, body {
         margin: 0;
         min-height: 100vh;
-        background-color: #070B14;
-        color: #E6F1FF;
+        background-color: #0b0d14;
+        color: #eef0f5;
         font-family: 'Inter', system-ui, -apple-system, sans-serif;
       }
       .fraith-boot-wrap {
@@ -33,66 +33,51 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        padding: 1.25rem;
+        padding: 1.5rem;
         box-sizing: border-box;
-        background: radial-gradient(circle at 50% 42%, #0B1220 0%, #070B14 74%);
+        background-color: #0b0d14;
       }
       .fraith-boot-card {
-        max-width: 26rem;
+        max-width: 24rem;
         width: 100%;
-        background: rgba(15, 23, 42, 0.88);
-        border: 1px solid rgba(0, 229, 255, 0.45);
-        box-shadow: 0 0 0 1px rgba(0, 229, 255, 0.35), 0 0 24px -6px rgba(0, 229, 255, 0.55);
-        clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 14px 100%, 0 calc(100% - 14px));
-        padding: 1.75rem 1.5rem;
+        background: #11141c;
+        border: 1px solid rgba(238, 240, 245, 0.08);
+        clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 10px 100%, 0 calc(100% - 10px));
+        padding: 1.5rem;
         text-align: left;
       }
-      .fraith-boot-code {
-        font-family: 'JetBrains Mono', ui-monospace, monospace;
-        font-size: 0.68rem;
-        letter-spacing: 0.22em;
-        color: #00E5FF;
-        margin-bottom: 0.4rem;
-      }
       .fraith-boot-title {
-        font-family: 'Orbitron', 'Rajdhani', 'Exo 2', sans-serif;
-        font-weight: 800;
-        font-size: 1.35rem;
-        letter-spacing: 0.1em;
-        color: #E6F1FF;
-      }
-      .fraith-boot-title span {
-        color: #00E5FF;
+        font-weight: 500;
+        font-size: 1.125rem;
+        letter-spacing: -0.01em;
+        color: #eef0f5;
       }
       .fraith-boot-sub {
-        margin-top: 0.55rem;
-        font-size: 0.8rem;
+        margin-top: 0.5rem;
+        font-size: 0.8125rem;
         line-height: 1.5;
-        color: #8FA3BF;
+        color: #a3a9b8;
       }
       .fraith-boot-btn {
         margin-top: 1rem;
         display: none;
-        background: #00E5FF;
-        color: #040810;
+        background: #eef0f5;
+        color: #0b0d14;
         border: none;
-        padding: 0.6rem 1.1rem;
-        font-size: 0.78rem;
-        font-weight: 800;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
+        padding: 0.5rem 1rem;
+        font-size: 0.8125rem;
+        font-weight: 500;
         cursor: pointer;
       }
     </style>
   </head>
-  <body class="bg-bg text-text antialiased selection:bg-primary/30 selection:text-text">
+  <body class="bg-bg text-text antialiased selection:bg-primary/25 selection:text-text">
     <div id="root">
       <div class="fraith-boot-wrap">
         <div class="fraith-boot-card">
-          <div class="fraith-boot-code">SYS.BOOT // NEURAL LINK</div>
-          <div class="fraith-boot-title">FRAITH<span>.SYSTEM</span></div>
+          <div class="fraith-boot-title">Fraith</div>
           <div id="fraith-boot-status" class="fraith-boot-sub">
-            Инициализация тактического интерфейса кампании...
+            Подключение к столу кампании…
           </div>
           <button
             id="fraith-boot-retry"
@@ -100,7 +85,7 @@
             class="fraith-boot-btn"
             onclick="window.location.reload()"
           >
-            Перезапустить канал
+            Обновить страницу
           </button>
         </div>
       </div>

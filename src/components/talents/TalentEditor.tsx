@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Plus, Save, Trash2, Upload, X } from 'lucide-react';
-import { HudIcon } from '../common/HudIcon';
+import { Plus, Save, Sparkles, Trash2, Upload, X } from 'lucide-react';
 import { apiFetch, uploadImageAsset } from '../../lib/api';
 import { resolveImageUrl } from '../../lib/artwork';
 import { useCampaignStore } from '../../lib/store';
@@ -114,10 +113,10 @@ export const TalentNodeModal: React.FC<TalentNodeModalProps> = ({
           });
       setTalentsBundle(res);
       pushToast({
-        title: editingNode ? 'Талант обновлён' : 'Талант размещён на холсте',
+        title: editingNode ? 'Талант обновлён' : 'Талант добавлен',
         message: editingNode
-          ? 'Данные таланта сохранены.'
-          : 'Перетащите плитку мышью в любое удобное место дерева.',
+          ? 'Данные таланта сохранены'
+          : 'Перетащите плитку мышью в нужное место дерева',
         variant: 'success',
       });
       onClose();
@@ -149,57 +148,57 @@ export const TalentNodeModal: React.FC<TalentNodeModalProps> = ({
   return (
     <div
       onClick={onClose}
-      className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4"
+      className="fixed inset-0 z-50 bg-black/75 flex items-center justify-center p-4"
     >
       <form
         onClick={(e) => e.stopPropagation()}
         onSubmit={handleSubmit}
-        className="glass-panel neon-border rounded-3xl max-w-lg w-full p-6 space-y-4"
+        className="glass-panel hud-cut max-w-lg w-full p-6 space-y-4 shadow-glass"
       >
-        <div className="flex items-center justify-between gap-3">
-          <h3 className="font-anime font-bold text-lg uppercase">
-            // {editingNode ? 'Редактирование таланта' : 'Новый узел дерева талантов'}
+        <div className="flex items-center justify-between gap-3 border-b border-border pb-3">
+          <h3 className="font-medium text-base text-text">
+            {editingNode ? 'Редактирование таланта' : 'Новый узел дерева талантов'}
           </h3>
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 rounded-xl border border-border text-muted hover:text-text"
+            className="p-1 text-muted hover:text-text transition-colors"
           >
-            <X className="w-4 h-4" />
+            <X className="w-4 h-4" strokeWidth={1.5} />
           </button>
         </div>
 
         <div>
-          <label className="block text-xs text-muted mb-1">Название таланта</label>
+          <label className="block text-xs text-secondary mb-1.5">Название таланта</label>
           <input
             required
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             placeholder="Например: Благословение единства"
-            className="anime-input w-full text-sm"
+            className="anime-input w-full h-9 text-sm"
           />
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
-            <label className="block text-xs text-muted mb-1">Стоимость (общие очки Вдохновения)</label>
+            <label className="block text-xs text-secondary mb-1.5">Стоимость (очки вдохновения)</label>
             <input
               type="number"
               min={0}
               value={cost}
               onChange={(e) => setCost(Math.max(0, Number(e.target.value)))}
-              className="anime-input w-full text-sm"
+              className="anime-input w-full h-9 text-sm font-mono"
             />
           </div>
 
           <div>
-            <label className="block text-xs text-muted mb-1">Связь от предыдущего таланта</label>
+            <label className="block text-xs text-secondary mb-1.5">Родительский узел</label>
             <select
               value={parentId ?? ''}
               onChange={(e) => setParentId(e.target.value ? Number(e.target.value) : null)}
-              className="anime-input w-full text-sm"
+              className="anime-input w-full h-9 text-sm"
             >
-              <option value="">Корневой талант (без родителя)</option>
+              <option value="">Корневой узел (без родителя)</option>
               {allNodes
                 .filter((n) => n.id !== editingNode?.id)
                 .map((n) => (
@@ -212,13 +211,13 @@ export const TalentNodeModal: React.FC<TalentNodeModalProps> = ({
         </div>
 
         <div>
-          <label className="block text-xs text-muted mb-1">Описание эффекта для группы</label>
+          <label className="block text-xs text-secondary mb-1.5">Описание эффекта</label>
           <textarea
             required
             rows={4}
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            placeholder="Какой бонус или способность получает вся группа при открытии этого таланта..."
+            placeholder="Бонус или способность, которую получает отряд"
             className="anime-input w-full text-sm"
           />
         </div>
@@ -226,29 +225,29 @@ export const TalentNodeModal: React.FC<TalentNodeModalProps> = ({
         <div className="flex items-center gap-3">
           <img
             src={resolveImageUrl(imageKey, 'spark')}
-            alt="icon"
-            className="w-12 h-12 object-cover border border-border"
+            alt="Иконка"
+            className="w-12 h-12 object-cover border border-border bg-deep"
           />
-          <label className="px-3.5 py-2 rounded-xl bg-bg/70 border border-border hover:border-primary text-xs cursor-pointer inline-flex items-center gap-2">
-            <Upload className="w-3.5 h-3.5 text-accent" />
-            <span>{uploading ? 'Загрузка...' : 'Загрузить иконку'}</span>
+          <label className="hud-btn-secondary h-8 px-3 text-xs cursor-pointer inline-flex items-center gap-2">
+            <Upload className="w-3.5 h-3.5 text-muted" strokeWidth={1.5} />
+            <span>{uploading ? 'Загрузка…' : 'Загрузить иконку'}</span>
             <input type="file" accept="image/*" onChange={handleUpload} className="hidden" />
           </label>
         </div>
 
-        <div className="flex items-center justify-between gap-2 pt-2 border-t border-border">
+        <div className="flex items-center justify-between gap-2 pt-3 border-t border-border">
           {editingNode ? (
             <button
               type="button"
               onClick={() => void handleDelete()}
-              className="px-3.5 py-2 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/40 text-xs font-semibold text-rose-300 inline-flex items-center gap-1.5"
+              className="h-9 px-3 border border-border text-xs text-muted hover:text-negative hover:border-negative/30 inline-flex items-center gap-1.5 transition-colors"
             >
-              <Trash2 className="w-3.5 h-3.5" />
+              <Trash2 className="w-3.5 h-3.5" strokeWidth={1.5} />
               <span>Удалить</span>
             </button>
           ) : (
-            <span className="text-[11px] text-muted">
-              После создания двигайте плитку мышью по холсту.
+            <span className="text-xs text-muted">
+              После создания двигайте плитку по холсту
             </span>
           )}
 
@@ -256,17 +255,21 @@ export const TalentNodeModal: React.FC<TalentNodeModalProps> = ({
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 rounded-xl border border-border text-xs text-muted hover:text-text"
+              className="h-9 px-4 border border-border text-xs text-secondary hover:text-text transition-colors"
             >
               Отмена
             </button>
             <button
               type="submit"
               disabled={saving}
-              className="anime-btn-primary px-4 py-2 text-xs inline-flex items-center gap-1.5"
+              className="anime-btn-primary h-9 px-4 text-xs inline-flex items-center gap-1.5"
             >
-              {editingNode ? <Save className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
-              <span>{saving ? 'Сохранение...' : editingNode ? 'Сохранить' : 'Создать плитку'}</span>
+              {editingNode ? (
+                <Save className="w-3.5 h-3.5" strokeWidth={1.5} />
+              ) : (
+                <Plus className="w-3.5 h-3.5" strokeWidth={1.5} />
+              )}
+              <span>{saving ? 'Сохранение…' : editingNode ? 'Сохранить' : 'Создать'}</span>
             </button>
           </div>
         </div>
@@ -300,25 +303,24 @@ export const TalentEditor: React.FC = () => {
     setTalentsBundle(res);
     setCustomInspirationSet('');
     pushToast({
-      title: 'Счётчик вдохновений обновлён',
-      message: `Установлено значение: ${res.inspirationPoints} очк.`,
+      title: 'Счётчик вдохновения обновлён',
+      message: `Установлено значение: ${res.inspirationPoints}`,
       variant: 'info',
     });
   };
 
   return (
-    <div className="space-y-5">
-      {/* Inspiration Dispenser */}
-      <div className="glass-panel hud-corners hud-cut p-5 flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <HudIcon asset="spark" size="lg" />
+    <div className="space-y-6">
+      <div className="glass-panel hud-cut p-5 flex flex-wrap items-center justify-between gap-4">
+        <div className="flex items-start gap-3">
+          <Sparkles className="w-4 h-4 text-muted mt-1 shrink-0" strokeWidth={1.5} />
           <div>
-            <div className="font-anime font-bold text-base uppercase flex items-center gap-2">
-              <span>// Управление общим пулом Вдохновений:</span>
+            <div className="font-medium text-base text-text flex items-center gap-2">
+              <span>Общий пул вдохновения:</span>
               <span className="font-mono text-primary tabular-nums">{inspirationPoints}</span>
             </div>
-            <div className="text-xs text-muted">
-              Очки общие для всей группы — любой открытый талант действует сразу на весь отряд.
+            <div className="text-xs text-secondary mt-0.5">
+              Очки общие для всей группы — любой открытый талант действует на весь отряд
             </div>
           </div>
         </div>
@@ -339,14 +341,9 @@ export const TalentEditor: React.FC = () => {
                 });
                 setTalentsBundle(res);
               }}
-              className={`px-3 py-1.5 border font-mono text-xs font-bold tabular-nums inline-flex items-center gap-1 transition-colors ${
-                delta < 0
-                  ? 'bg-rose-500/15 text-rose-300 border-rose-500/35 hover:bg-rose-500/25'
-                  : 'bg-primary/20 text-primary border-primary/40 hover:bg-primary/30'
-              }`}
+              className="h-9 px-3 border border-border bg-bg hover:bg-raised font-mono text-xs text-secondary hover:text-text tabular-nums transition-colors"
             >
-              <span>{delta > 0 ? `+${delta}` : `${delta}`}</span>
-              <HudIcon asset="spark" size="xs" />
+              {delta > 0 ? `+${delta}` : `${delta}`}
             </button>
           ))}
 
@@ -355,20 +352,19 @@ export const TalentEditor: React.FC = () => {
             min={0}
             value={customInspirationSet}
             onChange={(e) => setCustomInspirationSet(e.target.value)}
-            placeholder="Точное число..."
-            className="anime-input w-32 text-xs py-1.5"
+            placeholder="Точное число"
+            className="anime-input w-28 h-9 text-xs py-1 font-mono"
           />
           <button
             type="button"
             onClick={() => void handleSetInspiration()}
-            className="anime-btn-primary px-3.5 py-1.5 text-xs"
+            className="anime-btn-primary h-9 px-4 text-xs"
           >
             Задать
           </button>
         </div>
       </div>
 
-      {/* Interactive Drag-and-Drop Visual Talent Tree Canvas */}
       <TalentTree
         nodes={nodes}
         inspirationPoints={inspirationPoints}

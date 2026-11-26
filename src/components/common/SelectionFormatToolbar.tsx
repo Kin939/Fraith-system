@@ -334,127 +334,127 @@ export const SelectionFormatToolbar: React.FC = () => {
         e.preventDefault();
         e.stopPropagation();
       }}
-      className="glass-panel neon-border rounded-2xl px-2 py-1.5 flex items-center gap-0.5 shadow-2xl border border-primary/70 bg-surface/95"
+      className="bg-raised hud-cut-sm px-2 py-1.5 flex items-center gap-0.5 shadow-glass border border-border"
     >
       <button
         type="button"
         onClick={() => runWrap('**', '**')}
         title="Жирный (Ctrl+B)"
-        className="p-1.5 rounded-lg hover:bg-primary/25 text-text transition-colors"
+        className="p-1.5 hover:bg-surface text-text transition-colors"
       >
-        <Bold className="w-3.5 h-3.5" />
+        <Bold className="w-3.5 h-3.5" strokeWidth={1.5} />
       </button>
 
       <button
         type="button"
         onClick={() => runWrap('*', '*')}
         title="Курсив (Ctrl+I)"
-        className="p-1.5 rounded-lg hover:bg-primary/25 text-text transition-colors"
+        className="p-1.5 hover:bg-surface text-text transition-colors"
       >
-        <Italic className="w-3.5 h-3.5" />
+        <Italic className="w-3.5 h-3.5" strokeWidth={1.5} />
       </button>
 
       <button
         type="button"
         onClick={() => runWrap('__', '__')}
         title="Подчёркнутый (Ctrl+U)"
-        className="p-1.5 rounded-lg hover:bg-primary/25 text-text transition-colors"
+        className="p-1.5 hover:bg-surface text-text transition-colors"
       >
-        <Underline className="w-3.5 h-3.5" />
+        <Underline className="w-3.5 h-3.5" strokeWidth={1.5} />
       </button>
 
       <button
         type="button"
         onClick={() => runWrap('~~', '~~')}
         title="Зачёркнутый (Ctrl+Shift+X)"
-        className="p-1.5 rounded-lg hover:bg-primary/25 text-text transition-colors"
+        className="p-1.5 hover:bg-surface text-text transition-colors"
       >
-        <Strikethrough className="w-3.5 h-3.5" />
+        <Strikethrough className="w-3.5 h-3.5" strokeWidth={1.5} />
       </button>
 
-      <span className="w-px h-4 bg-border mx-0.5" />
+      <span className="w-px h-4 bg-border mx-1" />
 
       <button
         type="button"
         onClick={() => runLine('### ')}
         title="Заголовок раздела"
-        className="p-1.5 rounded-lg hover:bg-primary/25 text-text transition-colors"
+        className="p-1.5 hover:bg-surface text-text transition-colors"
       >
-        <Heading3 className="w-3.5 h-3.5" />
+        <Heading3 className="w-3.5 h-3.5" strokeWidth={1.5} />
       </button>
 
       <button
         type="button"
         onClick={() => runLine('• ')}
         title="Маркированный список"
-        className="p-1.5 rounded-lg hover:bg-primary/25 text-text transition-colors"
+        className="p-1.5 hover:bg-surface text-text transition-colors"
       >
-        <List className="w-3.5 h-3.5" />
+        <List className="w-3.5 h-3.5" strokeWidth={1.5} />
       </button>
 
       <button
         type="button"
         onClick={() => runLine('> ')}
-        title="Цитата / Важная врезка"
-        className="p-1.5 rounded-lg hover:bg-primary/25 text-text transition-colors"
+        title="Цитата / важная врезка"
+        className="p-1.5 hover:bg-surface text-text transition-colors"
       >
-        <Quote className="w-3.5 h-3.5" />
+        <Quote className="w-3.5 h-3.5" strokeWidth={1.5} />
       </button>
 
-      <span className="w-px h-4 bg-border mx-0.5" />
+      <span className="w-px h-4 bg-border mx-1" />
 
       {/* Color Highlights */}
       <button
         type="button"
         onClick={() => runWrap('{violet:', '}')}
         title="Выделить фиолетовым"
-        className="w-5 h-5 rounded-md flex items-center justify-center hover:bg-white/10"
+        className="w-6 h-6 flex items-center justify-center hover:bg-surface"
       >
-        <span className="w-3 h-3 rounded-full bg-purple-400 border border-white/40" />
+        <span className="w-2.5 h-2.5 rounded-full bg-[#a78bfa]" />
       </button>
       <button
         type="button"
         onClick={() => runWrap('{cyan:', '}')}
-        title="Выделить бирюзовым"
-        className="w-5 h-5 rounded-md flex items-center justify-center hover:bg-white/10"
+        title="Выделить голубым"
+        className="w-6 h-6 flex items-center justify-center hover:bg-surface"
       >
-        <span className="w-3 h-3 rounded-full bg-cyan-400 border border-white/40" />
+        <span className="w-2.5 h-2.5 rounded-full bg-[#38bdf8]" />
       </button>
       <button
         type="button"
         onClick={() => runWrap('{gold:', '}')}
-        title="Выделить золотым"
-        className="w-5 h-5 rounded-md flex items-center justify-center hover:bg-white/10"
+        title="Выделить янтарным"
+        className="w-6 h-6 flex items-center justify-center hover:bg-surface"
       >
-        <span className="w-3 h-3 rounded-full bg-amber-400 border border-white/40" />
+        <span className="w-2.5 h-2.5 rounded-full bg-[#e5a93b]" />
       </button>
       <button
         type="button"
         onClick={() => runWrap('{crimson:', '}')}
-        title="Выделить алым"
-        className="w-5 h-5 rounded-md flex items-center justify-center hover:bg-white/10"
+        title="Выделить коралловым"
+        className="w-6 h-6 flex items-center justify-center hover:bg-surface"
       >
-        <span className="w-3 h-3 rounded-full bg-rose-400 border border-white/40" />
+        <span className="w-2.5 h-2.5 rounded-full bg-[#e5484d]" />
       </button>
 
-      <span className="w-px h-4 bg-border mx-0.5" />
+      <span className="w-px h-4 bg-border mx-1" />
 
       <button
         type="button"
         onClick={() => runWrap('[roll: ', ']')}
         title="Сделать кликабельной формулой броска кубиков (напр. 2к6+3)"
-        className="p-1.5 hover:bg-primary/20 text-primary transition-colors"
+        className="p-1.5 hover:bg-surface text-primary transition-colors"
       >
-        <Dices className="w-3.5 h-3.5" />
+        <Dices className="w-3.5 h-3.5" strokeWidth={1.5} />
       </button>
 
       <button
         type="button"
         onClick={runClear}
         title="Очистить форматирование"
-        className="p-1.5 rounded-lg hover:bg-rose-500/20 text-muted hover:text-rose-300 transition-colors"
+        className="p-1.5 hover:bg-surface text-muted hover:text-negative transition-colors"
       >
-        <Eraser className="w-3.5 h-3.5" />
+        <Eraser className="w-3.5 h-3.5" strokeWidth={1.5} />
       </button>
     </div>
   );

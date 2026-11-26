@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { FileUp, Plus, Save, Sparkles, Trash2 } from 'lucide-react';
+import { FileUp, Plus, Save, Trash2 } from 'lucide-react';
 import { apiFetch } from '../../lib/api';
 import { DND_HOMEBREW_CLASSES_META, MAGIC_SCHOOL_LABELS_RU } from '../../lib/lss';
 import { useCampaignStore } from '../../lib/store';
@@ -96,7 +96,7 @@ export const SpellEditor: React.FC = () => {
     if (selectedClasses.length === 0) {
       pushToast({
         title: 'Выберите хотя бы один класс',
-        message: 'Укажите классы, которым доступно заклинание.',
+        message: 'Укажите классы, которым доступно заклинание',
         variant: 'warning',
       });
       return;
@@ -127,8 +127,8 @@ export const SpellEditor: React.FC = () => {
           });
       setSpells(res.spells);
       pushToast({
-        title: editingId ? 'Заклинание обновлено' : 'Заклинание добавлено в каталог',
-        message: 'Изменения синхронизированы через Durable Object.',
+        title: editingId ? 'Заклинание обновлено' : 'Заклинание добавлено',
+        message: 'Каталог обновлён у всех участников',
         variant: 'success',
       });
       if (!editingId) selectSpell(null);
@@ -169,13 +169,13 @@ export const SpellEditor: React.FC = () => {
       setBatchJson('');
       pushToast({
         title: `Импортировано заклинаний: ${res.imported}`,
-        message: 'Каталог SRD/Open5e успешно пополнен.',
+        message: 'Каталог заклинаний пополнен',
         variant: 'success',
       });
     } catch (err) {
       pushToast({
-        title: 'Ошибка импорта SRD JSON',
-        message: err instanceof Error ? err.message : 'Ожидается массив или ответ Open5e API',
+        title: 'Ошибка импорта JSON',
+        message: err instanceof Error ? err.message : 'Ожидается массив заклинаний',
         variant: 'error',
       });
     } finally {
@@ -185,17 +185,17 @@ export const SpellEditor: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-1 xl:grid-cols-12 gap-5">
-        <div className="xl:col-span-5 glass-panel rounded-3xl p-4 space-y-3">
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
+        <div className="xl:col-span-5 glass-panel hud-cut p-5 space-y-4">
           <div className="flex items-center justify-between">
-            <h4 className="font-anime font-bold text-sm">Каталог ({spells.length})</h4>
+            <h4 className="font-medium text-sm text-text">Каталог ({spells.length})</h4>
             <button
               type="button"
               onClick={() => selectSpell(null)}
-              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-primary/20 text-primary text-xs font-semibold"
+              className="hud-btn-secondary h-8 px-3 text-xs inline-flex items-center gap-1.5"
             >
-              <Plus className="w-3.5 h-3.5" />
-              Новое заклинание
+              <Plus className="w-3.5 h-3.5" strokeWidth={1.5} />
+              <span>Новое заклинание</span>
             </button>
           </div>
 
@@ -204,21 +204,23 @@ export const SpellEditor: React.FC = () => {
               <div
                 key={sp.id}
                 onClick={() => selectSpell(sp)}
-                className={`p-2.5 rounded-2xl border cursor-pointer flex items-center justify-between gap-2 ${
+                className={`p-2.5 border cursor-pointer transition-colors flex items-center justify-between gap-2 ${
                   editingId === sp.id
-                    ? 'bg-primary/15 border-primary'
-                    : 'bg-bg/50 border-border hover:border-primary/40'
+                    ? 'bg-raised border-primary/60'
+                    : 'bg-bg border-border hover:bg-raised/60'
                 }`}
               >
                 <div className="min-w-0">
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-primary/20 text-primary">
-                      {sp.level} ур.
+                  <div className="flex items-center gap-2">
+                    <span className="hud-keycap">
+                      [{sp.level}]
                     </span>
-                    {sp.isHomebrew && <Sparkles className="w-3 h-3 text-accent shrink-0" />}
-                    <span className="text-xs font-semibold truncate">{sp.name}</span>
+                    <span className="text-xs font-medium text-text truncate">{sp.name}</span>
+                    {sp.isHomebrew && (
+                      <span className="font-mono text-xs text-muted shrink-0">Авт.</span>
+                    )}
                   </div>
-                  <div className="text-[11px] text-muted truncate">{sp.classes.join(', ')}</div>
+                  <div className="text-xs text-muted truncate mt-1">{sp.classes.join(', ')}</div>
                 </div>
                 <button
                   type="button"
@@ -226,9 +228,9 @@ export const SpellEditor: React.FC = () => {
                     e.stopPropagation();
                     void handleDelete(sp.id);
                   }}
-                  className="p-1.5 rounded-lg text-muted hover:text-rose-400"
+                  className="p-1.5 text-muted hover:text-negative transition-colors"
                 >
-                  <Trash2 className="w-3.5 h-3.5" />
+                  <Trash2 className="w-3.5 h-3.5" strokeWidth={1.5} />
                 </button>
               </div>
             ))}
@@ -237,45 +239,45 @@ export const SpellEditor: React.FC = () => {
 
         <form
           onSubmit={handleSubmit}
-          className="xl:col-span-7 glass-panel rounded-3xl p-5 space-y-4"
+          className="xl:col-span-7 glass-panel hud-cut p-6 space-y-4"
         >
-          <h4 className="font-anime font-bold text-base uppercase">
-            // {editingId ? `Редактирование заклинания #${editingId}` : 'Добавить SRD / Homebrew заклинание'}
+          <h4 className="font-medium text-base text-text">
+            {editingId ? `Редактирование заклинания #${editingId}` : 'Добавить заклинание'}
           </h4>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div className="sm:col-span-2">
-              <label className="block text-xs text-muted mb-1">Название *</label>
+              <label className="block text-xs text-secondary mb-1.5">Название</label>
               <input
                 required
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="Название заклинания"
-                className="anime-input w-full text-sm"
+                className="anime-input w-full h-9 text-sm"
               />
             </div>
 
             <div>
-              <label className="block text-xs text-muted mb-1">Уровень (0–9)</label>
+              <label className="block text-xs text-secondary mb-1.5">Круг (0–9)</label>
               <select
                 value={level}
                 onChange={(e) => setLevel(Number(e.target.value))}
-                className="anime-input w-full text-sm"
+                className="anime-input w-full h-9 text-sm"
               >
                 {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((l) => (
                   <option key={l} value={l}>
-                    {l === 0 ? '0 — Заговор' : `${l} уровень`}
+                    {l === 0 ? '0 — Заговор' : `${l} круг`}
                   </option>
                 ))}
               </select>
             </div>
 
             <div>
-              <label className="block text-xs text-muted mb-1">Школа магии</label>
+              <label className="block text-xs text-secondary mb-1.5">Школа магии</label>
               <select
                 value={school}
                 onChange={(e) => setSchool(e.target.value)}
-                className="anime-input w-full text-sm"
+                className="anime-input w-full h-9 text-sm"
               >
                 {ALL_SCHOOLS.map((s) => (
                   <option key={s} value={s}>
@@ -286,56 +288,56 @@ export const SpellEditor: React.FC = () => {
             </div>
 
             <div>
-              <label className="block text-xs text-muted mb-1">Время накладывания</label>
+              <label className="block text-xs text-secondary mb-1.5">Время накладывания</label>
               <input
                 value={castingTime}
                 onChange={(e) => setCastingTime(e.target.value)}
-                className="anime-input w-full text-sm"
+                className="anime-input w-full h-9 text-sm"
               />
             </div>
 
             <div>
-              <label className="block text-xs text-muted mb-1">Дистанция</label>
+              <label className="block text-xs text-secondary mb-1.5">Дистанция</label>
               <input
                 value={spellRange}
                 onChange={(e) => setSpellRange(e.target.value)}
-                className="anime-input w-full text-sm"
+                className="anime-input w-full h-9 text-sm"
               />
             </div>
 
             <div>
-              <label className="block text-xs text-muted mb-1">Компоненты</label>
+              <label className="block text-xs text-secondary mb-1.5">Компоненты</label>
               <input
                 value={components}
                 onChange={(e) => setComponents(e.target.value)}
-                className="anime-input w-full text-sm"
+                className="anime-input w-full h-9 text-sm"
               />
             </div>
 
             <div>
-              <label className="block text-xs text-muted mb-1">Длительность</label>
+              <label className="block text-xs text-secondary mb-1.5">Длительность</label>
               <input
                 value={duration}
                 onChange={(e) => setDuration(e.target.value)}
-                className="anime-input w-full text-sm"
+                className="anime-input w-full h-9 text-sm"
               />
             </div>
 
             <div>
-              <label className="block text-xs text-muted mb-1">Источник</label>
+              <label className="block text-xs text-secondary mb-1.5">Источник</label>
               <input
                 value={source}
                 onChange={(e) => setSource(e.target.value)}
-                className="anime-input w-full text-sm"
+                className="anime-input w-full h-9 text-sm"
               />
             </div>
           </div>
 
-          <div className="space-y-2.5">
-            <label className="block text-xs text-muted">Доступные классы *</label>
+          <div className="space-y-3">
+            <label className="block text-xs text-secondary">Доступные классы</label>
 
             <div>
-              <div className="text-[11px] text-muted mb-1">Официальные классы (D&amp;D 5e):</div>
+              <div className="text-xs text-muted mb-1.5">Официальные классы D&amp;D 5e</div>
               <div className="flex flex-wrap gap-1.5">
                 {OFFICIAL_CLASSES.map((cls) => {
                   const active = selectedClasses.includes(cls);
@@ -344,10 +346,10 @@ export const SpellEditor: React.FC = () => {
                       key={cls}
                       type="button"
                       onClick={() => toggleClass(cls)}
-                      className={`px-2.5 py-1 rounded-xl text-xs font-medium border transition-colors ${
+                      className={`h-7 px-2.5 text-xs border transition-colors ${
                         active
-                          ? 'bg-primary/25 border-primary text-text'
-                          : 'bg-bg/50 border-border text-muted hover:text-text'
+                          ? 'bg-raised border-primary/60 text-text font-medium'
+                          : 'bg-bg border-border text-secondary hover:text-text'
                       }`}
                     >
                       {cls}
@@ -358,8 +360,8 @@ export const SpellEditor: React.FC = () => {
             </div>
 
             <div>
-              <div className="text-[11px] text-purple-300/90 mb-1">
-                Homebrew классы (dnd.su — все 15 классов):
+              <div className="text-xs text-muted mb-1.5">
+                Авторские классы (dnd.su)
               </div>
               <div className="flex flex-wrap gap-1.5">
                 {HOMEBREW_CLASSES.map((cls) => {
@@ -369,13 +371,13 @@ export const SpellEditor: React.FC = () => {
                       key={cls}
                       type="button"
                       onClick={() => toggleClass(cls)}
-                      className={`px-2.5 py-1 rounded-xl text-xs font-medium border transition-colors ${
+                      className={`h-7 px-2.5 text-xs border transition-colors ${
                         active
-                          ? 'bg-purple-500/25 border-purple-400 text-purple-100'
-                          : 'bg-bg/50 border-border text-muted hover:text-text'
+                          ? 'bg-raised border-primary/60 text-text font-medium'
+                          : 'bg-bg border-border text-secondary hover:text-text'
                       }`}
                     >
-                      {cls} <span className="text-[9px] opacity-75">HB</span>
+                      {cls}
                     </button>
                   );
                 })}
@@ -383,18 +385,18 @@ export const SpellEditor: React.FC = () => {
             </div>
           </div>
 
-          <label className="inline-flex items-center gap-2 text-xs cursor-pointer">
+          <label className="inline-flex items-center gap-2 text-xs text-secondary cursor-pointer">
             <input
               type="checkbox"
               checked={isHomebrew}
               onChange={(e) => setIsHomebrew(e.target.checked)}
-              className="w-4 h-4 accent-purple-500"
+              className="w-4 h-4"
             />
-            <span>Пометить как авторское Homebrew-заклинание</span>
+            <span>Пометить как авторское заклинание кампании</span>
           </label>
 
           <div>
-            <label className="block text-xs text-muted mb-1">Полное описание *</label>
+            <label className="block text-xs text-secondary mb-1.5">Полное описание</label>
             <textarea
               required
               rows={4}
@@ -408,33 +410,31 @@ export const SpellEditor: React.FC = () => {
             <button
               type="submit"
               disabled={saving}
-              className="anime-btn-primary px-5 py-2.5 text-xs inline-flex items-center gap-2"
+              className="anime-btn-primary h-10 px-5 text-xs inline-flex items-center gap-2"
             >
-              <Save className="w-4 h-4" />
-              <span>{saving ? 'Сохранение...' : editingId ? 'Сохранить изменения' : 'Добавить заклинание'}</span>
+              <Save className="w-4 h-4" strokeWidth={1.5} />
+              <span>{saving ? 'Сохранение…' : editingId ? 'Сохранить изменения' : 'Добавить заклинание'}</span>
             </button>
           </div>
         </form>
       </div>
 
-      {/* Open5e / dnd.su Batch JSON Importer */}
-      <div className="glass-panel rounded-3xl p-5 space-y-3">
+      <div className="glass-panel hud-cut p-6 space-y-3">
         <div className="flex items-center gap-2">
-          <FileUp className="w-4 h-4 text-accent" />
-          <h4 className="font-anime font-bold text-sm uppercase">
-            // Массовый импорт SRD-заклинаний (Open5e API / JSON)
+          <FileUp className="w-4 h-4 text-muted" strokeWidth={1.5} />
+          <h4 className="font-medium text-sm text-text">
+            Массовый импорт заклинаний (Open5e / JSON)
           </h4>
         </div>
-        <p className="text-xs text-muted">
-          Вставьте JSON-ответ из <code>https://api.open5e.com/v1/spells/?format=json</code> или массив
-          объектов <code>{`[{ "name": "...", "level_int": 2, "school": "Illusion", "dnd_class": "Wizard, Bard", "desc": "..." }]`}</code>.
+        <p className="text-xs text-secondary">
+          Вставьте ответ из <code>https://api.open5e.com/v1/spells/?format=json</code> или массив объектов заклинаний.
         </p>
         <textarea
           data-no-format="true"
           rows={3}
           value={batchJson}
           onChange={(e) => setBatchJson(e.target.value)}
-          placeholder='[{"name":"Туманное облако (Fog Cloud)","level":1,"school":"Conjuration","classes":["Wizard","Druid","Ranger","Sorcerer"],"description":"Вы создаёте сферу тумана радиусом 20 футов..."}]'
+          placeholder='[{"name":"Туманное облако","level":1,"school":"Вызов","classes":["Wizard","Druid"],"description":"..."}]'
           className="anime-input w-full font-mono text-xs"
         />
         <div className="flex justify-end">
@@ -442,9 +442,9 @@ export const SpellEditor: React.FC = () => {
             type="button"
             disabled={importing || !batchJson.trim()}
             onClick={handleBatchImport}
-            className="px-4 py-2 rounded-xl bg-accent/20 text-accent border border-accent/40 text-xs font-semibold hover:bg-accent/30 disabled:opacity-40"
+            className="hud-btn-secondary h-9 px-4 text-xs disabled:opacity-40"
           >
-            {importing ? 'Импорт...' : 'Импортировать в D1'}
+            {importing ? 'Импорт…' : 'Импортировать'}
           </button>
         </div>
       </div>

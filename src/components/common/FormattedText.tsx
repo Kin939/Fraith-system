@@ -1,5 +1,5 @@
 import React from 'react';
-import { HudIcon } from './HudIcon';
+import { Dices, Zap } from 'lucide-react';
 import { apiFetch } from '../../lib/api';
 import { rollDamageExpression } from '../../lib/lssSheetParser';
 import { useCampaignStore } from '../../lib/store';
@@ -15,10 +15,10 @@ const INLINE_TOKEN_RE =
   /(\[(?:roll:|\u{1F3B2})\s*[^\]]+\]|\[(?:res:|\u26A1)\s*[^\]]+\]|\{(?:violet|cyan|gold|crimson):[\s\S]*?\}|\*\*[\s\S]+?\*\*|__[\s\S]+?__|~~[\s\S]+?~~|`[^`\n]+`|\*[^*\n]+\*)/gu;
 
 const COLOR_CLASS_MAP: Record<string, string> = {
-  violet: 'text-purple-300 bg-purple-500/15 px-1 border border-purple-500/30 font-medium',
-  cyan: 'text-cyan-300 bg-cyan-500/15 px-1 border border-cyan-500/30 font-medium',
-  gold: 'text-amber-300 bg-amber-500/15 px-1 border border-amber-500/30 font-medium',
-  crimson: 'text-rose-300 bg-rose-500/15 px-1 border border-rose-500/30 font-medium',
+  violet: 'text-text bg-raised px-1.5 py-0.5 border border-border font-medium',
+  cyan: 'text-primary bg-primary/10 px-1.5 py-0.5 border border-primary/25 font-medium',
+  gold: 'text-warning bg-warning/10 px-1.5 py-0.5 border border-warning/25 font-medium',
+  crimson: 'text-negative bg-negative/10 px-1.5 py-0.5 border border-negative/25 font-medium',
 };
 
 async function triggerInlineDiceRoll(
@@ -52,13 +52,13 @@ async function triggerInlineDiceRoll(
     });
     store.prependRoll(res.roll);
     store.pushToast({
-      title: `[DICE] ${cleanFormula}: ${roll.total}`,
+      title: `Бросок ${cleanFormula}: ${roll.total}`,
       message: roll.breakdown,
       variant: 'info',
     });
   } catch {
     store.pushToast({
-      title: `[DICE] ${cleanFormula}: ${roll.total}`,
+      title: `Бросок ${cleanFormula}: ${roll.total}`,
       message: roll.breakdown,
       variant: 'info',
     });
@@ -88,10 +88,10 @@ export function renderInlineFormatted(
             e.stopPropagation();
             void triggerInlineDiceRoll(inner, characterName);
           }}
-          title="Нажмите, чтобы бросить кубики в общий лог стола"
-          className="inline-flex items-center gap-1 px-1.5 py-0.5 mx-0.5 bg-primary/15 hover:bg-primary/25 border border-primary/50 text-primary font-mono text-[0.9em] font-bold transition-colors cursor-pointer"
+          title="Бросить кубики в общий лог стола"
+          className="hud-keycap mx-0.5 hover:border-primary/50 hover:text-primary transition-colors cursor-pointer"
         >
-          <HudIcon asset="dice" size="xs" />
+          <Dices className="w-3.5 h-3.5 text-muted" strokeWidth={1.5} />
           <span>{inner}</span>
         </button>
       );
@@ -101,11 +101,8 @@ export function renderInlineFormatted(
     if (resMatch) {
       const inner = resMatch[1].trim();
       return (
-        <span
-          key={idx}
-          className="inline-flex items-center gap-1 px-1.5 py-0.5 mx-0.5 bg-amber-500/15 border border-amber-500/40 text-amber-300 font-mono text-[0.9em] font-semibold"
-        >
-          <HudIcon asset="bolt" size="xs" />
+        <span key={idx} className="hud-keycap mx-0.5 text-secondary">
+          <Zap className="w-3.5 h-3.5 text-muted" strokeWidth={1.5} />
           <span>{inner}</span>
         </span>
       );
@@ -123,7 +120,7 @@ export function renderInlineFormatted(
 
     if (part.startsWith('**') && part.endsWith('**') && part.length > 4) {
       return (
-        <strong key={idx} className="font-bold text-text">
+        <strong key={idx} className="font-medium text-text">
           {renderInlineFormatted(part.slice(2, -2), depth + 1, characterName)}
         </strong>
       );
@@ -131,7 +128,7 @@ export function renderInlineFormatted(
 
     if (part.startsWith('__') && part.endsWith('__') && part.length > 4) {
       return (
-        <u key={idx} className="underline decoration-primary/80 underline-offset-2">
+        <u key={idx} className="underline decoration-primary/70 underline-offset-2">
           {renderInlineFormatted(part.slice(2, -2), depth + 1, characterName)}
         </u>
       );
@@ -139,7 +136,7 @@ export function renderInlineFormatted(
 
     if (part.startsWith('~~') && part.endsWith('~~') && part.length > 4) {
       return (
-        <s key={idx} className="line-through opacity-70">
+        <s key={idx} className="line-through text-muted">
           {renderInlineFormatted(part.slice(2, -2), depth + 1, characterName)}
         </s>
       );
@@ -147,10 +144,7 @@ export function renderInlineFormatted(
 
     if (part.startsWith('`') && part.endsWith('`') && part.length > 2) {
       return (
-        <code
-          key={idx}
-          className="px-1.5 py-0.2 bg-bg/80 border border-border font-mono text-[0.9em] text-primary"
-        >
+        <code key={idx} className="hud-keycap">
           {part.slice(1, -1)}
         </code>
       );
@@ -158,9 +152,9 @@ export function renderInlineFormatted(
 
     if (part.startsWith('*') && part.endsWith('*') && part.length > 2) {
       return (
-        <em key={idx} className="italic text-text/95">
+        <span key={idx} className="text-text font-medium">
           {renderInlineFormatted(part.slice(1, -1), depth + 1, characterName)}
-        </em>
+        </span>
       );
     }
 
@@ -168,11 +162,6 @@ export function renderInlineFormatted(
   });
 }
 
-/**
- * Renders rich formatted text supporting bold (**), italic (*), underline (__),
- * strikethrough (~~), code (`), headings (###), bullet/ordered lists, quotes (>),
- * dividers (---), colored highlights ({gold:...}), and clickable dice rolls ([roll: 2к6+3]).
- */
 export const FormattedText: React.FC<FormattedTextProps> = React.memo(({
   text,
   className = '',
@@ -194,24 +183,23 @@ export const FormattedText: React.FC<FormattedTextProps> = React.memo(({
     }
 
     if (trimmed === '---' || trimmed === '***') {
-      blocks.push(<hr key={`hr-${i}`} className="border-border/75 my-2" />);
+      blocks.push(<hr key={`hr-${i}`} className="border-border my-3" />);
       i++;
       continue;
     }
 
-    // Headings
     const headingMatch = trimmed.match(/^(#{1,3})\s+(.+)$/);
     if (headingMatch) {
       const level = headingMatch[1].length;
       const headingText = headingMatch[2];
       const sizeCls =
         level === 1
-          ? 'text-base font-extrabold text-primary'
+          ? 'text-base font-medium text-text'
           : level === 2
-            ? 'text-sm font-extrabold text-primary/90'
-            : 'text-xs font-extrabold uppercase tracking-wider text-primary';
+            ? 'text-sm font-medium text-text'
+            : 'text-xs font-medium text-secondary';
       blocks.push(
-        <div key={`h-${i}`} className={`font-anime mt-1.5 ${sizeCls}`}>
+        <div key={`h-${i}`} className={`mt-2 ${sizeCls}`}>
           {renderInlineFormatted(headingText, 0, characterName)}
         </div>
       );
@@ -219,7 +207,6 @@ export const FormattedText: React.FC<FormattedTextProps> = React.memo(({
       continue;
     }
 
-    // Quote block
     if (trimmed.startsWith('> ')) {
       const quoteLines: string[] = [];
       while (i < lines.length && lines[i].trim().startsWith('> ')) {
@@ -229,7 +216,7 @@ export const FormattedText: React.FC<FormattedTextProps> = React.memo(({
       blocks.push(
         <blockquote
           key={`q-${i}`}
-          className="border-l-2 border-primary bg-primary/10 px-3 py-1.5 italic text-text/90 space-y-1"
+          className="border-l-2 border-border bg-bg px-3 py-2 text-secondary space-y-1"
         >
           {quoteLines.map((ql, qi) => (
             <div key={qi}>{renderInlineFormatted(ql, 0, characterName)}</div>
@@ -239,7 +226,6 @@ export const FormattedText: React.FC<FormattedTextProps> = React.memo(({
       continue;
     }
 
-    // Bullet list
     if (/^(?:•|-|\*)\s+/.test(trimmed)) {
       const items: string[] = [];
       while (i < lines.length && /^(?:•|-|\*)\s+/.test(lines[i].trim())) {
@@ -256,7 +242,6 @@ export const FormattedText: React.FC<FormattedTextProps> = React.memo(({
       continue;
     }
 
-    // Ordered list
     if (/^\d+\.\s+/.test(trimmed)) {
       const items: string[] = [];
       while (i < lines.length && /^\d+\.\s+/.test(lines[i].trim())) {
@@ -273,7 +258,6 @@ export const FormattedText: React.FC<FormattedTextProps> = React.memo(({
       continue;
     }
 
-    // Regular paragraph (combine consecutive plain lines)
     const paraLines: string[] = [];
     while (
       i < lines.length &&

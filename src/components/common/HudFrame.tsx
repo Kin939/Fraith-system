@@ -14,8 +14,7 @@ export interface HudFrameProps {
 }
 
 /**
- * Architectural Sci-Fi Anime HUD panel wrapper with L-shaped corner brackets,
- * angular chamfered polygon corners, and optional telemetry header strip.
+ * Clean tactical panel wrapper with restrained angular corners and sentence-case header.
  */
 export const HudFrame: React.FC<HudFrameProps> = ({
   children,
@@ -33,25 +32,22 @@ export const HudFrame: React.FC<HudFrameProps> = ({
 
   return (
     <section
-      className={`hud-panel hud-corners relative ${cutClass} ${
+      className={`hud-panel relative ${cutClass} ${
         activeRim ? 'rim-card--active' : ''
       } ${neonTopLine ? 'hud-neon-top' : ''} ${className}`}
     >
       {(code || title || rightSlot) && (
-        <header className="px-4 py-3 border-b border-primary/25 bg-[#070B14]/70 flex flex-wrap items-center justify-between gap-3">
+        <header className="px-5 py-4 border-b border-border flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
             {code && (
-              <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-primary/90 flex items-center gap-2">
-                <span className="inline-block w-1.5 h-1.5 bg-primary shadow-[0_0_8px_var(--primary)]" />
-                <span>{code}</span>
-              </div>
+              <div className="text-xs text-muted mb-0.5">{code}</div>
             )}
             {title && (
-              <h2 className="font-anime font-bold text-base sm:text-lg tracking-wider uppercase text-text truncate">
+              <h2 className="font-anime font-medium text-lg text-text truncate">
                 {title}
               </h2>
             )}
-            {subtitle && <p className="text-xs text-muted mt-0.5">{subtitle}</p>}
+            {subtitle && <p className="text-xs text-secondary mt-0.5">{subtitle}</p>}
           </div>
           {rightSlot && <div className="flex items-center gap-2 flex-wrap">{rightSlot}</div>}
         </header>
