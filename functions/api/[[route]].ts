@@ -84,6 +84,7 @@ import {
   uploadChatAttachmentToR2,
   uploadImageToR2,
 } from '../../src/lib/r2';
+import { registerBoardRoutes } from '../../workers/board-routes';
 import { parseThemeJson } from '../../src/lib/theme';
 import type {
   AuthUser,
@@ -102,13 +103,14 @@ export interface Env {
   DB: D1Database;
   BUCKET?: R2Bucket;
   CAMPAIGN_DO: DurableObjectNamespace;
+  BOARD_ROOM?: DurableObjectNamespace;
   ASSETS?: Fetcher;
   JWT_SECRET?: string;
   CAMPAIGN_ID?: string;
   CF_ACCESS_ENABLED?: string;
 }
 
-type Variables = {
+export type Variables = {
   user: AuthUser | null;
 };
 
@@ -3100,5 +3102,11 @@ app.delete('/chat/session', async (c) => {
   await broadcastCampaignEvent(c.env, 'chat:session_updated', { nextSession: null }, user.id);
   return c.json({ ok: true });
 });
+
+// ============================================================================
+// «Доска» (infinite canvas) — изолированный набор маршрутов /api/boards/*
+// ============================================================================
+
+registerBoardRoutes(app);
 
 export const onRequest = handle(app);

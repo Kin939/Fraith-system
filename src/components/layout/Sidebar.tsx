@@ -3,6 +3,7 @@ import {
   BookOpen,
   CalendarClock,
   Crown,
+  LayoutDashboard,
   LogOut,
   MessageSquare,
   Network,
@@ -67,6 +68,13 @@ export const Sidebar: React.FC<SidebarProps> = ({ onLogout }) => {
       badge: unreadChatCount > 0 ? unreadChatCount : undefined,
     },
   ];
+
+  // «Доска» — строго после «Мессенджера» и перед «Мастером»
+  navItems.push({
+    id: 'board',
+    label: 'Доска',
+    icon: <LayoutDashboard className="w-4 h-4" strokeWidth={1.5} />,
+  });
 
   if (isDm) {
     navItems.push({

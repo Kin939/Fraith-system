@@ -36,6 +36,7 @@ export type CampaignTabId =
   | 'connections'
   | 'talents'
   | 'chat'
+  | 'board'
   | 'dm';
 
 export interface TypingMember {

@@ -1,5 +1,6 @@
 import { app, type Env } from '../functions/api/[[route]]';
 export { CampaignRoom } from './campaign-do';
+export { BoardRoom } from './board-do';
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
