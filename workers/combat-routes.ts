@@ -11,6 +11,7 @@ import type {
 } from '../src/lib/combatProtocol';
 import { getUserAvatarUrl } from '../src/lib/db';
 import { DND_CONDITIONS } from '../src/lib/combatProtocol';
+import { npcSheetToStatblock, parseNpcSheetJson } from '../src/lib/npcSheet';
 
 /**
  * HTTP-слой вкладки «Бой».
@@ -197,6 +198,172 @@ function buildStatblock(row: BestiaryRow): string {
   return parts.filter(Boolean).join('\n').slice(0, 20000);
 }
 
+interface CampaignNpcRow {
+  id: number;
+  name: string;
+  role: string;
+  image_key: string | null;
+  is_revealed: number;
+  sheet_json: string | null;
+}
+
+/** НПС из вкладки «Связи» для конструктора боя (статы — только мастеру). */
+async function listCombatNpcs(env: Env) {
+  const { results } = await env.DB.prepare(
+    `SELECT id, name, role, image_key, is_revealed, sheet_json
+     FROM campaign_npcs
+     ORDER BY is_revealed DESC, sort_order ASC, name ASC, id ASC`
+  ).all<CampaignNpcRow>();
+
+  return (results ?? []).map((row) => {
+    const sheet = parseNpcSheetJson(row.sheet_json);
+    return {
+      id: row.id,
+      name: row.name,
+      role: row.role,
+      // Ключ портрета: клиент сам приводит его к /api/r2/…
+      imageKey: row.image_key ?? '',
+      isRevealed: Boolean(row.is_revealed),
+      sheet,
+      statblock: npcSheetToStatblock(sheet, row.name),
+    };
+  });
+}
+
+/** Входная запись участника из REST-тела (игрок / существо / НПС). */
+interface ParticipantInput {
+  participantType?: 'player' | 'monster' | 'npc';
+  userId?: number;
+  playerId?: number;
+  monsterBestiaryId?: number;
+  npcId?: number;
+  displayName?: string;
+  imageUrl?: string;
+  initiativeValue?: number;
+  currentHp?: number;
+  maxHp?: number;
+  armorClass?: number;
+  isHiddenFromPlayers?: boolean;
+  hideName?: boolean;
+  statblock?: string;
+  quantity?: number;
+}
+
+interface PreparedParticipant {
+  type: 'player' | 'monster' | 'npc';
+  npcId: number | null;
+  imageUrl: string;
+  maxHp: number;
+  currentHp: number;
+  armorClass: number | null;
+  isHiddenFromPlayers: boolean;
+  statblock: string;
+  /** Имя с нумерацией, когда существ/НПС добавляют пачкой */
+  nameFor: (index: number, quantity: number) => string;
+}
+
+/** Загружает НПС из «Связей» по id из тела запроса. */
+async function loadNpcRows(
+  env: Env,
+  items: Array<{ participantType?: string; npcId?: number }>
+): Promise<Map<number, CampaignNpcRow>> {
+  const ids = items
+    .filter((item) => item.participantType === 'npc' && item.npcId)
+    .map((item) => Number(item.npcId));
+  const map = new Map<number, CampaignNpcRow>();
+  if (ids.length === 0) return map;
+
+  const placeholders = ids.map(() => '?').join(', ');
+  const { results } = await env.DB.prepare(
+    `SELECT id, name, role, image_key, is_revealed, sheet_json
+     FROM campaign_npcs WHERE id IN (${placeholders})`
+  )
+    .bind(...ids)
+    .all<CampaignNpcRow>();
+  for (const row of results ?? []) map.set(row.id, row);
+  return map;
+}
+
+/**
+ * Приводит запись конструктора к полям участника: подставляет статы из
+ * бестиария или из боевого листа НПС, но всегда даёт мастеру возможность
+ * переопределить HP/AC вручную.
+ */
+function prepareParticipant(
+  item: ParticipantInput,
+  source: { creatureById: Map<number, BestiaryRow>; npcById: Map<number, CampaignNpcRow> }
+): PreparedParticipant {
+  const npcRow =
+    item.participantType === 'npc' && item.npcId ? source.npcById.get(Number(item.npcId)) : undefined;
+  const type: PreparedParticipant['type'] =
+    item.participantType === 'npc' && npcRow
+      ? 'npc'
+      : item.participantType === 'monster'
+        ? 'monster'
+        : 'player';
+
+  if (type === 'npc' && npcRow) {
+    const sheet = parseNpcSheetJson(npcRow.sheet_json);
+    const sheetHp = sheet.hp != null && sheet.hp > 0 ? sheet.hp : null;
+    const maxHp = Math.max(1, Math.trunc(item.maxHp ?? sheetHp ?? 10));
+    const currentHp = Math.max(
+      0,
+      Math.min(maxHp, Math.trunc(item.currentHp ?? sheetHp ?? maxHp))
+    );
+    return {
+      type: 'npc',
+      npcId: npcRow.id,
+      imageUrl: item.imageUrl ?? '',
+      maxHp,
+      currentHp,
+      armorClass:
+        item.armorClass != null ? Math.trunc(item.armorClass) : sheet.ac ?? null,
+      // По умолчанию статы НПС так же скрыты от игроков, как у существ.
+      isHiddenFromPlayers: item.isHiddenFromPlayers !== false,
+      statblock: npcSheetToStatblock(sheet, npcRow.name),
+      nameFor: (index, quantity) =>
+        quantity > 1 ? `${npcRow.name} ${index + 1}` : npcRow.name,
+    };
+  }
+
+  const creature =
+    item.monsterBestiaryId ? source.creatureById.get(Number(item.monsterBestiaryId)) : undefined;
+  const hp = creature ? parseHp(creature.hp) : { average: item.maxHp ?? 10, dice: '' };
+
+  if (type === 'monster') {
+    const maxHp = Math.max(1, Math.trunc(creature ? hp.average : item.maxHp ?? hp.average ?? 10));
+    return {
+      type: 'monster',
+      npcId: null,
+      imageUrl: (creature ? creature.image_url || creature.image_full_url : item.imageUrl) ?? '',
+      maxHp,
+      currentHp: maxHp,
+      armorClass: item.armorClass != null ? Math.trunc(item.armorClass) : creature?.ac ?? null,
+      isHiddenFromPlayers: item.isHiddenFromPlayers !== false,
+      statblock: creature
+        ? buildStatblock(creature)
+        : (item.statblock ?? '').slice(0, 20000),
+      nameFor: (index, quantity) =>
+        quantity > 1
+          ? `${creature?.name ?? item.displayName ?? 'Существо'} ${index + 1}`
+          : creature?.name ?? item.displayName ?? 'Существо',
+    };
+  }
+
+  const maxHp = Math.max(1, Math.trunc(item.maxHp ?? 10));
+  return {
+    type: 'player',
+    npcId: null,
+    imageUrl: item.imageUrl ?? '',
+    maxHp,
+    currentHp: Math.max(1, Math.min(maxHp, Math.trunc(item.currentHp ?? maxHp))),
+    armorClass: item.armorClass != null ? Math.trunc(item.armorClass) : null,
+    isHiddenFromPlayers: false,
+    statblock: '',
+    nameFor: () => (item.displayName || '').trim() || 'Игрок',
+  };
+}
+
 async function listCampaignPlayers(env: Env) {
   const rows = await env.DB.prepare(
     `SELECT u.id, u.username, u.display_name, u.player_id,
@@ -282,6 +449,15 @@ export function registerCombatRoutes(app: Hono<AppEnv>): void {
     return c.json({ conditions: DND_CONDITIONS });
   });
 
+  // НПС из «Связей» — конструктор боя берёт их отсюда вместе с боевым листом.
+  app.get('/combats/npcs', async (c) => {
+    const user = c.get('user');
+    if (!user) return c.json({ error: 'Необходима авторизация' }, 401);
+    if (user.role !== 'dm') return c.json({ error: 'Конструктор боя доступен мастеру' }, 403);
+    const npcs = await listCombatNpcs(c.env);
+    return c.json({ npcs });
+  });
+
   app.get('/combats/members', async (c) => {
     const user = c.get('user');
     if (!user) return c.json({ error: 'Необходима авторизация' }, 401);
@@ -342,7 +518,7 @@ export function registerCombatRoutes(app: Hono<AppEnv>): void {
         combat_id: string;
         id: string;
         display_name: string;
-        participant_type: 'player' | 'monster';
+        participant_type: 'player' | 'monster' | 'npc';
         is_defeated: number;
         hide_name: number;
         current_hp: number | null;
@@ -449,10 +625,11 @@ export function registerCombatRoutes(app: Hono<AppEnv>): void {
           monsterHpVisibility?: MonsterHpVisibility;
         };
         participants?: Array<{
-          participantType?: 'player' | 'monster';
+          participantType?: 'player' | 'monster' | 'npc';
           userId?: number;
           playerId?: number;
           monsterBestiaryId?: number;
+          npcId?: number;
           displayName?: string;
           imageUrl?: string;
           initiativeValue?: number;
@@ -515,44 +692,49 @@ export function registerCombatRoutes(app: Hono<AppEnv>): void {
         (results ?? []).forEach((row) => creatureById.set(row.id, row));
       }
 
+      const npcRows = participants.some((item) => item.participantType === 'npc')
+        ? await loadNpcRows(c.env, participants)
+        : new Map<number, CampaignNpcRow>();
+      const missingNpc = participants.find(
+        (item) => item.participantType === 'npc' && (!item.npcId || !npcRows.has(Number(item.npcId)))
+      );
+      if (missingNpc) {
+        return c.json({ error: 'НПС не найден во вкладке «Связи»' }, 400);
+      }
+      const source = { creatureById, npcById: npcRows };
+
       const statements: D1PreparedStatement[] = [];
       let order = 0;
       for (const item of participants) {
-        const type = item.participantType === 'monster' ? 'monster' : 'player';
-        const quantity = type === 'monster' ? Math.min(20, Math.max(1, Math.trunc(item.quantity ?? 1))) : 1;
-        const creature = item.monsterBestiaryId ? creatureById.get(Number(item.monsterBestiaryId)) : undefined;
-        const hp = creature ? parseHp(creature.hp) : { average: item.maxHp ?? 10, dice: '' };
+        const prepared = prepareParticipant(item as ParticipantInput, source);
+        const quantity = prepared.type === 'player' ? 1 : Math.min(20, Math.max(1, Math.trunc(item.quantity ?? 1)));
         for (let index = 0; index < quantity; index += 1) {
-          const displayName =
-            type === 'monster'
-              ? quantity > 1
-                ? `${creature?.name ?? item.displayName ?? 'Существо'} ${index + 1}`
-                : creature?.name ?? item.displayName ?? 'Существо'
-              : (item.displayName || '').trim() || 'Игрок';
+          const displayName = prepared.nameFor(index, quantity);
           statements.push(
             c.env.DB.prepare(
               `INSERT INTO combat_participants (id, combat_id, participant_type, user_id, player_id,
-                 monster_bestiary_id, display_name, image_url, initiative_value, initiative_order,
+                 monster_bestiary_id, npc_id, display_name, image_url, initiative_value, initiative_order,
                  current_hp, max_hp, temp_hp, armor_class, is_hidden_from_players, hide_name,
                  is_defeated, death_saves_successes, death_saves_failures, is_stable, statblock, notes, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, 0, 0, 0, 0, ?, '', ?)`
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, 0, 0, 0, 0, ?, '', ?)`
             ).bind(
               newId(),
               id,
-              type,
+              prepared.type,
               item.userId ?? null,
               item.playerId ?? null,
-              item.monsterBestiaryId ?? null,
+              prepared.type === 'monster' ? item.monsterBestiaryId ?? null : null,
+              prepared.type === 'npc' ? prepared.npcId : null,
               displayName.slice(0, 80),
-              (creature ? creature.image_url || creature.image_full_url : item.imageUrl) ?? '',
+              prepared.imageUrl,
               Math.trunc(item.initiativeValue ?? 0),
               order,
-              type === 'monster' ? hp.average : Math.max(1, Math.trunc(item.currentHp ?? item.maxHp ?? 10)),
-              type === 'monster' ? hp.average : Math.max(1, Math.trunc(item.maxHp ?? 10)),
-              item.armorClass != null ? Math.trunc(item.armorClass) : creature?.ac ?? null,
-              (type === 'monster' ? item.isHiddenFromPlayers !== false : false) ? 1 : 0,
+              prepared.currentHp,
+              prepared.maxHp,
+              prepared.armorClass,
+              prepared.isHiddenFromPlayers ? 1 : 0,
               item.hideName ? 1 : 0,
-              type === 'monster' ? buildStatblock(creature ?? ({ ...emptyCreature(), name: displayName } as BestiaryRow)) : '',
+              prepared.statblock,
               ts
             )
           );
@@ -668,10 +850,11 @@ export function registerCombatRoutes(app: Hono<AppEnv>): void {
 
     const body = await readJson<{
         participants?: Array<{
-          participantType?: 'player' | 'monster';
+          participantType?: 'player' | 'monster' | 'npc';
           userId?: number;
           playerId?: number;
           monsterBestiaryId?: number;
+          npcId?: number;
           displayName?: string;
           imageUrl?: string;
           initiativeValue?: number;
@@ -703,32 +886,37 @@ export function registerCombatRoutes(app: Hono<AppEnv>): void {
       (results ?? []).forEach((row) => creatureById.set(row.id, row));
     }
 
+    const npcMap = incoming.some((item) => item.participantType === 'npc')
+      ? await loadNpcRows(c.env, incoming)
+      : new Map<number, CampaignNpcRow>();
+    const missingNpc = incoming.find(
+      (item) => item.participantType === 'npc' && (!item.npcId || !npcMap.has(Number(item.npcId)))
+    );
+    if (missingNpc) {
+      return c.json({ error: 'НПС не найден во вкладке «Связи»' }, 400);
+    }
+    const source = { creatureById, npcById: npcMap };
+
     const expanded: Array<Record<string, unknown>> = [];
     for (const item of incoming) {
-      const type = item.participantType === 'monster' ? 'monster' : 'player';
-      const quantity = type === 'monster' ? Math.min(20, Math.max(1, Math.trunc(item.quantity ?? 1))) : 1;
-      const creature = item.monsterBestiaryId ? creatureById.get(Number(item.monsterBestiaryId)) : undefined;
-      const hp = creature ? parseHp(creature.hp) : { average: item.maxHp ?? 10, dice: '' };
+      const prepared = prepareParticipant(item as ParticipantInput, source);
+      const quantity = prepared.type === 'player' ? 1 : Math.min(20, Math.max(1, Math.trunc(item.quantity ?? 1)));
       for (let index = 0; index < quantity; index += 1) {
         expanded.push({
-          participantType: type,
+          participantType: prepared.type,
           userId: item.userId ?? null,
           playerId: item.playerId ?? null,
-          monsterBestiaryId: item.monsterBestiaryId ?? null,
-          displayName:
-            type === 'monster'
-              ? quantity > 1
-                ? `${creature?.name ?? 'Существо'} ${index + 1}`
-                : creature?.name ?? item.displayName ?? 'Существо'
-              : item.displayName ?? 'Игрок',
-          imageUrl: (creature ? creature.image_url || creature.image_full_url : item.imageUrl) ?? '',
+          monsterBestiaryId: prepared.type === 'monster' ? item.monsterBestiaryId ?? null : null,
+          npcId: prepared.type === 'npc' ? prepared.npcId : null,
+          displayName: prepared.nameFor(index, quantity),
+          imageUrl: prepared.imageUrl,
           initiativeValue: Math.trunc(item.initiativeValue ?? 0),
-          currentHp: type === 'monster' ? hp.average : Math.max(1, Math.trunc(item.currentHp ?? item.maxHp ?? 10)),
-          maxHp: type === 'monster' ? hp.average : Math.max(1, Math.trunc(item.maxHp ?? 10)),
-          armorClass: item.armorClass ?? creature?.ac ?? null,
-          isHiddenFromPlayers: type === 'monster' ? item.isHiddenFromPlayers !== false : false,
+          currentHp: prepared.currentHp,
+          maxHp: prepared.maxHp,
+          armorClass: prepared.armorClass,
+          isHiddenFromPlayers: prepared.isHiddenFromPlayers,
           hideName: Boolean(item.hideName),
-          statblock: type === 'monster' && creature ? buildStatblock(creature) : item.statblock ?? '',
+          statblock: prepared.statblock,
         });
       }
     }
@@ -758,6 +946,7 @@ export function registerCombatRoutes(app: Hono<AppEnv>): void {
         isHiddenFromPlayers?: boolean;
         hideName?: boolean;
         notes?: string;
+        statblock?: string;
       }>(c.req, {});
 
     const actor = actorFor(user);
@@ -797,6 +986,7 @@ export function registerCombatRoutes(app: Hono<AppEnv>): void {
     if (body.isHiddenFromPlayers !== undefined) rest.isHiddenFromPlayers = body.isHiddenFromPlayers;
     if (body.hideName !== undefined) rest.hideName = body.hideName;
     if (body.notes !== undefined) rest.notes = body.notes;
+    if (body.statblock !== undefined) rest.statblock = body.statblock;
     if (Object.keys(rest).length > 1) {
       const result = await mutate(c.env, combat.id, 'participant', rest, actor);
       if (!result.ok) return c.json({ error: result.error }, (result.status ?? 400) as 400);

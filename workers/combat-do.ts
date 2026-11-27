@@ -63,6 +63,7 @@ interface ParticipantRow {
   user_id: number | null;
   player_id: number | null;
   monster_bestiary_id: number | null;
+  npc_id: number | null;
   display_name: string;
   image_url: string;
   initiative_value: number;
@@ -401,10 +402,16 @@ export class CombatRoom extends DurableObject<CombatRoomEnv> {
         userId: row.user_id,
         playerId: row.player_id,
         monsterBestiaryId: row.monster_bestiary_id,
+        npcId: row.npc_id ?? null,
         currentHp: hpNumbers,
         maxHp: hpMax,
         tempHp: canSeeNumbers ? row.temp_hp : null,
-        armorClass: isDm || (!concealed && row.participant_type === 'player') ? row.armor_class : null,
+        // КД существ из бестиария игрокам не показываем вовсе, а у НПС он
+        // следует за переключателем «скрыт от игроков».
+        armorClass:
+          isDm || (!concealed && (row.participant_type === 'player' || row.participant_type === 'npc'))
+            ? row.armor_class
+            : null,
         // Полоса считается по истинным значениям даже когда числа скрыты —
         // иначе игрок видел бы пустой индикатор вместо доли HP.
         hpPercent:
@@ -636,7 +643,9 @@ export class CombatRoom extends DurableObject<CombatRoomEnv> {
     const delta = clampInt(payload.delta, -9999, 9999, 0);
     if (delta === 0) return;
 
-    if (row.participant_type === 'monster') {
+    // НПС ведут себя как существа: HP ограничены максимумом, без спасбросков
+    // от смерти и «бессознательных» состояний.
+    if (row.participant_type !== 'player') {
       const max = row.max_hp ?? 0;
       let remaining = delta;
       if (delta < 0 && row.temp_hp > 0) {
@@ -831,6 +840,7 @@ export class CombatRoom extends DurableObject<CombatRoomEnv> {
       row.hide_name = payload.hideName ? 1 : 0;
     }
     if (typeof payload.notes === 'string') row.notes = payload.notes.slice(0, 2000);
+    if (typeof payload.statblock === 'string') row.statblock = payload.statblock.slice(0, 20000);
     if (payload.initiativeValue !== undefined) {
       row.initiative_value = clampInt(payload.initiativeValue, -99, 99, row.initiative_value);
       const currentId = this.state!.participants[this.state!.meta.current_turn_index]?.id ?? null;
@@ -843,7 +853,9 @@ export class CombatRoom extends DurableObject<CombatRoomEnv> {
     const state = this.state!;
     const list = Array.isArray(payload.participants) ? (payload.participants as Array<Record<string, unknown>>) : [];
     for (const item of list) {
-      const type: ParticipantType = item.participantType === 'monster' ? 'monster' : 'player';
+      const requestedType = item.participantType;
+      const type: ParticipantType =
+        requestedType === 'monster' ? 'monster' : requestedType === 'npc' ? 'npc' : 'player';
       const row: ParticipantRow = {
         id: newId('cp'),
         combat_id: state.meta.id,
@@ -851,12 +863,15 @@ export class CombatRoom extends DurableObject<CombatRoomEnv> {
         user_id: item.userId != null ? clampInt(item.userId, 1, 999999, 0) : null,
         player_id: item.playerId != null ? clampInt(item.playerId, 1, 999, 0) : null,
         monster_bestiary_id: item.monsterBestiaryId != null ? clampInt(item.monsterBestiaryId, 1, 9999999, 0) : null,
+        npc_id: item.npcId != null ? clampInt(item.npcId, 1, 9999999, 0) : null,
         display_name:
           typeof item.displayName === 'string' && item.displayName.trim()
             ? item.displayName.trim().slice(0, 80)
             : type === 'monster'
               ? 'Существо'
-              : 'Игрок',
+              : type === 'npc'
+                ? 'НПС'
+                : 'Игрок',
         image_url: typeof item.imageUrl === 'string' ? item.imageUrl.slice(0, 600) : '',
         initiative_value: clampInt(item.initiativeValue, -99, 99, 0),
         initiative_order: state.participants.length,
@@ -1171,10 +1186,10 @@ export class CombatRoom extends DurableObject<CombatRoomEnv> {
       statements.push(
         this.env.DB.prepare(
           `INSERT INTO combat_participants (id, combat_id, participant_type, user_id, player_id,
-               monster_bestiary_id, display_name, image_url, initiative_value, initiative_order,
+               monster_bestiary_id, npc_id, display_name, image_url, initiative_value, initiative_order,
                current_hp, max_hp, temp_hp, armor_class, is_hidden_from_players, hide_name,
                is_defeated, death_saves_successes, death_saves_failures, is_stable, statblock, notes, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
            ON CONFLICT(id) DO UPDATE SET
              display_name = excluded.display_name,
              image_url = excluded.image_url,
@@ -1199,6 +1214,7 @@ export class CombatRoom extends DurableObject<CombatRoomEnv> {
           row.user_id,
           row.player_id,
           row.monster_bestiary_id,
+          row.npc_id ?? null,
           row.display_name,
           row.image_url,
           row.initiative_value,

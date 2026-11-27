@@ -1,11 +1,15 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Eye, EyeOff, Plus, Save, Trash2, X } from 'lucide-react';
+import { Eye, EyeOff, Loader2, Plus, Save, Trash2, Users, X } from 'lucide-react';
 import { DND_CONDITIONS, type CombatParticipantView } from '../../lib/combatProtocol';
 import { DeathSaveTracker } from './DeathSaveTracker';
 import { EffectChip } from './EffectChip';
 import { ExhaustionTracker } from './ExhaustionTracker';
 import type { ParticipantCardHandlers } from './ParticipantCard';
-import type { CombatParticipantPatch } from '../../lib/combat';
+import { saveNpcSheet, type CombatParticipantPatch } from '../../lib/combat';
+import { NpcSheetFields } from '../connections/NpcSheetFields';
+import { createEmptyNpcSheet, npcSheetHasStats, npcSheetToStatblock } from '../../lib/npcSheet';
+import { useCampaignStore } from '../../lib/store';
+import type { NpcSheet } from '../../lib/types';
 
 type Draft = {
   displayName: string;
@@ -75,6 +79,18 @@ export const ParticipantEditor: React.FC<ParticipantEditorProps> = ({
   const [durationValue, setDurationValue] = useState('3');
   const [effectVisible, setEffectVisible] = useState(true);
 
+  const npcs = useCampaignStore((state) => state.npcs);
+  const setNpcs = useCampaignStore((state) => state.setNpcs);
+  const pushToast = useCampaignStore((state) => state.pushToast);
+  const npc = participant.npcId != null ? npcs.find((item) => item.id === participant.npcId) : null;
+  const [sheetDraft, setSheetDraft] = useState<NpcSheet>(() => npc?.sheet ?? createEmptyNpcSheet());
+  const [sheetDirty, setSheetDirty] = useState(false);
+  const [sheetSaving, setSheetSaving] = useState(false);
+
+  useEffect(() => {
+    if (!sheetDirty) setSheetDraft(npc?.sheet ?? createEmptyNpcSheet());
+  }, [npc, sheetDirty]);
+
   useEffect(() => {
     const incoming = toDraft(participant);
     setDraft((prev) => {
@@ -140,12 +156,42 @@ export const ParticipantEditor: React.FC<ParticipantEditorProps> = ({
     dirtyKeys.current.clear();
   };
 
+  const saveSheet = async () => {
+    if (!npc || sheetSaving) return;
+    setSheetSaving(true);
+    try {
+      const res = await saveNpcSheet(npc.id, sheetDraft);
+      setNpcs(res.npcs);
+      setSheetDirty(false);
+      // Статы в бою должны совпадать с листом: обновляем стат-блок, КД и
+      // максимум HP участника (текущие HP сервер только подрежет по максимуму).
+      const patch: CombatParticipantPatch = {
+        statblock: npcSheetToStatblock(sheetDraft, npc.name),
+        armorClass: sheetDraft.ac,
+      };
+      if (sheetDraft.hp != null && sheetDraft.hp > 0 && sheetDraft.hp !== participant.maxHp) {
+        patch.maxHp = sheetDraft.hp;
+      }
+      handlers.onUpdate(participant.id, patch);
+      pushToast({ title: 'Боевой лист сохранён', message: npc.name, variant: 'success' });
+    } catch (err) {
+      pushToast({
+        title: 'Не удалось сохранить лист',
+        message: err instanceof Error ? err.message : 'Попробуйте снова',
+        variant: 'error',
+      });
+    } finally {
+      setSheetSaving(false);
+    }
+  };
+
   const visibleEffects = useMemo(
     () => participant.effects.filter((effect) => effect.effectType !== 'exhaustion'),
     [participant.effects]
   );
 
   const isMonster = participant.participantType === 'monster';
+  const isNpc = participant.participantType === 'npc';
 
   return (
     <div className="fixed inset-0 z-[130] flex justify-end bg-black/60 backdrop-blur-sm" onClick={onClose} role="presentation">
@@ -159,7 +205,7 @@ export const ParticipantEditor: React.FC<ParticipantEditorProps> = ({
         <header className="sticky top-0 z-10 flex items-center gap-3 px-4 py-3 bg-deep/95 backdrop-blur border-b border-border">
           <div className="min-w-0">
             <div className="text-[11px] font-mono uppercase tracking-wide text-muted">
-              {isMonster ? 'существо' : 'игрок'} · инициатива {participant.initiativeValue}
+              {isMonster ? 'существо' : isNpc ? 'НПС' : 'игрок'} · инициатива {participant.initiativeValue}
             </div>
             <div className="text-base text-text truncate">{participant.displayName}</div>
           </div>
@@ -423,6 +469,60 @@ export const ParticipantEditor: React.FC<ParticipantEditorProps> = ({
               />
             </Field>
           </section>
+
+          {participant.npcId != null && (
+            <section className="space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-[11px] font-mono uppercase tracking-wide text-secondary inline-flex items-center gap-1.5">
+                  <Users className="w-3.5 h-3.5" strokeWidth={1.75} /> Боевой лист НПС
+                </div>
+                <span className="text-[10px] font-mono uppercase text-muted">
+                  {npc ? npc.name : 'НПС не найден в «Связях»'}
+                </span>
+              </div>
+
+              {npc ? (
+                <>
+                  <NpcSheetFields
+                    sheet={sheetDraft}
+                    onChange={(next) => {
+                      setSheetDraft(next);
+                      setSheetDirty(true);
+                    }}
+                    disabled={sheetSaving}
+                    dense
+                  />
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[10px] text-muted leading-snug">
+                      Сохранение обновит лист в «Связях», а также КД, максимум HP и стат-блок этого участника.
+                    </span>
+                    <button
+                      type="button"
+                      disabled={sheetSaving || !sheetDirty}
+                      onClick={() => void saveSheet()}
+                      className="shrink-0 h-9 px-3 text-[11px] font-mono uppercase border border-primary/50 text-primary hover:bg-primary/10 disabled:opacity-40 inline-flex items-center gap-1.5"
+                    >
+                      {sheetSaving ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" strokeWidth={1.75} />
+                      ) : (
+                        <Save className="w-3.5 h-3.5" strokeWidth={1.75} />
+                      )}
+                      сохранить лист
+                    </button>
+                  </div>
+                  {!npcSheetHasStats(sheetDraft) && (
+                    <p className="text-[10px] text-muted">
+                      Лист пока пуст — заполните АС, HP и атаки, чтобы вести НПС в бою без бумажки.
+                    </p>
+                  )}
+                </>
+              ) : (
+                <p className="text-[11px] text-warning/80">
+                  НПС удалён из «Связей» — статы остались только в этом бою.
+                </p>
+              )}
+            </section>
+          )}
 
           {!!participant.statblock && (
             <section>

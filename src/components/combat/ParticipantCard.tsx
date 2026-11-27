@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ChevronRight, Crown, Ghost, Lock, Shield, Skull, SlidersHorizontal } from 'lucide-react';
+import { ChevronRight, Crown, Ghost, Lock, Shield, Skull, SlidersHorizontal, Users } from 'lucide-react';
 import { hpTone, type CombatParticipantView } from '../../lib/combatProtocol';
 import type { CombatParticipantPatch } from '../../lib/combat';
 import { EffectChip } from './EffectChip';
@@ -84,6 +84,7 @@ export const ParticipantCard: React.FC<ParticipantCardProps> = ({
   const hasNumbers = participant.currentHp != null && participant.maxHp != null;
   const hasBar = participant.hpPercent != null;
   const isMonster = participant.participantType === 'monster';
+  const isNpc = participant.participantType === 'npc';
   const visibleEffects = participant.effects.filter((effect) => effect.effectType !== 'exhaustion');
   const showDeathSaves =
     Boolean(participant.deathSaves) &&
@@ -142,6 +143,8 @@ export const ParticipantCard: React.FC<ParticipantCardProps> = ({
                 <Ghost className="w-5 h-5" strokeWidth={1.5} />
               ) : isMonster ? (
                 <Skull className="w-5 h-5" strokeWidth={1.5} />
+              ) : isNpc ? (
+                <Users className="w-5 h-5" strokeWidth={1.5} />
               ) : (
                 <Crown className="w-5 h-5" strokeWidth={1.5} />
               )}
@@ -170,7 +173,10 @@ export const ParticipantCard: React.FC<ParticipantCardProps> = ({
                 {isMonster && (
                   <span className="text-muted">{participant.monsterBestiaryId ? 'бестиарий' : 'существо'}</span>
                 )}
-                {!isMonster && <span className="text-muted">игрок</span>}
+                {isNpc && (
+                  <span className="text-muted">{participant.npcId ? 'НПС из «Связей»' : 'НПС'}</span>
+                )}
+                {!isMonster && !isNpc && <span className="text-muted">игрок</span>}
                 {concealed && <span className="text-warning/80">данные скрыты</span>}
               </div>
             </div>

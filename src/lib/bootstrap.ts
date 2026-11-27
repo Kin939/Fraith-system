@@ -4,6 +4,93 @@ const CLEAN_SLATE_MIGRATION_ID = '2026_11_25_clean_empty_campaign_and_dndsu_v1';
 const UNIQUE_PASSWORDS_MIGRATION_ID = '2026_11_25_unique_passwords_and_dm_lock_v1';
 
 /**
+ * Боевой лист НПС: колонка campaign_npcs.sheet_json (миграция 0015).
+ */
+async function ensureNpcSheetColumns(db: D1Database): Promise<void> {
+  const table = await db
+    .prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'campaign_npcs'`)
+    .first<{ name: string }>();
+  if (!table) return;
+
+  const { results } = await db.prepare(`PRAGMA table_info(campaign_npcs)`).all<{ name: string }>();
+  const existingCols = new Set(results.map((row) => row.name));
+  if (!existingCols.has('sheet_json')) {
+    await db
+      .prepare(`ALTER TABLE campaign_npcs ADD COLUMN sheet_json TEXT NOT NULL DEFAULT '{}'`)
+      .run();
+  }
+}
+
+/**
+ * Участники боя типа 'npc' (миграция 0015).
+ *
+ * CHECK-ограничение SQLite не меняется на месте, поэтому таблица
+ * пересобирается: данные переносятся, старая удаляется. Функция идемпотентна —
+ * пересборка выполняется один раз, дальше просто читает sqlite_master.
+ */
+async function ensureCombatNpcParticipants(db: D1Database): Promise<void> {
+  const row = await db
+    .prepare(
+      `SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'combat_participants'`
+    )
+    .first<{ sql: string | null }>();
+  if (!row?.sql) return;
+  const sql = row.sql.toLowerCase();
+  // Уже пересобрана: CHECK допускает 'npc' и есть колонка npc_id.
+  if (sql.includes("'npc'") && sql.includes('npc_id')) return;
+
+  await db.batch([
+    db.prepare(
+      `CREATE TABLE IF NOT EXISTS combat_participants_rebuild (
+        id TEXT PRIMARY KEY,
+        combat_id TEXT NOT NULL,
+        participant_type TEXT NOT NULL CHECK (participant_type IN ('player', 'monster', 'npc')),
+        user_id INTEGER,
+        player_id INTEGER,
+        monster_bestiary_id INTEGER,
+        npc_id INTEGER,
+        display_name TEXT NOT NULL,
+        image_url TEXT NOT NULL DEFAULT '',
+        initiative_value INTEGER NOT NULL DEFAULT 0,
+        initiative_order INTEGER NOT NULL DEFAULT 0,
+        current_hp INTEGER,
+        max_hp INTEGER,
+        temp_hp INTEGER NOT NULL DEFAULT 0,
+        armor_class INTEGER,
+        is_hidden_from_players INTEGER NOT NULL DEFAULT 0,
+        hide_name INTEGER NOT NULL DEFAULT 0,
+        is_defeated INTEGER NOT NULL DEFAULT 0,
+        death_saves_successes INTEGER NOT NULL DEFAULT 0,
+        death_saves_failures INTEGER NOT NULL DEFAULT 0,
+        is_stable INTEGER NOT NULL DEFAULT 0,
+        statblock TEXT NOT NULL DEFAULT '',
+        notes TEXT NOT NULL DEFAULT '',
+        created_at INTEGER NOT NULL
+      )`
+    ),
+    db.prepare(
+      `INSERT INTO combat_participants_rebuild (
+         id, combat_id, participant_type, user_id, player_id, monster_bestiary_id, npc_id,
+         display_name, image_url, initiative_value, initiative_order, current_hp, max_hp,
+         temp_hp, armor_class, is_hidden_from_players, hide_name, is_defeated,
+         death_saves_successes, death_saves_failures, is_stable, statblock, notes, created_at)
+       SELECT
+         id, combat_id, participant_type, user_id, player_id, monster_bestiary_id, NULL,
+         display_name, image_url, initiative_value, initiative_order, current_hp, max_hp,
+         temp_hp, armor_class, is_hidden_from_players, hide_name, is_defeated,
+         death_saves_successes, death_saves_failures, is_stable, statblock, notes, created_at
+       FROM combat_participants`
+    ),
+    db.prepare(`DROP TABLE combat_participants`),
+    db.prepare(`ALTER TABLE combat_participants_rebuild RENAME TO combat_participants`),
+    db.prepare(
+      `CREATE INDEX IF NOT EXISTS idx_combat_participants_combat
+         ON combat_participants(combat_id, initiative_order ASC)`
+    ),
+  ]);
+}
+
+/**
  * Idempotently initializes all Cloudflare D1 SQLite tables, applies schema upgrades,
  * enforces unique per-account password hashes, and ensures empty character slots.
  */
@@ -581,10 +668,11 @@ async function runBootstrap(db: D1Database): Promise<void> {
     `CREATE TABLE IF NOT EXISTS combat_participants (
       id TEXT PRIMARY KEY,
       combat_id TEXT NOT NULL,
-      participant_type TEXT NOT NULL CHECK (participant_type IN ('player', 'monster')),
+      participant_type TEXT NOT NULL CHECK (participant_type IN ('player', 'monster', 'npc')),
       user_id INTEGER,
       player_id INTEGER,
       monster_bestiary_id INTEGER,
+      npc_id INTEGER,
       display_name TEXT NOT NULL,
       image_url TEXT NOT NULL DEFAULT '',
       initiative_value INTEGER NOT NULL DEFAULT 0,
@@ -660,6 +748,8 @@ async function runBootstrap(db: D1Database): Promise<void> {
   await ensureBestiaryColumns(db);
   await migrateQuestNotesToEntityNotes(db);
   await ensureBoardColumns(db);
+  await ensureNpcSheetColumns(db);
+  await ensureCombatNpcParticipants(db);
 
   const existingUser = await db
     .prepare(`SELECT id FROM users LIMIT 1`)
