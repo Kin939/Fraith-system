@@ -41,6 +41,8 @@ async function ensureQuestStyleColumns(db: D1Database): Promise<void> {
     ['tile_emblem', 'TEXT'],
     ['tile_pattern', `TEXT NOT NULL DEFAULT 'none'`],
     ['is_important', 'INTEGER NOT NULL DEFAULT 0'],
+    // Личные квесты: JSON-список user.id, которым квест открыт ('[]' = всем).
+    ['visible_user_ids', `TEXT NOT NULL DEFAULT '[]'`],
   ];
 
   for (const [col, def] of extraColumns) {
@@ -626,6 +628,24 @@ async function runBootstrap(db: D1Database): Promise<void> {
     `CREATE INDEX IF NOT EXISTS idx_combat_participants_combat ON combat_participants(combat_id, initiative_order ASC)`,
     `CREATE INDEX IF NOT EXISTS idx_combat_effects_participant ON combat_effects(combat_id, participant_id)`,
     `CREATE INDEX IF NOT EXISTS idx_combat_log_combat ON combat_log(combat_id, created_at DESC)`,
+    `CREATE TABLE IF NOT EXISTS literature_files (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      file_key TEXT NOT NULL,
+      file_name TEXT NOT NULL DEFAULT '',
+      mime_type TEXT NOT NULL DEFAULT 'application/octet-stream',
+      file_ext TEXT NOT NULL DEFAULT '',
+      file_size INTEGER NOT NULL DEFAULT 0,
+      kind TEXT NOT NULL DEFAULT 'other'
+        CHECK (kind IN ('pdf', 'docx', 'doc', 'text', 'image', 'other')),
+      visible_user_ids TEXT NOT NULL DEFAULT '[]',
+      uploaded_by INTEGER,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_literature_sort ON literature_files(sort_order ASC, id DESC)`,
     `CREATE INDEX IF NOT EXISTS idx_board_access_user ON board_access(user_id)`,
     `CREATE INDEX IF NOT EXISTS idx_board_templates_board ON board_templates(board_id)`,
   ];

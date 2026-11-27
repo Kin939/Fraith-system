@@ -72,10 +72,19 @@ export function useWebSocket() {
             break;
           }
           case 'quests:updated': {
+            // Квесты бывают личными: сервер присылает не список, а сигнал,
+            // чтобы каждый клиент перечитал /api/quests со своей фильтрацией.
             const p = msg.payload as { quests?: Quest[] };
             if (Array.isArray(p?.quests)) {
               store.setQuests(p.quests);
+            } else {
+              void store.refreshQuests().catch(() => undefined);
             }
+            break;
+          }
+          case 'literature:updated': {
+            // Страница «Литература» слушает это событие и перечитывает список.
+            window.dispatchEvent(new CustomEvent('fraith:literature-updated'));
             break;
           }
           case 'notes:updated': {

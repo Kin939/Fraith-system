@@ -289,6 +289,101 @@ export function registerCombatRoutes(app: Hono<AppEnv>): void {
     return c.json({ players });
   });
 
+  /* ---------------------------------------------------------------- история */
+
+  /**
+   * История завершённых боёв. Доступна всей партии, но имена, скрытые
+   * мастером, остаются скрытыми и в архиве.
+   */
+  app.get('/combats/history', async (c) => {
+    const user = c.get('user');
+    if (!user) return c.json({ error: 'Необходима авторизация' }, 401);
+    const isDm = user.role === 'dm';
+
+    const { results } = await c.env.DB.prepare(
+      `SELECT cb.id, cb.name, cb.round_number, cb.created_at, cb.updated_at,
+              (SELECT COUNT(*) FROM combat_participants p WHERE p.combat_id = cb.id) AS participant_count,
+              (SELECT COUNT(*) FROM combat_participants p
+                 WHERE p.combat_id = cb.id AND p.is_defeated = 1) AS defeated_count,
+              (SELECT COUNT(*) FROM combat_participants p
+                 WHERE p.combat_id = cb.id AND p.participant_type = 'monster') AS monster_count,
+              (SELECT COUNT(*) FROM combat_log l WHERE l.combat_id = cb.id) AS event_count
+       FROM combats cb
+       WHERE cb.campaign_id = ? AND cb.status = 'finished'
+       ORDER BY cb.updated_at DESC
+       LIMIT 60`
+    )
+      .bind(campaignId(c.env))
+      .all<{
+        id: string;
+        name: string;
+        round_number: number;
+        created_at: number;
+        updated_at: number;
+        participant_count: number;
+        defeated_count: number;
+        monster_count: number;
+        event_count: number;
+      }>();
+
+    const combats = results ?? [];
+    if (combats.length === 0) return c.json({ combats: [], isDm });
+
+    const ids = combats.map((row) => row.id);
+    const placeholders = ids.map(() => '?').join(',');
+    const participantsResult = await c.env.DB.prepare(
+      `SELECT combat_id, id, display_name, participant_type, is_defeated, hide_name, current_hp, max_hp
+       FROM combat_participants
+       WHERE combat_id IN (${placeholders})
+       ORDER BY initiative_order ASC`
+    )
+      .bind(...ids)
+      .all<{
+        combat_id: string;
+        id: string;
+        display_name: string;
+        participant_type: 'player' | 'monster';
+        is_defeated: number;
+        hide_name: number;
+        current_hp: number | null;
+        max_hp: number | null;
+      }>();
+
+    const byCombat = new Map<string, typeof participantsResult.results>();
+    for (const row of participantsResult.results ?? []) {
+      const list = byCombat.get(row.combat_id) ?? [];
+      list.push(row);
+      byCombat.set(row.combat_id, list);
+    }
+
+    return c.json({
+      isDm,
+      combats: combats.map((row) => {
+        const roster = byCombat.get(row.id) ?? [];
+        return {
+          id: row.id,
+          name: row.name,
+          roundNumber: Number(row.round_number ?? 1),
+          startedAt: Number(row.created_at ?? 0),
+          finishedAt: Number(row.updated_at ?? 0),
+          participantCount: Number(row.participant_count ?? 0),
+          defeatedCount: Number(row.defeated_count ?? 0),
+          monsterCount: Number(row.monster_count ?? 0),
+          eventCount: Number(row.event_count ?? 0),
+          participants: roster.slice(0, 16).map((participant) => ({
+            id: participant.id,
+            name:
+              !isDm && participant.hide_name ? 'Неизвестное существо' : participant.display_name,
+            type: participant.participant_type,
+            isDefeated: Boolean(participant.is_defeated),
+            currentHp: isDm || !participant.hide_name ? participant.current_hp : null,
+            maxHp: isDm || !participant.hide_name ? participant.max_hp : null,
+          })),
+        };
+      }),
+    });
+  });
+
   /* ------------------------------------------------------------------- список */
 
   app.get('/combats', async (c) => {
@@ -859,10 +954,17 @@ export function registerCombatRoutes(app: Hono<AppEnv>): void {
   app.get('/combats/:id/log', async (c) => {
     const user = c.get('user');
     if (!user) return c.json({ error: 'Необходима авторизация' }, 401);
-    // В журнале есть имена скрытых существ и скрытые эффекты — читает только мастер.
-    if (user.role !== 'dm') return c.json({ error: 'Журнал боя доступен только мастеру' }, 403);
     const combat = await fetchCombat(c.env, c.req.param('id'));
     if (!combat) return c.json({ error: 'Бой не найден' }, 404);
+
+    const isDm = user.role === 'dm';
+    // В живом бою журнал содержит скрытые эффекты и имена — читает только мастер.
+    // Завершённый бой становится историей партии, но имена скрытых существ
+    // остаются скрытыми и в архиве.
+    if (!isDm && combat.status !== 'finished') {
+      return c.json({ error: 'Журнал идущего боя доступен только мастеру' }, 403);
+    }
+
     const { results } = await c.env.DB.prepare(
       `SELECT id, event_type, participant_id, payload_json, created_at
        FROM combat_log WHERE combat_id = ? ORDER BY created_at DESC LIMIT 200`
@@ -870,14 +972,36 @@ export function registerCombatRoutes(app: Hono<AppEnv>): void {
       .bind(combat.id)
       .all<{ id: string; event_type: string; participant_id: string | null; payload_json: string; created_at: number }>();
 
+    const hiddenIds = new Set<string>();
+    if (!isDm) {
+      const { results: participants } = await c.env.DB.prepare(
+        `SELECT id, hide_name FROM combat_participants WHERE combat_id = ? AND hide_name = 1`
+      )
+        .bind(combat.id)
+        .all<{ id: string; hide_name: number }>();
+      for (const row of participants ?? []) hiddenIds.add(row.id);
+    }
+
     return c.json({
-      log: (results ?? []).map((row) => ({
-        id: row.id,
-        eventType: row.event_type,
-        participantId: row.participant_id,
-        payload: JSON.parse(row.payload_json || '{}') as Record<string, unknown>,
-        createdAt: row.created_at,
-      })),
+      log: (results ?? []).map((row) => {
+        const payload = JSON.parse(row.payload_json || '{}') as Record<string, unknown>;
+        if (!isDm && row.participant_id && hiddenIds.has(row.participant_id)) {
+          return {
+            id: row.id,
+            eventType: row.event_type,
+            participantId: null,
+            payload: { ...payload, name: 'Неизвестное существо', hp: undefined, maxHp: undefined },
+            createdAt: row.created_at,
+          };
+        }
+        return {
+          id: row.id,
+          eventType: row.event_type,
+          participantId: row.participant_id,
+          payload,
+          createdAt: row.created_at,
+        };
+      }),
     });
   });
 

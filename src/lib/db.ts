@@ -523,7 +523,23 @@ interface QuestRow {
   tile_emblem?: string | null;
   tile_pattern?: string | null;
   is_important?: number | null;
+  visible_user_ids?: string | null;
   notes_count?: number | null;
+}
+
+/** Разбор JSON-списка user.id из колонки quests.visible_user_ids. */
+export function parseVisibleUserIds(raw: string | null | undefined): number[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map((value) => (typeof value === 'number' ? value : Number.parseInt(String(value), 10)))
+      .filter((value) => Number.isFinite(value) && value > 0)
+      .slice(0, 50);
+  } catch {
+    return [];
+  }
 }
 
 function mapQuestRow(row: QuestRow): Quest {
@@ -552,10 +568,18 @@ function mapQuestRow(row: QuestRow): Quest {
       isImportant: Boolean(row.is_important),
     },
     notesCount: Number(row.notes_count ?? 0),
+    visibleUserIds: parseVisibleUserIds(row.visible_user_ids),
   };
 }
 
-export async function listQuests(db: D1Database): Promise<Quest[]> {
+/**
+ * Список квестов с учётом личной видимости.
+ * Мастер видит всё; игрок — только квесты без ограничений и те, что открыты ему.
+ */
+export async function listQuests(
+  db: D1Database,
+  viewer?: { userId: number; isDm: boolean }
+): Promise<Quest[]> {
   const { results } = await db
     .prepare(
       `SELECT q.*,
@@ -570,7 +594,27 @@ export async function listQuests(db: D1Database): Promise<Quest[]> {
        END, q.id DESC`
     )
     .all<QuestRow>();
-  return results.map(mapQuestRow);
+  const quests = results.map(mapQuestRow);
+  if (!viewer || viewer.isDm) return quests;
+  return quests.filter(
+    (quest) => quest.visibleUserIds.length === 0 || quest.visibleUserIds.includes(viewer.userId)
+  );
+}
+
+/** Может ли игрок видеть квест (мастер видит любой существующий). */
+export async function canViewQuest(
+  db: D1Database,
+  questId: number,
+  viewer: { userId: number; isDm: boolean }
+): Promise<boolean> {
+  const row = await db
+    .prepare(`SELECT visible_user_ids FROM quests WHERE id = ?`)
+    .bind(questId)
+    .first<{ visible_user_ids: string | null }>();
+  if (!row) return false;
+  if (viewer.isDm) return true;
+  const visible = parseVisibleUserIds(row.visible_user_ids);
+  return visible.length === 0 || visible.includes(viewer.userId);
 }
 
 // ---------------------------------------------------------------------------

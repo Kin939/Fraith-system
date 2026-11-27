@@ -4,6 +4,7 @@ import {
   CalendarClock,
   Crown,
   LayoutDashboard,
+  Library,
   LogOut,
   MessageSquare,
   Network,
@@ -93,6 +94,13 @@ export const Sidebar: React.FC<SidebarProps> = ({ onLogout }) => {
     id: 'board',
     label: 'Доска',
     icon: <LayoutDashboard className="w-4 h-4" strokeWidth={1.5} />,
+  });
+
+  // «Литература» — строго после «Доски» и перед «Мастером»
+  navItems.push({
+    id: 'literature',
+    label: 'Литература',
+    icon: <Library className="w-4 h-4" strokeWidth={1.5} />,
   });
 
   if (isDm) {
