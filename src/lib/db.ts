@@ -1,5 +1,6 @@
 import { formatCharacterClassesRu, isSpellAllowedForCharacter } from './lss';
 import { normalizeQuestAccent, normalizeQuestPattern } from './questStyle';
+import { parseNpcSheetJson } from './npcSheet';
 import { DEFAULT_ANIME_THEME, parseThemeJson } from './theme';
 import type {
   AuthUser,
@@ -752,6 +753,7 @@ interface CampaignNpcRow {
   sort_order: number;
   created_at: string;
   updated_at: string | null;
+  sheet_json?: string | null;
   notes_count?: number | null;
 }
 
@@ -783,6 +785,8 @@ function mapNpcRow(row: CampaignNpcRow, isDm: boolean): CampaignNpc {
     isRevealed: Boolean(row.is_revealed),
     sortOrder: row.sort_order,
     notesCount: Number(row.notes_count ?? 0),
+    // Боевой лист — это статы мастера: игрок не должен видеть ни АС, ни атаки.
+    sheet: isDm ? parseNpcSheetJson(row.sheet_json) : null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

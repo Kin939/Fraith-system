@@ -222,6 +222,40 @@ export type NpcAttitude = 'friendly' | 'neutral' | 'wary' | 'hostile' | 'unknown
  * A campaign contact / NPC shown on the "Связи" tab.
  * The DM creates them hidden and reveals them to the party when the story needs it.
  */
+/** Шесть характеристик НПС (0/null = не заполнено). */
+export interface NpcAbilities {
+  str: number | null;
+  dex: number | null;
+  con: number | null;
+  int: number | null;
+  mud: number | null;
+  cha: number | null;
+}
+
+/**
+ * Боевой лист НПС — редактируемые статы мастера.
+ * Хранится в `campaign_npcs.sheet_json`, используется трекером «Бой».
+ * Игрокам не отдаётся.
+ */
+export interface NpcSheet {
+  ac: number | null;
+  hp: number | null;
+  hitDice: string;
+  speed: string;
+  cr: string;
+  initiativeBonus: number | null;
+  abilities: NpcAbilities;
+  saves: string;
+  skills: string;
+  senses: string;
+  languages: string;
+  traits: string;
+  actions: string;
+  bonusActions: string;
+  reactions: string;
+  legendary: string;
+}
+
 export interface CampaignNpc {
   id: number;
   name: string;
@@ -239,6 +273,8 @@ export interface CampaignNpc {
   sortOrder: number;
   /** Number of party notes attached to this contact */
   notesCount: number;
+  /** Боевой лист — только мастеру (игроки получают null) */
+  sheet: NpcSheet | null;
   createdAt: string;
   updatedAt: string | null;
 }

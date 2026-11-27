@@ -6,7 +6,7 @@
  */
 
 export type CombatStatus = 'setup' | 'active' | 'paused' | 'finished';
-export type ParticipantType = 'player' | 'monster';
+export type ParticipantType = 'player' | 'monster' | 'npc';
 export type EffectType = 'condition' | 'exhaustion' | 'custom';
 export type EffectDurationType = 'rounds' | 'until_save' | 'until_removed' | 'permanent';
 export type MonsterHpVisibility = 'hidden' | 'bar' | 'numbers';
@@ -75,6 +75,8 @@ export interface CombatParticipantView {
   userId: number | null;
   playerId: number | null;
   monsterBestiaryId: number | null;
+  /** Ссылка на campaign_npcs.id, если участник — НПС из «Связей» */
+  npcId: number | null;
   /** null, если значение скрыто от этого зрителя */
   currentHp: number | null;
   maxHp: number | null;

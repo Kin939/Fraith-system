@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { Eye, EyeOff, ImagePlus, Loader2, Save, Trash2, Upload, X } from 'lucide-react';
+import { Eye, EyeOff, ImagePlus, Loader2, Save, Swords, Trash2, Upload, X } from 'lucide-react';
 import { apiFetch, uploadImageAsset } from '../../lib/api';
 import { resolveImageUrl } from '../../lib/artwork';
 import { NPC_ATTITUDE_META, NPC_ATTITUDE_OPTIONS } from '../../lib/npc';
+import { createEmptyNpcSheet, npcSheetHasStats } from '../../lib/npcSheet';
 import { useCampaignStore } from '../../lib/store';
-import type { CampaignNpc, NpcAttitude } from '../../lib/types';
+import type { CampaignNpc, NpcAttitude, NpcSheet } from '../../lib/types';
+import { NpcSheetFields } from './NpcSheetFields';
 
 interface NpcEditorProps {
   /** null → creating a brand-new contact */
@@ -27,6 +29,8 @@ export const NpcEditor: React.FC<NpcEditorProps> = ({ npc, onClose }) => {
   const [secretNotes, setSecretNotes] = useState('');
   const [imageKey, setImageKey] = useState<string | null>(null);
   const [isRevealed, setIsRevealed] = useState(false);
+  const [sheet, setSheet] = useState<NpcSheet>(() => createEmptyNpcSheet());
+  const [sheetOpen, setSheetOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -41,6 +45,9 @@ export const NpcEditor: React.FC<NpcEditorProps> = ({ npc, onClose }) => {
     setSecretNotes(npc?.secretNotes ?? '');
     setImageKey(npc?.imageKey ?? null);
     setIsRevealed(npc?.isRevealed ?? false);
+    const incomingSheet = npc?.sheet ?? createEmptyNpcSheet();
+    setSheet(incomingSheet);
+    setSheetOpen(npcSheetHasStats(incomingSheet));
     setError(null);
   }, [npc]);
 
@@ -90,6 +97,7 @@ export const NpcEditor: React.FC<NpcEditorProps> = ({ npc, onClose }) => {
         imageKey,
         isRevealed,
         sortOrder: npc?.sortOrder ?? 0,
+        sheet,
       };
       const res = npc
         ? await apiFetch<{ npcs: CampaignNpc[] }>(`/api/dm/npcs/${npc.id}`, {
@@ -290,6 +298,33 @@ export const NpcEditor: React.FC<NpcEditorProps> = ({ npc, onClose }) => {
             placeholder="Истинные мотивы, тайные связи, что скрывает… Игроки этого не увидят."
             className="anime-input w-full text-sm"
           />
+        </div>
+
+        {/* Боевой лист: статы для трекера «Бой» */}
+        <div className="border border-border bg-bg">
+          <button
+            type="button"
+            onClick={() => setSheetOpen((prev) => !prev)}
+            className="w-full px-3 py-2.5 flex items-center gap-2 text-left"
+          >
+            <Swords className="w-4 h-4 text-primary shrink-0" strokeWidth={1.6} />
+            <span className="flex-1 min-w-0">
+              <span className="block text-xs text-text">Боевой лист</span>
+              <span className="block text-[11px] text-muted">
+                {npcSheetHasStats(sheet)
+                  ? `КД ${sheet.ac ?? '—'} · HP ${sheet.hp ?? '—'}${sheet.cr ? ` · CR ${sheet.cr}` : ''}`
+                  : 'АС, HP, характеристики, атаки — чтобы добавить НПС в бой одним кликом'}
+              </span>
+            </span>
+            <span className="text-[10px] font-mono uppercase text-secondary shrink-0">
+              {sheetOpen ? 'свернуть' : 'заполнить'}
+            </span>
+          </button>
+          {sheetOpen && (
+            <div className="px-3 pb-3 pt-1 border-t border-border/70">
+              <NpcSheetFields sheet={sheet} onChange={setSheet} />
+            </div>
+          )}
         </div>
 
         <label className="flex items-start gap-2.5 p-3 bg-bg border border-border cursor-pointer text-xs text-secondary">

@@ -2,17 +2,20 @@ import React, { useState } from 'react';
 import {
   Eye,
   EyeOff,
+  Heart,
   Landmark,
   Lock,
   MapPin,
   MessageSquare,
   Pencil,
+  Shield,
   Trash2,
   UserRound,
 } from 'lucide-react';
 import { resolveImageUrl } from '../../lib/artwork';
 import { EntityNotes } from '../common/EntityNotes';
 import { npcInitials, resolveNpcAttitude } from '../../lib/npc';
+import { npcSheetHasStats } from '../../lib/npcSheet';
 import type { CampaignNpc } from '../../lib/types';
 
 interface NpcCardProps {
@@ -39,6 +42,7 @@ export const NpcCard: React.FC<NpcCardProps> = ({
   const attitude = resolveNpcAttitude(npc.attitude);
   const portraitUrl = npc.imageKey ? resolveImageUrl(npc.imageKey, 'crown') : null;
   const hidden = !npc.isRevealed;
+  const hasSheet = isDm && npcSheetHasStats(npc.sheet);
 
   return (
     <article
@@ -155,6 +159,22 @@ export const NpcCard: React.FC<NpcCardProps> = ({
                 <span className="truncate">{npc.location}</span>
               </span>
             )}
+          </div>
+        )}
+
+        {hasSheet && npc.sheet && (
+          <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[11px] font-mono text-secondary border border-border/70 bg-bg/60 px-2 py-1">
+            <span className="inline-flex items-center gap-1 text-primary/90">
+              <Shield className="w-3 h-3" strokeWidth={1.8} /> КД {npc.sheet.ac ?? '—'}
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <Heart className="w-3 h-3" strokeWidth={1.8} /> {npc.sheet.hp ?? '—'}
+            </span>
+            {npc.sheet.cr && <span className="text-muted">CR {npc.sheet.cr}</span>}
+            {npc.sheet.initiativeBonus != null && (
+              <span className="text-muted">иниц. {npc.sheet.initiativeBonus >= 0 ? '+' : ''}{npc.sheet.initiativeBonus}</span>
+            )}
+            <span className="ml-auto text-[10px] uppercase tracking-wide text-muted">боевой лист</span>
           </div>
         )}
 

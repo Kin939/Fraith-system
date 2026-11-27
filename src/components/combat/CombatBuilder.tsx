@@ -1,7 +1,13 @@
 import React, { useMemo, useState } from 'react';
-import { Eye, EyeOff, Plus, Search, Skull, Swords, Timer, UserPlus, X } from 'lucide-react';
+import { Eye, EyeOff, Plus, Search, Shield, Skull, Swords, Timer, UserPlus, Users, X } from 'lucide-react';
 import type { MonsterHpVisibility } from '../../lib/combatProtocol';
-import type { CombatCreatureOption, CombatParticipantInput, CombatPlayerOption } from '../../lib/combat';
+import { resolveImageUrl } from '../../lib/artwork';
+import type {
+  CombatCreatureOption,
+  CombatNpcOption,
+  CombatParticipantInput,
+  CombatPlayerOption,
+} from '../../lib/combat';
 
 export interface CombatBuilderSubmit {
   name: string;
@@ -18,6 +24,8 @@ export interface CombatBuilderSubmit {
 interface CombatBuilderProps {
   players: CombatPlayerOption[];
   creatures: CombatCreatureOption[];
+  /** НПС из вкладки «Связи» вместе с их боевым листом */
+  npcs: CombatNpcOption[];
   mode: 'create' | 'add';
   busy?: boolean;
   onSubmit: (input: CombatBuilderSubmit) => void;
@@ -38,6 +46,13 @@ interface PlayerDraft {
   initiative: number;
 }
 
+interface NpcDraft {
+  selected: boolean;
+  initiative: number;
+  hidden: boolean;
+  hideName: boolean;
+}
+
 /**
  * Конструктор боя (только мастер).
  *
@@ -48,6 +63,7 @@ interface PlayerDraft {
 export const CombatBuilder: React.FC<CombatBuilderProps> = ({
   players,
   creatures,
+  npcs,
   mode,
   busy = false,
   onSubmit,
@@ -65,6 +81,8 @@ export const CombatBuilder: React.FC<CombatBuilderProps> = ({
   const [crFilter, setCrFilter] = useState<'all' | 'low' | 'mid' | 'high'>('all');
   const [playerDrafts, setPlayerDrafts] = useState<Record<number, PlayerDraft>>({});
   const [monsterDrafts, setMonsterDrafts] = useState<Record<number, MonsterDraft>>({});
+  const [npcDrafts, setNpcDrafts] = useState<Record<number, NpcDraft>>({});
+  const [npcSearch, setNpcSearch] = useState('');
 
   const filteredCreatures = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -87,6 +105,33 @@ export const CombatBuilder: React.FC<CombatBuilderProps> = ({
     () => Object.entries(playerDrafts).filter(([, draft]) => draft.selected),
     [playerDrafts]
   );
+
+  const filteredNpcs = useMemo(() => {
+    const query = npcSearch.trim().toLowerCase();
+    if (!query) return npcs;
+    return npcs.filter((npc) =>
+      `${npc.name} ${npc.role}`.toLowerCase().includes(query)
+    );
+  }, [npcs, npcSearch]);
+
+  const selectedNpcs = useMemo(
+    () => Object.entries(npcDrafts).filter(([, draft]) => draft.selected),
+    [npcDrafts]
+  );
+
+  const toggleNpc = (npcId: number) => {
+    setNpcDrafts((prev) => {
+      const current = prev[npcId] ?? { selected: false, initiative: 0, hidden: true, hideName: false };
+      return { ...prev, [npcId]: { ...current, selected: !current.selected } };
+    });
+  };
+
+  const patchNpcDraft = (npcId: number, patch: Partial<NpcDraft>) => {
+    setNpcDrafts((prev) => {
+      const current = prev[npcId] ?? { selected: false, initiative: 0, hidden: true, hideName: false };
+      return { ...prev, [npcId]: { ...current, ...patch } };
+    });
+  };
 
   const togglePlayer = (playerId: number) => {
     setPlayerDrafts((prev) => {
@@ -142,6 +187,28 @@ export const CombatBuilder: React.FC<CombatBuilderProps> = ({
       });
     }
 
+    for (const [npcIdRaw, draft] of selectedNpcs) {
+      const npcId = Number(npcIdRaw);
+      const npc = npcs.find((item) => item.id === npcId);
+      if (!npc) continue;
+      participants.push({
+        participantType: 'npc',
+        npcId: npc.id,
+        displayName: npc.name,
+        imageUrl: npc.imageKey ? resolveImageUrl(npc.imageKey, 'crown') : undefined,
+        initiativeValue: draft.initiative,
+        // Статы берутся из боевого листа, но мастер может поправить их
+        // позже в шторке участника.
+        maxHp: npc.sheet.hp ?? 10,
+        currentHp: npc.sheet.hp ?? 10,
+        armorClass: npc.sheet.ac,
+        isHiddenFromPlayers: draft.hidden,
+        hideName: draft.hideName || draft.hidden,
+        statblock: npc.statblock,
+        quantity: 1,
+      });
+    }
+
     onSubmit({
       name: name.trim() || 'Бой',
       turnTimerSeconds: timerEnabled ? Math.max(5, Number.parseInt(timerSeconds, 10) || 60) : null,
@@ -163,7 +230,7 @@ export const CombatBuilder: React.FC<CombatBuilderProps> = ({
                 {mode === 'create' ? 'Конструктор боя' : 'Добавить участников в бой'}
               </div>
               <div className="text-[11px] font-mono uppercase tracking-wide text-secondary">
-                существа берутся из бестиария · стат-блоки скрыты от игроков
+                игроки, НПС из «Связей» и существа из бестиария · стат-блоки скрыты от игроков
               </div>
             </div>
           </div>
@@ -327,6 +394,114 @@ export const CombatBuilder: React.FC<CombatBuilderProps> = ({
             </div>
           </div>
 
+          {/* НПС из «Связей» */}
+          <div>
+            <div className="flex items-center justify-between gap-2 mb-1.5">
+              <div className="text-[11px] font-mono uppercase tracking-wide text-secondary flex items-center gap-1.5">
+                <Users className="w-3.5 h-3.5" strokeWidth={1.75} /> НПС из «Связей»
+              </div>
+              <div className="relative">
+                <Search className="w-3 h-3 text-muted absolute left-1.5 top-1/2 -translate-y-1/2" strokeWidth={1.75} />
+                <input
+                  value={npcSearch}
+                  onChange={(event) => setNpcSearch(event.target.value)}
+                  placeholder="поиск"
+                  className="h-9 w-32 sm:w-48 bg-deep border border-border pl-7 pr-2 text-[11px] text-text outline-none focus:border-primary/60"
+                />
+              </div>
+            </div>
+
+            {npcs.length === 0 ? (
+              <div className="border border-border p-3 text-[11px] text-muted">
+                В «Связях» пока нет НПС. Создайте контакт и заполните его боевой лист — он появится здесь.
+              </div>
+            ) : (
+              <div className="max-h-64 overflow-y-auto border border-border divide-y divide-border/60">
+                {filteredNpcs.length === 0 && (
+                  <div className="p-3 text-[11px] text-muted">Ничего не найдено по этому запросу.</div>
+                )}
+                {filteredNpcs.map((npc) => {
+                  const draft = npcDrafts[npc.id];
+                  return (
+                    <div
+                      key={npc.id}
+                      className={`flex items-center gap-2 p-2 ${draft?.selected ? 'bg-primary/5' : 'hover:bg-raised/30'}`}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => toggleNpc(npc.id)}
+                        className={`w-6 h-6 shrink-0 border flex items-center justify-center ${
+                          draft?.selected ? 'border-primary text-primary' : 'border-border text-muted'
+                        }`}
+                        title="Добавить НПС в бой"
+                      >
+                        {draft?.selected ? '✓' : ''}
+                      </button>
+
+                      <div className="w-10 h-10 shrink-0 bg-surface border border-border overflow-hidden">
+                        {npc.imageKey ? (
+                          <img
+                            src={resolveImageUrl(npc.imageKey, 'crown')}
+                            alt={npc.name}
+                            className="w-full h-full object-cover object-top"
+                            loading="lazy"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-muted">
+                            <Users className="w-3.5 h-3.5" strokeWidth={1.5} />
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm text-text truncate">
+                          {npc.name}
+                          {!npc.isRevealed && (
+                            <span className="ml-1.5 text-[10px] font-mono uppercase text-warning/80">скрыт</span>
+                          )}
+                        </div>
+                        <div className="text-[11px] font-mono text-secondary truncate">
+                          {npc.sheet.hp == null && npc.sheet.ac == null ? (
+                            <span className="text-warning/80">лист пуст — НПС войдёт в бой с 10 HP</span>
+                          ) : (
+                            <>
+                              {npc.role || 'роль не указана'} · КД {npc.sheet.ac ?? '—'} · HP {npc.sheet.hp ?? '—'}
+                              {npc.sheet.cr ? ` · CR ${npc.sheet.cr}` : ''}
+                            </>
+                          )}
+                        </div>
+                      </div>
+
+                      <input
+                        value={draft?.initiative ?? 0}
+                        onChange={(event) =>
+                          patchNpcDraft(npc.id, { initiative: Number.parseInt(event.target.value, 10) || 0 })
+                        }
+                        className="w-12 h-9 bg-deep border border-border px-1.5 text-xs font-mono text-text outline-none focus:border-primary/60"
+                        title={
+                          npc.sheet.initiativeBonus != null
+                            ? `Инициатива (бонус листа ${npc.sheet.initiativeBonus >= 0 ? '+' : ''}${npc.sheet.initiativeBonus})`
+                            : 'Инициатива'
+                        }
+                      />
+
+                      <button
+                        type="button"
+                        onClick={() => patchNpcDraft(npc.id, { hidden: !(draft?.hidden ?? true) })}
+                        className={`w-8 h-8 flex items-center justify-center border ${
+                          (draft?.hidden ?? true) ? 'border-warning/60 text-warning' : 'border-border text-muted'
+                        }`}
+                        title="Скрыть HP/AC/статы НПС от игроков"
+                      >
+                        {(draft?.hidden ?? true) ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
           {/* Мобы */}
           <div>
             <div className="flex items-center justify-between gap-2 mb-1.5">
@@ -445,7 +620,7 @@ export const CombatBuilder: React.FC<CombatBuilderProps> = ({
 
         <footer className="flex items-center justify-between gap-2 px-4 py-3.5 border-t border-border">
           <div className="text-[11px] font-mono uppercase tracking-wide text-secondary">
-            выбрано: игроков {selectedPlayers.length} · мобов{' '}
+            выбрано: игроков {selectedPlayers.length} · НПС {selectedNpcs.length} · мобов{' '}
             {selectedMonsters.reduce((sum, [, draft]) => sum + draft.quantity, 0)}
           </div>
           <div className="flex items-center gap-2">
@@ -459,7 +634,10 @@ export const CombatBuilder: React.FC<CombatBuilderProps> = ({
             <button
               type="button"
               onClick={submit}
-              disabled={busy || (selectedPlayers.length === 0 && selectedMonsters.length === 0)}
+              disabled={
+                busy ||
+                (selectedPlayers.length === 0 && selectedMonsters.length === 0 && selectedNpcs.length === 0)
+              }
               className="anime-btn-primary h-10 px-4 text-sm disabled:opacity-40"
             >
               {mode === 'create' ? 'Создать бой' : 'Добавить в бой'}

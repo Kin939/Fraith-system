@@ -33,6 +33,7 @@ import {
   setExhaustion,
   timerAction,
   type CombatCreatureOption,
+  type CombatNpcOption,
   type CombatPlayerOption,
 } from '../lib/combat';
 import { useCombatSocket } from '../hooks/useCombatSocket';
@@ -113,9 +114,14 @@ export const CombatPage: React.FC = () => {
   const [busy, setBusy] = useState(false);
   const [builderOpen, setBuilderOpen] = useState(false);
   const [builderMode, setBuilderMode] = useState<'create' | 'add'>('create');
-  const [builderData, setBuilderData] = useState<{ players: CombatPlayerOption[]; creatures: CombatCreatureOption[] }>({
+  const [builderData, setBuilderData] = useState<{
+    players: CombatPlayerOption[];
+    creatures: CombatCreatureOption[];
+    npcs: CombatNpcOption[];
+  }>({
     players: [],
     creatures: [],
+    npcs: [],
   });
   const [builderLoading, setBuilderLoading] = useState(false);
   const [logOpen, setLogOpen] = useState(false);
@@ -321,6 +327,7 @@ export const CombatPage: React.FC = () => {
     setBuilderMode(mode);
     setBuilderOpen(true);
     if (builderData.players.length === 0 && builderData.creatures.length === 0) {
+      // НПС из «Связей» подгружаются тем же запросом (только мастер).
       setBuilderLoading(true);
       try {
         const data = await loadBuilderData();
@@ -736,6 +743,7 @@ export const CombatPage: React.FC = () => {
         <CombatBuilder
           players={builderData.players}
           creatures={builderData.creatures}
+          npcs={builderData.npcs}
           mode={builderMode}
           busy={builderLoading || busy}
           existingPlayerUserIds={(state?.participants ?? [])

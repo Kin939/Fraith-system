@@ -1,5 +1,6 @@
 import { apiFetch } from './api';
 import type { CombatLogEntry, CombatSummary, CombatView, MonsterHpVisibility } from './combatProtocol';
+import type { NpcSheet } from './types';
 
 /** Клиент вкладки «Бой»: REST-обёртки над /api/combats/*. */
 
@@ -34,11 +35,24 @@ export interface CombatCreatureOption {
   statblock: string;
 }
 
+/** НПС из вкладки «Связи», доступный конструктору боя (только мастеру). */
+export interface CombatNpcOption {
+  id: number;
+  name: string;
+  role: string;
+  /** Ключ портрета (как в NpcCard), не готовый URL */
+  imageKey: string;
+  isRevealed: boolean;
+  sheet: NpcSheet;
+  statblock: string;
+}
+
 export interface CombatParticipantInput {
-  participantType: 'player' | 'monster';
+  participantType: 'player' | 'monster' | 'npc';
   userId?: number | null;
   playerId?: number | null;
   monsterBestiaryId?: number | null;
+  npcId?: number | null;
   displayName?: string;
   imageUrl?: string;
   initiativeValue?: number;
@@ -107,6 +121,8 @@ export const patchParticipant = (
     isHiddenFromPlayers?: boolean;
     hideName?: boolean;
     notes?: string;
+    /** Стат-блок: мастер обновляет его после правки листа НПС */
+    statblock?: string;
   }
 ) =>
   apiFetch<{ combat: CombatView }>(
@@ -185,7 +201,19 @@ export const loadBuilderData = () =>
   Promise.all([
     apiFetch<{ creatures: CombatCreatureOption[] }>('/api/combats/bestiary'),
     apiFetch<{ players: CombatPlayerOption[] }>('/api/combats/members'),
-  ]).then(([bestiary, members]) => ({ creatures: bestiary.creatures, players: members.players }));
+    apiFetch<{ npcs: CombatNpcOption[] }>('/api/combats/npcs').catch(() => ({ npcs: [] as CombatNpcOption[] })),
+  ]).then(([bestiary, members, npcs]) => ({
+    creatures: bestiary.creatures,
+    players: members.players,
+    npcs: npcs.npcs,
+  }));
+
+/** Сохранить боевой лист НПС (из «Связей» или прямо из трекера боя). */
+export const saveNpcSheet = (npcId: number, sheet: NpcSheet) =>
+  apiFetch<{ npcs: import('./types').CampaignNpc[] }>(`/api/dm/npcs/${npcId}/sheet`, {
+    method: 'PATCH',
+    body: JSON.stringify({ sheet }),
+  });
 
 export interface CombatHistoryParticipant {
   id: string;

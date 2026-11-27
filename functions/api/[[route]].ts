@@ -78,6 +78,7 @@ import {
   normalizeQuestAccent,
   normalizeQuestPattern,
 } from '../../src/lib/questStyle';
+import { normalizeNpcSheet, serializeNpcSheet } from '../../src/lib/npcSheet';
 import {
   canViewLiterature,
   createLiteratureFile,
@@ -1664,6 +1665,8 @@ interface NpcMutationBody {
   imageKey?: string | null;
   isRevealed?: boolean;
   sortOrder?: number;
+  /** Боевой лист: АС, HP, характеристики, атаки (только мастер) */
+  sheet?: unknown;
 }
 
 function normalizeNpcBody(body: NpcMutationBody) {
@@ -1678,6 +1681,8 @@ function normalizeNpcBody(body: NpcMutationBody) {
     imageKey: body.imageKey || null,
     isRevealed: Boolean(body.isRevealed),
     sortOrder: Math.trunc(body.sortOrder ?? 0),
+    // sheet не передан вовсе (например, старый клиент или reveal) — лист не трогаем
+    sheetJson: body.sheet === undefined ? null : serializeNpcSheet(normalizeNpcSheet(body.sheet)),
   };
 }
 
@@ -1705,8 +1710,8 @@ app.post('/dm/npcs', async (c) => {
 
   await c.env.DB.prepare(
     `INSERT INTO campaign_npcs
-       (name, role, faction, location, attitude, description, secret_notes, image_key, is_revealed, sort_order, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`
+       (name, role, faction, location, attitude, description, secret_notes, image_key, is_revealed, sort_order, sheet_json, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`
   )
     .bind(
       npc.name,
@@ -1718,7 +1723,8 @@ app.post('/dm/npcs', async (c) => {
       npc.secretNotes,
       npc.imageKey,
       npc.isRevealed ? 1 : 0,
-      npc.sortOrder
+      npc.sortOrder,
+      npc.sheetJson ?? '{}'
     )
     .run();
 
@@ -1743,7 +1749,7 @@ app.put('/dm/npcs/:id', async (c) => {
     `UPDATE campaign_npcs
      SET name = ?, role = ?, faction = ?, location = ?, attitude = ?,
          description = ?, secret_notes = ?, image_key = ?, is_revealed = ?,
-         sort_order = ?, updated_at = datetime('now')
+         sort_order = ?, sheet_json = COALESCE(?, sheet_json), updated_at = datetime('now')
      WHERE id = ?`
   )
     .bind(
@@ -1757,8 +1763,35 @@ app.put('/dm/npcs/:id', async (c) => {
       npc.imageKey,
       npc.isRevealed ? 1 : 0,
       npc.sortOrder,
+      npc.sheetJson,
       id
     )
+    .run();
+
+  await broadcastNpcUpdate(c.env, user.id);
+  const npcs = await listNpcs(c.env.DB, 'dm');
+  return c.json({ npcs });
+});
+
+/**
+ * Сохранить только боевой лист НПС — из карточки «Связей» или прямо из трекера
+ * боя, где мастер правит статы на ходу.
+ */
+app.patch('/dm/npcs/:id/sheet', async (c) => {
+  const user = c.get('user')!;
+  const id = Number.parseInt(c.req.param('id'), 10);
+  if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Некорректный id NPC' }, 400);
+  if (!(await getNpcById(c.env.DB, id))) return c.json({ error: 'NPC не найден' }, 404);
+
+  const body = await c.req
+    .json<{ sheet?: unknown }>()
+    .catch((): { sheet?: unknown } => ({}));
+  const sheetJson = serializeNpcSheet(normalizeNpcSheet(body.sheet));
+
+  await c.env.DB.prepare(
+    `UPDATE campaign_npcs SET sheet_json = ?, updated_at = datetime('now') WHERE id = ?`
+  )
+    .bind(sheetJson, id)
     .run();
 
   await broadcastNpcUpdate(c.env, user.id);
