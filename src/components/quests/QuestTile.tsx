@@ -3,6 +3,7 @@ import {
   AlertTriangle,
   CheckCircle2,
   Clock3,
+  Lock,
   MessageSquare,
   Sparkles,
   Star,
@@ -224,6 +225,16 @@ export const QuestTile: React.FC<QuestTileProps> = ({
               >
                 <MessageSquare className="w-2.5 h-2.5" strokeWidth={1.8} />
                 <span className="font-mono tabular-nums">{notesCount}</span>
+              </span>
+            )}
+            {(quest.visibleUserIds?.length ?? 0) > 0 && (
+              <span
+                className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] border"
+                style={{ color: 'var(--primary)', borderColor: 'color-mix(in srgb, var(--primary) 45%, transparent)' }}
+                title={`Личный квест: виден ${quest.visibleUserIds.length} игрок(ам)`}
+              >
+                <Lock className="w-2.5 h-2.5" strokeWidth={1.9} />
+                <span>ЛИЧНЫЙ</span>
               </span>
             )}
           </div>

@@ -36,6 +36,9 @@ const BoardPage = lazy(() =>
 const CombatPage = lazy(() =>
   import('./pages/CombatPage').then((m) => ({ default: m.CombatPage }))
 );
+const LiteraturePage = lazy(() =>
+  import('./pages/LiteraturePage').then((m) => ({ default: m.LiteraturePage }))
+);
 const DmPage = lazy(() =>
   import('./pages/DmPage').then((m) => ({ default: m.DmPage }))
 );
@@ -175,6 +178,8 @@ export const App: React.FC = () => {
             {activeTab === 'talents' && <TalentsPage />}
             {activeTab === 'chat' && <MessengerPage />}
             {activeTab === 'board' && <BoardPage />}
+            {/* «Литература» — строго после «Доски» и перед «Мастером» */}
+            {activeTab === 'literature' && <LiteraturePage />}
             {activeTab === 'dm' && <DmPage />}
           </Suspense>
         </PageErrorBoundary>

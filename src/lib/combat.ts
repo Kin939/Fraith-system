@@ -186,3 +186,29 @@ export const loadBuilderData = () =>
     apiFetch<{ creatures: CombatCreatureOption[] }>('/api/combats/bestiary'),
     apiFetch<{ players: CombatPlayerOption[] }>('/api/combats/members'),
   ]).then(([bestiary, members]) => ({ creatures: bestiary.creatures, players: members.players }));
+
+export interface CombatHistoryParticipant {
+  id: string;
+  name: string;
+  type: 'player' | 'monster';
+  isDefeated: boolean;
+  currentHp: number | null;
+  maxHp: number | null;
+}
+
+export interface CombatHistoryEntry {
+  id: string;
+  name: string;
+  roundNumber: number;
+  startedAt: number;
+  finishedAt: number;
+  participantCount: number;
+  defeatedCount: number;
+  monsterCount: number;
+  eventCount: number;
+  participants: CombatHistoryParticipant[];
+}
+
+/** Архив завершённых боёв — доступен всей партии, скрытые имена маскируются. */
+export const loadCombatHistory = () =>
+  apiFetch<{ combats: CombatHistoryEntry[]; isDm: boolean }>('/api/combats/history');

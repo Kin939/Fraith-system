@@ -81,6 +81,17 @@ const EXTENSION_FALLBACK_MAP: Record<
   webm: { mime: 'video/webm', ext: 'webm', kind: 'video' },
 };
 
+/**
+ * «Литература»: PDF/Word/TXT/PNG мастера.
+ * В R2 кладём одним объектом; без R2 — чанками в media_blobs, потому что
+ * D1 ограничивает размер одного значения (крупный PDF в одну строку не влезает).
+ */
+// 200 КБ «сырых» байт ≈ 267 КБ base64 на строку: с запасом ниже лимита
+// D1 на размер значения и на суммарный батч.
+const LITERATURE_CHUNK_BYTES = 200_000;
+const LITERATURE_CHUNK_BATCH = 4;
+const MAX_LITERATURE_BYTES = 25 * 1024 * 1024;
+
 const BLOCKED_EXTENSIONS = new Set([
   'html',
   'htm',
@@ -322,4 +333,126 @@ export async function getChatAttachmentFromR2(
     status: res.status,
     headers,
   });
+}
+
+
+// ---------------------------------------------------------------------------
+// Литература (вкладка после «Доски»)
+// ---------------------------------------------------------------------------
+
+function chunkKey(baseKey: string, index: number): string {
+  return `${baseKey}__part_${String(index).padStart(4, '0')}`;
+}
+
+export interface LiteratureUploadResult {
+  key: string;
+  size: number;
+}
+
+/** Кладёт файл литературы в R2 либо чанками в D1. Возвращает ключ хранения. */
+export async function uploadLiteratureFileToStorage(
+  bucket: R2Bucket | undefined,
+  db: D1Database,
+  file: File,
+  key: string
+): Promise<LiteratureUploadResult> {
+  if (file.size > MAX_LITERATURE_BYTES) {
+    throw new Error('Максимальный размер файла литературы — 25 МБ');
+  }
+  const arrayBuffer = await file.arrayBuffer();
+
+  if (bucket) {
+    await bucket.put(key, arrayBuffer, {
+      httpMetadata: {
+        contentType: file.type || 'application/octet-stream',
+        cacheControl: 'private, max-age=300',
+      },
+    });
+    return { key, size: file.size };
+  }
+
+  const bytes = new Uint8Array(arrayBuffer);
+  const statements: D1PreparedStatement[] = [];
+  let index = 0;
+  for (let offset = 0; offset < bytes.length; offset += LITERATURE_CHUNK_BYTES) {
+    const slice = bytes.subarray(offset, offset + LITERATURE_CHUNK_BYTES);
+    statements.push(
+      db
+        .prepare(
+          `INSERT OR REPLACE INTO media_blobs (key, content_type, data_base64, created_at)
+           VALUES (?, ?, ?, datetime('now'))`
+        )
+        .bind(
+          chunkKey(key, index),
+          'application/octet-stream',
+          arrayBufferToBase64(slice.buffer.slice(slice.byteOffset, slice.byteOffset + slice.byteLength))
+        )
+    );
+    index += 1;
+    if (statements.length >= LITERATURE_CHUNK_BATCH) {
+      await db.batch(statements.splice(0, statements.length));
+    }
+  }
+  if (statements.length > 0) await db.batch(statements);
+
+  return { key, size: file.size };
+}
+
+/** Отдаёт файл литературы из R2 или собирает его из чанков D1. */
+export async function readLiteratureFileFromStorage(
+  bucket: R2Bucket | undefined,
+  db: D1Database,
+  key: string
+): Promise<{ bytes: ArrayBuffer | null; body: ReadableStream | null; contentType: string | null }> {
+  if (bucket) {
+    const object = await bucket.get(key);
+    if (object) {
+      return {
+        bytes: null,
+        body: object.body,
+        contentType: object.httpMetadata?.contentType ?? null,
+      };
+    }
+  }
+
+  const prefix = `${key}__part_`;
+  const { results } = await db
+    .prepare(
+      `SELECT key, data_base64 FROM media_blobs
+       WHERE substr(key, 1, ?) = ? ORDER BY key ASC`
+    )
+    .bind(prefix.length, prefix)
+    .all<{ key: string; data_base64: string }>();
+
+  if (!results || results.length === 0) return { bytes: null, body: null, contentType: null };
+
+  const chunks = results.map((row) => base64ToUint8Array(row.data_base64));
+  const total = chunks.reduce((sum, chunk) => sum + chunk.byteLength, 0);
+  const merged = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    merged.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return { bytes: merged.buffer as ArrayBuffer, body: null, contentType: null };
+}
+
+/** Удаляет файл литературы из R2 и все его чанки из D1. */
+export async function deleteLiteratureFromStorage(
+  bucket: R2Bucket | undefined,
+  db: D1Database,
+  key: string
+): Promise<void> {
+  if (bucket) {
+    try {
+      await bucket.delete(key);
+    } catch {
+      /* объект мог быть удалён ранее */
+    }
+  }
+  const prefix = `${key}__part_`;
+  await db
+    .prepare(`DELETE FROM media_blobs WHERE substr(key, 1, ?) = ?`)
+    .bind(prefix.length, prefix)
+    .run();
 }

@@ -17,5 +17,5 @@
     "noFallthroughCasesInSwitch": true
   },
   "include": ["src"],
-  "exclude": ["src/lib/db.ts", "src/lib/r2.ts", "src/lib/bootstrap.ts"]
+  "exclude": ["src/lib/db.ts", "src/lib/r2.ts", "src/lib/bootstrap.ts", "src/lib/literatureDb.ts"]
 }

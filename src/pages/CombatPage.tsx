@@ -40,6 +40,7 @@ import { useCombatState } from '../hooks/useCombatState';
 import { InitiativeTracker } from '../components/combat/InitiativeTracker';
 import { TurnTimer } from '../components/combat/TurnTimer';
 import { CombatBuilder, type CombatBuilderSubmit } from '../components/combat/CombatBuilder';
+import { CombatHistoryModal } from '../components/combat/CombatHistoryModal';
 import { ParticipantEditor } from '../components/combat/ParticipantEditor';
 import type { ParticipantCardHandlers } from '../components/combat/ParticipantCard';
 import { PeerAvatar } from '../components/common/PeerAvatar';
@@ -118,6 +119,7 @@ export const CombatPage: React.FC = () => {
   });
   const [builderLoading, setBuilderLoading] = useState(false);
   const [logOpen, setLogOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [log, setLog] = useState<CombatLogEntry[]>([]);
 
@@ -446,6 +448,15 @@ export const CombatPage: React.FC = () => {
           </div>
         )}
 
+        <button
+          type="button"
+          onClick={() => setHistoryOpen(true)}
+          className="h-10 px-3 text-[11px] font-mono uppercase border border-border text-secondary hover:text-primary hover:border-primary/50 flex items-center gap-1.5"
+          title="Архив завершённых боёв"
+        >
+          <History className="w-4 h-4" strokeWidth={1.75} /> история
+        </button>
+
         <span
           className={`h-8 px-2.5 flex items-center gap-1.5 border text-[11px] font-mono uppercase ${
             socket.status === 'open' ? 'border-positive/40 text-positive' : 'border-warning/40 text-warning'
@@ -718,6 +729,8 @@ export const CombatPage: React.FC = () => {
           )}
         </div>
       )}
+
+      {historyOpen && <CombatHistoryModal onClose={() => setHistoryOpen(false)} />}
 
       {builderOpen && (
         <CombatBuilder

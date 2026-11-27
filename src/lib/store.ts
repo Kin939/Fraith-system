@@ -38,6 +38,7 @@ export type CampaignTabId =
   | 'talents'
   | 'chat'
   | 'board'
+  | 'literature'
   | 'dm';
 
 export interface TypingMember {
@@ -109,6 +110,8 @@ interface CampaignState {
   setOnlineUsers: (online: OnlineMember[]) => void;
 
   setQuests: (quests: Quest[]) => void;
+  /** Перечитать квесты с сервера (фильтрация по видимости — на сервере) */
+  refreshQuests: () => Promise<void>;
   setEntityNotes: (kind: NoteEntityKind, entityId: number, notes: EntityNote[]) => void;
   setNpcs: (npcs: CampaignNpc[]) => void;
   setBestiary: (creatures: BestiaryCreature[]) => void;
@@ -524,6 +527,11 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
   refreshBestiary: async () => {
     const bestiaryRes = await apiFetch<{ creatures: BestiaryCreature[] }>('/api/bestiary');
     set({ bestiary: bestiaryRes.creatures });
+  },
+
+  refreshQuests: async () => {
+    const res = await apiFetch<{ quests: Quest[] }>('/api/quests');
+    set({ quests: res.quests });
   },
 
   refreshNpcs: async () => {

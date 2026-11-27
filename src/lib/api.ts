@@ -161,3 +161,58 @@ export async function patchTalentTile(
     body: JSON.stringify(patch),
   });
 }
+
+/* -------------------------------------------------------------------------- */
+/*  Видимость: личные квесты и «Литература»                                    */
+/* -------------------------------------------------------------------------- */
+
+/** Ростер партии для выбора «кому видно» (только мастер). */
+export async function fetchPartyPlayers(): Promise<import('./types').PartyPlayerSummary[]> {
+  const res = await apiFetch<{ players: import('./types').PartyPlayerSummary[] }>('/api/dm/players');
+  return res.players ?? [];
+}
+
+export async function fetchLiterature(): Promise<{
+  files: import('./types').LiteratureFile[];
+  isDm: boolean;
+}> {
+  return apiFetch<{ files: import('./types').LiteratureFile[]; isDm: boolean }>('/api/literature');
+}
+
+export async function uploadLiteratureFile(
+  file: File,
+  options: { title?: string; description?: string; visibleUserIds?: number[] } = {}
+): Promise<import('./types').LiteratureFile> {
+  const fd = new FormData();
+  fd.append('file', file);
+  if (options.title) fd.append('title', options.title);
+  if (options.description) fd.append('description', options.description);
+  fd.append('visibleUserIds', JSON.stringify(options.visibleUserIds ?? []));
+
+  const res = await apiFetch<{ file: import('./types').LiteratureFile }>('/api/dm/literature', {
+    method: 'POST',
+    body: fd,
+    timeoutMs: 120000,
+  });
+  return res.file;
+}
+
+export async function patchLiteratureFile(
+  id: number,
+  patch: { title?: string; description?: string; visibleUserIds?: number[] }
+): Promise<import('./types').LiteratureFile> {
+  const res = await apiFetch<{ file: import('./types').LiteratureFile }>(
+    `/api/dm/literature/${id}`,
+    { method: 'PATCH', body: JSON.stringify(patch) }
+  );
+  return res.file;
+}
+
+export async function deleteLiteratureFile(id: number): Promise<void> {
+  await apiFetch<{ ok: boolean }>(`/api/dm/literature/${id}`, { method: 'DELETE' });
+}
+
+/** Прямая ссылка на файл литературы (права проверяет сервер). */
+export function literatureFileUrl(id: number, download = false): string {
+  return `/api/literature/${id}/file${download ? '?download=1' : ''}`;
+}

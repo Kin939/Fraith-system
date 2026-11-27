@@ -6,6 +6,9 @@ import { normalizeQuestPattern } from '../../lib/questStyle';
 import { useCampaignStore } from '../../lib/store';
 import type { Quest, QuestStatus, QuestTilePattern } from '../../lib/types';
 import { QuestTileEditor, type QuestTileDraft } from './QuestTileEditor';
+import { VisibilityPicker } from '../common/VisibilityPicker';
+import { fetchPartyPlayers } from '../../lib/api';
+import type { PartyPlayerSummary } from '../../lib/types';
 
 interface QuestEditorProps {
   initialQuest?: Quest | null;
@@ -36,6 +39,9 @@ export const QuestEditor: React.FC<QuestEditorProps> = ({ initialQuest, onDone }
   const [tileEmblem, setTileEmblem] = useState<string | null>(null);
   const [tilePattern, setTilePattern] = useState<QuestTilePattern>('none');
   const [isImportant, setIsImportant] = useState(false);
+  /** Личные квесты: пустой список = виден всей партии. */
+  const [visibleUserIds, setVisibleUserIds] = useState<number[]>([]);
+  const [partyPlayers, setPartyPlayers] = useState<PartyPlayerSummary[]>([]);
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [togglingId, setTogglingId] = useState<number | null>(null);
@@ -59,6 +65,7 @@ export const QuestEditor: React.FC<QuestEditorProps> = ({ initialQuest, onDone }
       setTileEmblem(null);
       setTilePattern('none');
       setIsImportant(false);
+      setVisibleUserIds([]);
       return;
     }
     setEditingId(q.id);
@@ -78,6 +85,7 @@ export const QuestEditor: React.FC<QuestEditorProps> = ({ initialQuest, onDone }
     setTileEmblem(q.tileStyle?.emblem ?? null);
     setTilePattern(normalizeQuestPattern(q.tileStyle?.pattern));
     setIsImportant(Boolean(q.tileStyle?.isImportant));
+    setVisibleUserIds(q.visibleUserIds ?? []);
   };
 
   useEffect(() => {
@@ -85,6 +93,18 @@ export const QuestEditor: React.FC<QuestEditorProps> = ({ initialQuest, onDone }
       loadQuestIntoForm(initialQuest);
     }
   }, [initialQuest]);
+
+  useEffect(() => {
+    let alive = true;
+    void fetchPartyPlayers()
+      .then((players) => {
+        if (alive) setPartyPlayers(players);
+      })
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   // Deep link from the "Оформление" button on a quest tile
   useEffect(() => {
@@ -148,6 +168,7 @@ export const QuestEditor: React.FC<QuestEditorProps> = ({ initialQuest, onDone }
     createdAt: new Date().toISOString(),
     tileStyle: { accent: tileAccent, emblem: tileEmblem, pattern: tilePattern, isImportant },
     notesCount: quests.find((q) => q.id === editingId)?.notesCount ?? 0,
+    visibleUserIds,
   };
 
   const handleToggleImportant = async (quest: Quest) => {
@@ -189,6 +210,7 @@ export const QuestEditor: React.FC<QuestEditorProps> = ({ initialQuest, onDone }
         tileEmblem,
         tilePattern,
         isImportant,
+        visibleUserIds,
       };
       const res = editingId
         ? await apiFetch<{ quests: Quest[] }>(`/api/dm/quests/${editingId}`, {
@@ -270,7 +292,7 @@ export const QuestEditor: React.FC<QuestEditorProps> = ({ initialQuest, onDone }
                   <div className="text-sm font-medium text-text truncate">{q.title}</div>
                   <div className="text-xs text-muted font-mono tabular-nums mt-0.5">
                     {q.progressCurrent} из {q.progressTarget} · {q.status}
-                    {q.tileStyle?.accent ? ` · ${q.tileStyle.accent}` : ''}
+                    {q.visibleUserIds.length > 0 ? ` · личный (${q.visibleUserIds.length})` : ''}
                   </div>
                 </div>
               </div>
@@ -429,6 +451,14 @@ export const QuestEditor: React.FC<QuestEditorProps> = ({ initialQuest, onDone }
             />
           </div>
         </div>
+
+        <VisibilityPicker
+          players={partyPlayers}
+          value={visibleUserIds}
+          onChange={setVisibleUserIds}
+          dense
+          label="Кому виден квест"
+        />
 
         <div>
           <label className="block text-xs text-secondary mb-1.5">Полное описание</label>

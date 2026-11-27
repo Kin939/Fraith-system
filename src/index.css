@@ -975,3 +975,86 @@ a.dndsu-source-plaque:hover {
 .group:hover .player-avatar img {
   transform: scale(1.04);
 }
+
+/* ==========================================================================
+   ЛИТЕРАТУРА — DOCX, прочитанный mammoth, выглядит как страница документа
+   ========================================================================== */
+.literature-docx {
+  font-family: 'Georgia', 'Times New Roman', serif;
+  font-size: 15px;
+  line-height: 1.65;
+  word-break: break-word;
+}
+
+.literature-docx h1,
+.literature-docx h2,
+.literature-docx h3,
+.literature-docx h4 {
+  font-family: inherit;
+  font-weight: 600;
+  line-height: 1.3;
+  margin: 1.4em 0 0.6em;
+  color: #0f1115;
+}
+
+.literature-docx h1 { font-size: 1.7em; }
+.literature-docx h2 { font-size: 1.4em; }
+.literature-docx h3 { font-size: 1.2em; }
+
+.literature-docx p {
+  margin: 0 0 0.85em;
+}
+
+.literature-docx ul,
+.literature-docx ol {
+  margin: 0 0 0.9em 1.4em;
+  padding: 0;
+}
+
+.literature-docx ul { list-style: disc; }
+.literature-docx ol { list-style: decimal; }
+.literature-docx li { margin: 0.2em 0; }
+
+.literature-docx table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 0 0 1em;
+  font-size: 0.94em;
+}
+
+.literature-docx th,
+.literature-docx td {
+  border: 1px solid #c9c7bd;
+  padding: 0.4em 0.6em;
+  vertical-align: top;
+  text-align: left;
+}
+
+.literature-docx th {
+  background: #eae7dc;
+  font-weight: 600;
+}
+
+.literature-docx img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: 0.8em auto;
+}
+
+.literature-docx blockquote {
+  margin: 0 0 1em;
+  padding: 0.3em 0 0.3em 1em;
+  border-left: 3px solid #c9c7bd;
+  color: #3d4048;
+}
+
+.literature-docx a {
+  color: #0b6f9c;
+  text-decoration: underline;
+}
+
+.literature-text {
+  max-height: none;
+  tab-size: 4;
+}

@@ -48,6 +48,8 @@ import {
   listQuests,
   listRecentRolls,
   listSpells,
+  canViewQuest,
+  parseVisibleUserIds,
   mapUserRowToAuthUser,
   NOTE_MAX_LENGTH,
   nextCustomSpellId,
@@ -76,13 +78,27 @@ import {
   normalizeQuestAccent,
   normalizeQuestPattern,
 } from '../../src/lib/questStyle';
+import {
+  canViewLiterature,
+  createLiteratureFile,
+  deleteLiteratureFile,
+  detectLiteratureKind,
+  getLiteratureRow,
+  listLiteratureFiles,
+  normalizeVisibleUserIds,
+  serializeVisibleUserIds,
+  updateLiteratureFile,
+} from '../../src/lib/literatureDb';
 import { isHudAssetKey } from '../../src/lib/hudIcons';
 import { parseLssCharacterPayload } from '../../src/lib/lss';
 import {
+  deleteLiteratureFromStorage,
   getChatAttachmentFromR2,
   getImageFromR2,
+  readLiteratureFileFromStorage,
   uploadChatAttachmentToR2,
   uploadImageToR2,
+  uploadLiteratureFileToStorage,
 } from '../../src/lib/r2';
 import { registerBoardRoutes } from '../../workers/board-routes';
 import { registerCombatRoutes } from '../../workers/combat-routes';
@@ -418,6 +434,20 @@ app.use('/dm/*', async (c, next) => {
   }
   await next();
 });
+
+/**
+ * Квесты бывают личными, поэтому рассылать один общий список нельзя — игроки
+ * получили бы чужие квесты. Вместо payload отправляем сигнал, и каждый клиент
+ * перечитывает /api/quests уже со своей фильтрацией.
+ */
+async function broadcastQuestsChanged(env: Env, senderId?: number): Promise<void> {
+  await broadcastCampaignEvent(env, 'quests:updated', { refetch: true }, senderId);
+}
+
+/** Литература: тот же принцип — сигнал вместо списка файлов. */
+async function broadcastLiteratureChanged(env: Env, senderId?: number): Promise<void> {
+  await broadcastCampaignEvent(env, 'literature:updated', { refetch: true }, senderId);
+}
 
 // ============================================================================
 // Tab 1: Characters, Personal Journal & Long Story Short (LSS) Sync
@@ -810,6 +840,8 @@ interface QuestMutationBody {
   tileEmblem?: string | null;
   tilePattern?: string | null;
   isImportant?: boolean;
+  /** Личные квесты: id игроков, которым квест открыт ([] = всей партии) */
+  visibleUserIds?: number[];
 }
 
 function normalizeQuestTileStyle(body: QuestMutationBody): {
@@ -830,7 +862,10 @@ app.get('/quests', async (c) => {
   const user = c.get('user');
   if (!user) return c.json({ error: 'Необходима авторизация' }, 401);
 
-  const quests = await listQuests(c.env.DB);
+  const quests = await listQuests(c.env.DB, {
+    userId: user.id,
+    isDm: user.role === 'dm',
+  });
   return c.json({ quests });
 });
 
@@ -851,8 +886,8 @@ app.post('/dm/quests', async (c) => {
   const tile = normalizeQuestTileStyle(body);
 
   await c.env.DB.prepare(
-    `INSERT INTO quests (title, short_desc, full_desc, reward, parameters_json, progress_current, progress_target, image_key, status, tile_accent, tile_emblem, tile_pattern, is_important, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`
+    `INSERT INTO quests (title, short_desc, full_desc, reward, parameters_json, progress_current, progress_target, image_key, status, tile_accent, tile_emblem, tile_pattern, is_important, visible_user_ids, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`
   )
     .bind(
       body.title.trim(),
@@ -867,12 +902,13 @@ app.post('/dm/quests', async (c) => {
       tile.accent,
       tile.emblem,
       tile.pattern,
-      tile.isImportant ? 1 : 0
+      tile.isImportant ? 1 : 0,
+      serializeVisibleUserIds(normalizeVisibleUserIds(body.visibleUserIds))
     )
     .run();
 
   const quests = await listQuests(c.env.DB);
-  await broadcastCampaignEvent(c.env, 'quests:updated', { quests }, user.id);
+  await broadcastQuestsChanged(c.env, user.id);
   return c.json({ quests });
 });
 
@@ -903,7 +939,8 @@ app.put('/dm/quests/:id', async (c) => {
          tile_accent = ?,
          tile_emblem = ?,
          tile_pattern = ?,
-         is_important = ?
+         is_important = ?,
+         visible_user_ids = ?
      WHERE id = ?`
   )
     .bind(
@@ -920,12 +957,13 @@ app.put('/dm/quests/:id', async (c) => {
       tile.emblem,
       tile.pattern,
       tile.isImportant ? 1 : 0,
+      serializeVisibleUserIds(normalizeVisibleUserIds(body.visibleUserIds)),
       id
     )
     .run();
 
   const quests = await listQuests(c.env.DB);
-  await broadcastCampaignEvent(c.env, 'quests:updated', { quests }, user.id);
+  await broadcastQuestsChanged(c.env, user.id);
   return c.json({ quests });
 });
 
@@ -985,7 +1023,7 @@ app.patch('/dm/quests/:id/tile', async (c) => {
     .run();
 
   const quests = await listQuests(c.env.DB);
-  await broadcastCampaignEvent(c.env, 'quests:updated', { quests }, user.id);
+  await broadcastQuestsChanged(c.env, user.id);
   return c.json({ quests });
 });
 
@@ -995,8 +1033,187 @@ app.delete('/dm/quests/:id', async (c) => {
   await c.env.DB.prepare(`DELETE FROM quests WHERE id = ?`).bind(id).run();
 
   const quests = await listQuests(c.env.DB);
-  await broadcastCampaignEvent(c.env, 'quests:updated', { quests }, user.id);
+  await broadcastQuestsChanged(c.env, user.id);
   return c.json({ quests });
+});
+
+// ============================================================================
+// Литература — файлы мастера (PDF, Word, TXT, картинки), вкладка после «Доски»
+// ============================================================================
+
+/** Опасные расширения не пускаем даже как «литературу». */
+const LITERATURE_BLOCKED_EXTENSIONS = new Set([
+  'html',
+  'htm',
+  'xhtml',
+  'svg',
+  'js',
+  'mjs',
+  'cjs',
+  'exe',
+  'bat',
+  'cmd',
+  'com',
+  'sh',
+  'msi',
+  'php',
+  'phtml',
+  'jar',
+]);
+
+function literatureSlug(name: string): string {
+  const base = name
+    .replace(/\.[^.]+$/, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 40);
+  return base || 'file';
+}
+
+function literatureExtOf(name: string, mime: string): string {
+  const match = name.match(/\.([a-zA-Z0-9]{1,8})$/);
+  if (match) return match[1].toLowerCase();
+  const fromMime = mime.split('/')[1]?.split(';')[0]?.trim();
+  return (fromMime || 'bin').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 8) || 'bin';
+}
+
+app.get('/literature', async (c) => {
+  const user = c.get('user');
+  if (!user) return c.json({ error: 'Необходима авторизация' }, 401);
+  const files = await listLiteratureFiles(c.env.DB, {
+    userId: user.id,
+    isDm: user.role === 'dm',
+  });
+  return c.json({ files, isDm: user.role === 'dm' });
+});
+
+/** Сам файл: инлайн для PDF/картинок/текста, вложение — для остального. */
+app.get('/literature/:id/file', async (c) => {
+  const user = c.get('user');
+  if (!user) return c.json({ error: 'Необходима авторизация' }, 401);
+
+  const id = Number.parseInt(c.req.param('id'), 10);
+  if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Некорректный id' }, 400);
+
+  const row = await getLiteratureRow(c.env.DB, id);
+  if (!row) return c.json({ error: 'Файл не найден' }, 404);
+  if (!(await canViewLiterature(c.env.DB, row, { userId: user.id, isDm: user.role === 'dm' }))) {
+    return c.json({ error: 'Файл не найден' }, 404);
+  }
+
+  const stored = await readLiteratureFileFromStorage(c.env.BUCKET, c.env.DB, row.file_key);
+  const body = stored.bytes ?? stored.body;
+  if (!body) return c.json({ error: 'Файл не найден' }, 404);
+
+  const inlineSafe = row.kind === 'pdf' || row.kind === 'image' || row.kind === 'text';
+  const asDownload = c.req.query('download') === '1';
+  const disposition = inlineSafe && !asDownload ? 'inline' : 'attachment';
+  const fileName = encodeURIComponent(row.file_name || `${row.title}.${row.file_ext || 'bin'}`);
+
+  const headers = new Headers();
+  headers.set('Content-Type', stored.contentType || row.mime_type || 'application/octet-stream');
+  headers.set('X-Content-Type-Options', 'nosniff');
+  headers.set('Cache-Control', 'private, max-age=300');
+  headers.set('Content-Disposition', `${disposition}; filename*=UTF-8''${fileName}`);
+  if (stored.bytes) headers.set('Content-Length', String(stored.bytes.byteLength));
+
+  return new Response(body as BodyInit, { headers });
+});
+
+app.post('/dm/literature', async (c) => {
+  const user = c.get('user')!;
+
+  let form: FormData;
+  try {
+    form = await c.req.formData();
+  } catch {
+    return c.json({ error: 'Не удалось прочитать форму загрузки' }, 400);
+  }
+
+  const rawFile = form.get('file');
+  if (!rawFile || typeof rawFile !== 'object' || !(rawFile instanceof File)) {
+    return c.json({ error: 'Файл не передан' }, 400);
+  }
+
+  const fileName = (rawFile.name || 'file').slice(0, 200);
+  const mime = (rawFile.type || 'application/octet-stream').split(';')[0].trim().toLowerCase();
+  const ext = literatureExtOf(fileName, mime);
+
+  if (LITERATURE_BLOCKED_EXTENSIONS.has(ext)) {
+    return c.json({ error: `Файлы .${ext} запрещены из соображений безопасности` }, 400);
+  }
+
+  const title = (String(form.get('title') || '').trim() || fileName).slice(0, 140);
+  const description = String(form.get('description') || '').slice(0, 2000);
+
+  let visibleUserIds: number[] = [];
+  const rawVisible = form.get('visibleUserIds');
+  if (typeof rawVisible === 'string' && rawVisible.trim()) {
+    try {
+      visibleUserIds = normalizeVisibleUserIds(JSON.parse(rawVisible));
+    } catch {
+      visibleUserIds = [];
+    }
+  }
+
+  const kind = detectLiteratureKind(ext, mime);
+  const key = `literature/${Date.now()}-${literatureSlug(fileName)}-${crypto.randomUUID().slice(0, 8)}.${ext}`;
+
+  try {
+    await uploadLiteratureFileToStorage(c.env.BUCKET, c.env.DB, rawFile, key);
+    const file = await createLiteratureFile(c.env.DB, {
+      title,
+      description,
+      fileKey: key,
+      fileName,
+      mimeType: mime,
+      fileExt: ext,
+      fileSize: rawFile.size,
+      kind,
+      visibleUserIds,
+      uploadedBy: user.id,
+    });
+    await broadcastLiteratureChanged(c.env, user.id);
+    return c.json({ file });
+  } catch (err) {
+    // Не оставляем «сиротские» чанки/объекты, если запись в таблицу не удалась.
+    await deleteLiteratureFromStorage(c.env.BUCKET, c.env.DB, key).catch(() => undefined);
+    return c.json({ error: err instanceof Error ? err.message : 'Не удалось загрузить файл' }, 400);
+  }
+});
+
+app.patch('/dm/literature/:id', async (c) => {
+  const user = c.get('user')!;
+  const id = Number.parseInt(c.req.param('id'), 10);
+  if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Некорректный id' }, 400);
+
+  const body = await c.req
+    .json<{ title?: string; description?: string; visibleUserIds?: number[] }>()
+    .catch((): { title?: string; description?: string; visibleUserIds?: number[] } => ({}));
+
+  const file = await updateLiteratureFile(c.env.DB, id, {
+    title: typeof body.title === 'string' ? body.title : undefined,
+    description: typeof body.description === 'string' ? body.description : undefined,
+    visibleUserIds: body.visibleUserIds !== undefined ? normalizeVisibleUserIds(body.visibleUserIds) : undefined,
+  });
+  if (!file) return c.json({ error: 'Файл не найден' }, 404);
+
+  await broadcastLiteratureChanged(c.env, user.id);
+  return c.json({ file });
+});
+
+app.delete('/dm/literature/:id', async (c) => {
+  const user = c.get('user')!;
+  const id = Number.parseInt(c.req.param('id'), 10);
+  if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Некорректный id' }, 400);
+
+  const row = await deleteLiteratureFile(c.env.DB, id);
+  if (!row) return c.json({ error: 'Файл не найден' }, 404);
+  await deleteLiteratureFromStorage(c.env.BUCKET, c.env.DB, row.file_key);
+
+  await broadcastLiteratureChanged(c.env, user.id);
+  return c.json({ ok: true });
 });
 
 // ---------------------------------------------------------------------------
@@ -1020,7 +1237,13 @@ async function isNoteEntityVisibleToPlayers(
   kind: NoteEntityKind,
   entityId: number
 ): Promise<boolean> {
-  if (kind === 'quest') return true;
+  if (kind === 'quest') {
+    // Заметки к личному квесту не должны улетать всей партии.
+    const row = await env.DB.prepare(`SELECT visible_user_ids FROM quests WHERE id = ?`)
+      .bind(entityId)
+      .first<{ visible_user_ids: string | null }>();
+    return parseVisibleUserIds(row?.visible_user_ids).length === 0;
+  }
   const table = NOTE_KIND_TO_TABLE[kind];
   const row = await env.DB.prepare(`SELECT is_revealed FROM ${table} WHERE id = ?`)
     .bind(entityId)
@@ -1051,20 +1274,21 @@ async function canAccessNoteEntity(
   env: Env,
   kind: NoteEntityKind,
   entityId: number,
-  role: UserRole
+  user: AuthUser
 ): Promise<boolean> {
   if (kind === 'quest') {
-    const row = await env.DB.prepare(`SELECT id FROM quests WHERE id = ?`)
-      .bind(entityId)
-      .first<{ id: number }>();
-    return Boolean(row);
+    // Личный квест не должен «протекать» через заметки к нему.
+    return canViewQuest(env.DB, entityId, {
+      userId: user.id,
+      isDm: user.role === 'dm',
+    });
   }
   const table = NOTE_KIND_TO_TABLE[kind];
   const row = await env.DB.prepare(`SELECT is_revealed FROM ${table} WHERE id = ?`)
     .bind(entityId)
     .first<{ is_revealed: number }>();
   if (!row) return false;
-  return role === 'dm' || Boolean(row.is_revealed);
+  return user.role === 'dm' || Boolean(row.is_revealed);
 }
 
 function parsePositiveInt(raw: string | undefined): number | null {
@@ -1081,7 +1305,7 @@ for (const collection of Object.keys(NOTE_COLLECTION_TO_KIND)) {
 
     const entityId = parsePositiveInt(c.req.param('id'));
     if (!entityId) return c.json({ error: 'Некорректный id' }, 400);
-    if (!(await canAccessNoteEntity(c.env, kind, entityId, user.role))) {
+    if (!(await canAccessNoteEntity(c.env, kind, entityId, user))) {
       return c.json({ error: 'Запись не найдена' }, 404);
     }
 
@@ -1093,7 +1317,7 @@ for (const collection of Object.keys(NOTE_COLLECTION_TO_KIND)) {
     const user = c.get('user')!;
     const entityId = parsePositiveInt(c.req.param('id'));
     if (!entityId) return c.json({ error: 'Некорректный id' }, 400);
-    if (!(await canAccessNoteEntity(c.env, kind, entityId, user.role))) {
+    if (!(await canAccessNoteEntity(c.env, kind, entityId, user))) {
       return c.json({ error: 'Запись не найдена' }, 404);
     }
 
@@ -2353,6 +2577,27 @@ app.post('/dm/upload', async (c) => {
   } catch (err) {
     return c.json({ error: err instanceof Error ? err.message : 'Ошибка загрузки в R2' }, 400);
   }
+});
+
+/** Короткий ростер партии для выбора видимости (квесты, литература). */
+app.get('/dm/players', async (c) => {
+  const users = await listAllUsersWithThemes(c.env.DB);
+  const characters = await withCharacterAvatars(c.env.DB, await listCharacterProfiles(c.env.DB));
+  const players = users
+    .filter((u) => u.role === 'player')
+    .map((u) => {
+      const character = characters.find((p) => p.playerId != null && p.playerId === u.playerId);
+      return {
+        userId: u.id,
+        playerId: u.playerId ?? null,
+        displayName: u.displayName,
+        characterName: character?.characterName ?? null,
+        charClass: character?.charClass ?? null,
+        avatarUrl: character?.avatarUrl ?? u.avatarUrl ?? null,
+      };
+    })
+    .sort((a, b) => (a.playerId ?? 99) - (b.playerId ?? 99));
+  return c.json({ players });
 });
 
 app.get('/dm/users', async (c) => {

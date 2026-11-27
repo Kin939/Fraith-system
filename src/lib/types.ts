@@ -151,6 +151,43 @@ export interface Quest {
   tileStyle: QuestTileStyle;
   /** Number of party notes attached to the quest (shown as a tile badge) */
   notesCount: number;
+  /**
+   * Личный квест: id аккаунтов, которым мастер открыл квест.
+   * Пустой массив = квест виден всей партии.
+   */
+  visibleUserIds: number[];
+}
+
+/** Участник партии для выбора видимости (квесты, литература). */
+export interface PartyPlayerSummary {
+  userId: number;
+  playerId: PlayerId | null;
+  displayName: string;
+  characterName: string | null;
+  charClass: string | null;
+  avatarUrl: string | null;
+}
+
+export type LiteratureKind = 'pdf' | 'docx' | 'doc' | 'text' | 'image' | 'other';
+
+/** Файл вкладки «Литература». */
+export interface LiteratureFile {
+  id: number;
+  title: string;
+  description: string;
+  fileName: string;
+  mimeType: string;
+  fileExt: string;
+  fileSize: number;
+  kind: LiteratureKind;
+  /** Пустой массив = файл виден всем игрокам */
+  visibleUserIds: number[];
+  uploadedBy: number | null;
+  createdAt: string;
+  updatedAt: string | null;
+  /** Готовая ссылка на файл (с проверкой прав на сервере) */
+  url: string;
+  canManage: boolean;
 }
 
 export type NoteEntityKind = 'quest' | 'npc' | 'creature';
@@ -399,6 +436,7 @@ export type CampaignWsEventType =
   | 'connected'
   | 'presence:update'
   | 'quests:updated'
+  | 'literature:updated'
   | 'notes:updated'
   | 'npcs:updated'
   | 'bestiary:updated'
